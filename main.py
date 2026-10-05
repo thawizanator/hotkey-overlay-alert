@@ -18,7 +18,7 @@ from PyQt6.QtGui import QPainter, QPen, QColor, QIcon, QAction, QPixmap
 
 # Import components from our other local workspace files
 from twitch_worker import TwitchCommandWorker
-from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_hotkey_display, ICON_PATH
+from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_hotkey_display, ICON_PATH, get_app_icon
 
 def get_app_directory():
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -65,8 +65,7 @@ class TextInputOverlay(QMainWindow):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        if os.path.exists(ICON_PATH):
-            self.setWindowIcon(QIcon(ICON_PATH))
+        self.setWindowIcon(get_app_icon())
 
         # Translucent backdrop covering entire target monitor
         backdrop = QWidget(self)
@@ -188,8 +187,7 @@ class RedBorderOverlay(QMainWindow):
         self.update_monitor_geometry(self.target_monitor_index)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool | Qt.WindowType.WindowTransparentForInput)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        if os.path.exists(ICON_PATH):
-            self.setWindowIcon(QIcon(ICON_PATH))
+        self.setWindowIcon(get_app_icon())
         
         self.signaler = HotkeySignaler()
         self.signaler.trigger.connect(lambda: self.toggle_visibility())
@@ -360,8 +358,7 @@ class RedBorderOverlay(QMainWindow):
     def show_welcome_message(self):
         msg = QMessageBox()
         msg.setWindowTitle("HotKey Overlay Alert Loaded")
-        msg.setIcon(QMessageBox.Icon.Information)
-        if os.path.exists(ICON_PATH): msg.setWindowIcon(QIcon(ICON_PATH))
+        msg.setWindowIcon(get_app_icon())
         formatted_hk = format_hotkey_display(self.activation_hotkey)
         msg.setText(
             "<b>Thanks for using the Hotkey Overlay Alert!</b><br><br>"
@@ -385,10 +382,7 @@ class RedBorderOverlay(QMainWindow):
 
     def init_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
-        if os.path.exists(ICON_PATH): self.tray_icon.setIcon(QIcon(ICON_PATH))
-        else:
-            p = QPixmap(16, 16); p.fill(QColor(255, 0, 0))
-            self.tray_icon.setIcon(QIcon(p))
+        self.tray_icon.setIcon(get_app_icon())
         self.tray_menu = QMenu()
         self.settings_action = QAction("Settings", self)
         self.settings_action.triggered.connect(self.open_settings)
@@ -481,13 +475,11 @@ if __name__ == '__main__':
             pass
 
     app = QApplication(sys.argv)
-    if os.path.exists(ICON_PATH):
-        app.setWindowIcon(QIcon(ICON_PATH))
+    app.setWindowIcon(get_app_icon())
 
     if not check_single_instance():
         msg = QMessageBox()
-        if os.path.exists(ICON_PATH):
-            msg.setWindowIcon(QIcon(ICON_PATH))
+        msg.setWindowIcon(get_app_icon())
         msg.setText("Application is already running! Check hidden system tray icons.")
         msg.exec()
         sys.exit(0)

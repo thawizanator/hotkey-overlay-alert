@@ -163,6 +163,13 @@ class TwitchCommandWorker(QThread):
                 user_friendly = "Twitch authorization token expired. Please re-link your Twitch account in Settings."
             elif he.code == 403:
                 user_friendly = "Twitch permission denied. Ensure your account has broadcaster or moderator permissions."
+            elif he.code == 429:
+                if "announce" in self.command.lower():
+                    user_friendly = "Twitch Announcement Cooldown: Twitch limits announcements to once every 2 minutes. Please wait before sending another."
+                elif "shoutout" in self.command.lower():
+                    user_friendly = "Twitch Shoutout Cooldown: Twitch limits shoutouts to once every 2 minutes per broadcaster."
+                else:
+                    user_friendly = f"Twitch Rate Limit (429): {err_msg}. Please wait a moment before trying again."
             else:
                 user_friendly = f"Twitch API Error ({he.code}): {err_msg}"
 

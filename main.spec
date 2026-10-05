@@ -5,8 +5,11 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[
+        ('icon.ico', '.'),
+        ('icon.png', '.')
+    ],
+    hiddenimports=['PyQt6.QtGui'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -22,7 +25,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='main',
+    name='HotKeyOverlayAlert',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

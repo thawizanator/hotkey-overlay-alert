@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QComboBox, QPushButton, QSlider, QColorDialog, 
                              QMessageBox, QLineEdit, QStackedWidget)
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
@@ -654,8 +654,51 @@ class VisualSettingsView(QWidget):
 
 
 def get_resource_path(relative_path):
-    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_path, relative_path)
+    candidates = []
+    if hasattr(sys, '_MEIPASS'):
+        candidates.append(os.path.join(sys._MEIPASS, relative_path))
+    if getattr(sys, 'frozen', False):
+        candidates.append(os.path.join(os.path.dirname(sys.executable), relative_path))
+    candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path))
+    candidates.append(os.path.join(os.getcwd(), relative_path))
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0] if candidates else relative_path
+
+
+def get_app_icon():
+    icon = QIcon()
+    ico_path = get_resource_path("icon.ico")
+    png_path = get_resource_path("icon.png")
+
+    if os.path.exists(ico_path):
+        icon.addFile(ico_path)
+    if os.path.exists(png_path):
+        icon.addFile(png_path)
+
+    if not icon.isNull() and icon.availableSizes():
+        return icon
+
+    for p in [ico_path, png_path]:
+        if os.path.exists(p):
+            ic = QIcon(p)
+            if not ic.isNull():
+                return ic
+
+    # High-resolution procedural fallback (purple alert reticle)
+    pixmap = QPixmap(64, 64)
+    pixmap.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor(145, 70, 255))
+    painter.setPen(QColor(255, 255, 255))
+    painter.drawRoundedRect(4, 4, 56, 56, 12, 12)
+    painter.setPen(QPen(QColor(255, 255, 255), 4))
+    painter.drawRect(18, 18, 28, 28)
+    painter.end()
+    return QIcon(pixmap)
+
 
 ICON_PATH = get_resource_path("icon.ico")
 
@@ -782,8 +825,7 @@ class SettingsWindow(QWidget):
         self.overlay = overlay_app
         self.setWindowTitle("HotKey Overlay Alert Settings")
         self.setFixedSize(400, 620)
-        if os.path.exists(ICON_PATH):
-            self.setWindowIcon(QIcon(ICON_PATH))
+        self.setWindowIcon(get_app_icon())
 
         self.stack = QStackedWidget(self)
         self.view_visual = VisualSettingsView(self)
@@ -855,8 +897,7 @@ class SettingsWindow(QWidget):
 
     def show_about_dialog(self):
         msg = QMessageBox(self)
-        if os.path.exists(ICON_PATH):
-            msg.setWindowIcon(QIcon(ICON_PATH))
+        msg.setWindowIcon(get_app_icon())
         msg.setWindowTitle("About Monitor Border Overlay")
         about_text = ( 
             "<b>About This App</b><br><br>" 
