@@ -919,7 +919,7 @@ class SettingsWindow(QWidget):
             "right-click the app and select <b>Run as administrator</b>.<br><br>" 
             "<b>Created by ThaWizanator</b><br>" 
             "<a href='https://twitch.tv'>twitch.tv/thawizanator</a><br><br>" 
-            "Version 2.1.0 | October 2026" 
+            "Version 2.1.1 | October 2026" 
         )
         msg.setText(about_text)
         msg.setTextFormat(Qt.TextFormat.RichText)

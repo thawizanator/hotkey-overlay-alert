@@ -1,4 +1,4 @@
-﻿# HotKey Overlay Alert 🔔
+# HotKey Overlay Alert 🔔
 
 A lightweight, high-performance Windows system tray utility created to prevent streaming on mute! **HotKey Overlay Alert** renders an on-screen colored border highlight around your chosen monitor to remind you when a hotkey is active, plus features direct **Twitch Helix API** integration for stream markers, announcements, and shoutouts.
 
@@ -74,19 +74,37 @@ A lightweight, high-performance Windows system tray utility created to prevent s
 
 To compile a standalone .exe with embedded icon and resources using PyInstaller:
 
-`powershell
+```powershell
 .\venv\Scripts\pyinstaller.exe --noconfirm main.spec
-`
+```
 
-The compiled binary will be placed in dist\HotKeyOverlayAlert.exe and dist\main.exe.
+The compiled binary will be placed in `dist\HotKeyOverlayAlert.exe` and `dist\main.exe`.
+
+---
+
+## 🛡️ Antivirus & Windows SmartScreen Notice
+
+If Windows Defender SmartScreen, Avast CyberCapture, or other antivirus software displays an alert or popup when first launching the standalone `.exe`, **this is a normal false positive common to newly compiled Python tools**.
+
+### Why does this happen?
+1. **PyInstaller Packaging**: The standalone executable is bundled using PyInstaller, which packs Python and dependencies into a self-extracting archive in `%TEMP%`. Many heuristic scanners flag newly seen packed executables until they gain public reputation.
+2. **Global Hotkey Hooks**: The app listens for global hotkeys across Windows using standard low-level Windows keyboard hooks (`SetWindowsHookEx`), an API heuristic security tools monitor closely.
+3. **New Release & Zero Cloud Reputation**: Antivirus cloud networks (such as Avast Cloud or Microsoft SmartScreen) rely on crowd-sourced download telemetry. Brand-new releases have not yet accumulated enough worldwide downloads to be automatically whitelisted by cloud engines.
+
+### How to verify & proceed safely:
+- **100% Open Source**: You can review and inspect every line of Python code directly in this repository.
+- **Digitally Signed**: The binary is Authenticode signed and timestamped with a DigiCert timestamp server.
+- **Run from Source**: If you prefer not to run the pre-compiled `.exe`, you can run the app directly with Python (`python main.py`) or compile it yourself (`pyinstaller --noconfirm main.spec`).
+- **In Avast**: Allow the CyberCapture analysis to complete (it will verify the file clean), or click **More Details** → **Run Anyway**.
+- **In Windows SmartScreen**: Click **More Info** → **Run anyway**.
 
 ---
 
 ## ⚙️ Configuration & Storage
 
 Settings are automatically synchronized to:
-- %APPDATA%\ThaWizanator_Overlay\config.json
-- ./config.json *(local fallback)*
+- `%APPDATA%\ThaWizanator_Overlay\config.json`
+- `./config.json` *(local fallback)*
 
 Sensitive OAuth credentials are obfuscated and stored locally only. A template is provided in [config.example.json](config.example.json).
 
@@ -96,7 +114,7 @@ Sensitive OAuth credentials are obfuscated and stored locally only. A template i
 
 - **Created by**: ThaWizanator
 - **Twitch**: [twitch.tv/thawizanator](https://twitch.tv/thawizanator)
-- **Version**: 2.1.0 (October 2026)
+- **Version**: 2.1.1 (October 2026)
 
 ---
 
