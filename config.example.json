@@ -1,0 +1,21 @@
+﻿{
+    monitor_index: 0,
+    thickness: 10,
+    color: #ff0000,
+    opacity: 0.8,
+    is_flashing: true,
+    flash_speed_name: Squirrel,
+    activation_hotkey: ctrl+add,
+    twitch_channel: ",
+ twitch_client_id: 09inz20qnc8wbc7qemz9jl6kqf8iad,
+ twitch_redirect_uri: http://localhost:17563,
+ twitch_user_id: ,
+ twitch_display_name: ,
+ twitch_token_obf: ,
+ twitch_macros: [
+ {
+ command: /marker,
+ hotkey: ctrl+subtract
+ }
+ ]
+}

@@ -1,0 +1,26 @@
+﻿# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*.class
+*.pyo
+
+# PyInstaller build & distribution outputs
+build/
+dist/
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+
+# Local sensitive configuration & lock files
+config.json
+app.lock
+*.lock
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
