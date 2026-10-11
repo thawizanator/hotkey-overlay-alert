@@ -547,8 +547,10 @@ class RedBorderOverlay(QMainWindow):
                     self.settings_window.tab_system.latest_download_url = download_url
                     self.settings_window.tab_system.latest_release_url = release_url
                     self.settings_window.tab_system.lbl_update_status.setText(f"<span style='color: #57F287; font-weight: bold;'>🎉 Update Available: {latest_tag}!</span>")
-                    self.settings_window.tab_system.btn_download_update.setEnabled(bool(download_url))
                     if download_url:
+                        self.settings_window.tab_system.btn_download_update.setText(f"🚀 Download && Install Update ({latest_tag})")
+                        self.settings_window.tab_system.btn_download_update.setVisible(True)
+                        self.settings_window.tab_system.btn_download_update.setEnabled(True)
                         self.settings_window.tab_system.download_update_clicked()
 
     def on_bg_download_finished(self, downloaded_path, tag):

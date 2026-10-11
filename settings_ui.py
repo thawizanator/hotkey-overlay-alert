@@ -256,7 +256,7 @@ class MainTab(QWidget):
         layout.setContentsMargins(14, 14, 14, 14)
 
         # Group 1: Display & Overlay Mode
-        grp_mode = QGroupBox("Display & Overlay Mode")
+        grp_mode = QGroupBox("Display && Overlay Mode")
         lay_mode = QVBoxLayout(grp_mode)
         lay_mode.setSpacing(6)
 
@@ -481,7 +481,7 @@ class AlertOverlayTab(QWidget):
         layout.addWidget(grp_app)
 
         # Group 2: Flashing & Effects
-        grp_fx = QGroupBox("Breathing & Flashing Effects")
+        grp_fx = QGroupBox("Breathing && Flashing Effects")
         lay_fx = QVBoxLayout(grp_fx)
         lay_fx.setSpacing(8)
 
@@ -798,8 +798,8 @@ class SystemTab(QWidget):
         self.latest_release_url = None
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(8)
+        layout.setContentsMargins(12, 10, 12, 10)
 
         # Group 1: Software Updates
         grp_upd = QGroupBox("Application Updates")
@@ -811,26 +811,47 @@ class SystemTab(QWidget):
         self.lbl_update_status = QLabel("<span style='color: #a1a1aa;'>Status: Checking...</span>")
         self.lbl_update_status.setTextFormat(Qt.TextFormat.RichText)
         status_box.addWidget(self.lbl_cur_ver)
-        status_box.addSpacing(16)
+        status_box.addSpacing(14)
         status_box.addWidget(self.lbl_update_status)
         status_box.addStretch()
         lay_upd.addLayout(status_box)
 
         btn_upd_box = QHBoxLayout()
+        btn_upd_box.setSpacing(10)
         self.btn_check_update = QPushButton("🔄 Check for Updates Now")
         self.btn_check_update.clicked.connect(self.check_updates_clicked)
         btn_upd_box.addWidget(self.btn_check_update)
-
-        self.btn_download_update = QPushButton("🚀 Download & Install Update")
-        self.btn_download_update.setStyleSheet("background-color: #2e6930; color: white; font-weight: bold; padding: 5px;")
-        self.btn_download_update.setEnabled(False)
-        self.btn_download_update.clicked.connect(self.download_update_clicked)
-        btn_upd_box.addWidget(self.btn_download_update)
 
         self.btn_view_release = QPushButton("View on GitHub")
         self.btn_view_release.clicked.connect(lambda: webbrowser.open(self.latest_release_url or f"https://github.com/{GITHUB_REPO}/releases"))
         btn_upd_box.addWidget(self.btn_view_release)
         lay_upd.addLayout(btn_upd_box)
+
+        # Prominent Download & Install Update Button (shown when update is available)
+        self.btn_download_update = QPushButton("🚀 Download && Install Update")
+        self.btn_download_update.setObjectName("btn_download_update")
+        self.btn_download_update.setStyleSheet("""
+            QPushButton#btn_download_update {
+                background-color: #2e6930;
+                color: #ffffff;
+                font-weight: bold;
+                border: 1px solid #3d8b40;
+                border-radius: 5px;
+                min-height: 28px;
+                padding: 6px 14px;
+            }
+            QPushButton#btn_download_update:hover {
+                background-color: #38843a;
+            }
+            QPushButton#btn_download_update:disabled {
+                background-color: #202022;
+                color: #636366;
+                border: 1px solid #2c2c2e;
+            }
+        """)
+        self.btn_download_update.setVisible(False)
+        self.btn_download_update.clicked.connect(self.download_update_clicked)
+        lay_upd.addWidget(self.btn_download_update)
 
         # Progress bar
         self.progress_bar = QProgressBar()
@@ -855,7 +876,7 @@ class SystemTab(QWidget):
         layout.addWidget(grp_upd)
 
         # Group 2: Diagnostics & Troubleshooting
-        grp_diag = QGroupBox("Diagnostics & Logs")
+        grp_diag = QGroupBox("Diagnostics && Logs")
         lay_diag = QVBoxLayout(grp_diag)
         lay_diag.setSpacing(8)
 
@@ -921,14 +942,19 @@ class SystemTab(QWidget):
         self.latest_release_url = release_url
         self.lbl_update_status.setText(f"<span style='color: #57F287; font-weight: bold;'>🎉 Update Available: {latest_tag}!</span>")
         if download_url:
+            self.btn_download_update.setText(f"🚀 Download && Install Update ({latest_tag})")
+            self.btn_download_update.setVisible(True)
             self.btn_download_update.setEnabled(True)
 
     def on_up_to_date(self, current_ver):
-        self.lbl_update_status.setText(f"<span style='color: #43b581;'>✔️ Up to date (v{current_ver})</span>")
+        self.lbl_update_status.setText(f"<span style='color: #43b581; font-weight: bold;'>✔️ Up to date (v{current_ver})</span>")
+        self.btn_download_update.setVisible(False)
         self.btn_download_update.setEnabled(False)
 
     def on_check_error(self, err_str):
         self.lbl_update_status.setText("<span style='color: #a1a1aa;'>Could not connect to update server</span>")
+        self.btn_download_update.setVisible(False)
+        self.btn_download_update.setEnabled(False)
 
     def on_update_found_interactive(self, latest_tag, release_url, download_url, notes):
         self.btn_check_update.setEnabled(True)
@@ -1044,7 +1070,7 @@ class SettingsWindow(QWidget):
         super().__init__()
         self.overlay = overlay_app
         self.setWindowTitle(f"HotKey Overlay Alert Settings (v{CURRENT_VERSION})")
-        self.setFixedSize(510, 460)
+        self.setFixedSize(520, 530)
         self.setWindowIcon(get_app_icon())
 
         # Main Layout
@@ -1092,6 +1118,27 @@ class SettingsWindow(QWidget):
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 4px;
+            }
+            QPushButton {
+                background-color: #27272a;
+                color: #efeff1;
+                border: 1px solid #3f3f46;
+                border-radius: 5px;
+                padding: 5px 12px;
+                font-size: 12px;
+                min-height: 26px;
+            }
+            QPushButton:hover {
+                background-color: #3f3f46;
+                border-color: #52525b;
+            }
+            QPushButton:pressed {
+                background-color: #18181b;
+            }
+            QPushButton:disabled {
+                background-color: #202022;
+                color: #636366;
+                border-color: #2c2c2e;
             }
         """)
 
