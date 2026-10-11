@@ -40,8 +40,21 @@ A lightweight, high-performance Windows system tray utility created to prevent s
   - Press **Enter** to submit • Press **Esc** or click outside / Cancel to dismiss.
 - **HUD Toast & System Tray Feedback**: Real-time on-screen HUD alerts and balloon notifications confirm action status (*e.g., marker timestamp, chat message status, cooldown warnings*).
 - **Diagnostics, Debug Logging & Automated Crash Capture**:
-  - Checkbox and "debug.txt" button on the main settings screen logs all hotkey events, window actions, Twitch API requests, and responses.
+  - Checkbox and "debug.txt" button on the System settings screen logs all hotkey events, window actions, Twitch API requests, and responses.
   - Global crash interceptor (`sys.excepthook`, `threading.excepthook`, and `faulthandler`) catches unexpected errors and writes full stack traces to `%APPDATA%\ThaWizanator_Overlay\crash_log.txt` with one-click access in Settings.
+
+### 🗂️ Clean 5-Tab Modern Settings Layout
+- **Main Tab (🏠)**: Streamer Mode toggle (in-game HUD vs. desktop modals) and primary activation hotkey recorder.
+- **Monitor Tab (🖥️)**: Display selection dropdown and on-screen monitor identification overlay.
+- **Alert Overlay Tab (🎨)**: Border RGB color picker, thickness slider, opacity/transparency slider, and breathing/flashing effects.
+- **Twitch Tab (🟣)**: Account linking, broadcaster channel name, and up to 4 custom macro hotkeys with safe row management.
+- **System Tab (⚙️)**: Integrated updater, startup update checks, diagnostics/logging, crash logs, and app folder shortcuts. Compact 510x460 size cleanly fits on any monitor.
+
+### 🔄 GitHub Application Updates & Auto-Updater
+- **Direct GitHub Releases Integration**: Checks for new versions directly against GitHub Releases without requiring manual downloads.
+- **Interactive Update Prompts**: When an update is detected, presents an alert asking whether to update now or later.
+- **Opt-In Auto-Updating**: Checkbox option to automatically download new versions in the background when available and prompt for restart.
+- **Safe Self-Replacing Executable**: Standalone builds safely swap out the running `.exe` via a detached PowerShell updater process and relaunch the new version.
 
 ---
 
@@ -120,7 +133,7 @@ Sensitive OAuth credentials are obfuscated and stored locally only. A template i
 
 - **Created by**: ThaWizanator
 - **Twitch**: [twitch.tv/thawizanator](https://twitch.tv/thawizanator)
-- **Version**: 2.2.1 (October 2026)
+- **Version**: 2.3.0 (October 2026)
 
 ---
 

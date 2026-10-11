@@ -7,7 +7,7 @@ import keyboard
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.2.1"
+        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.3.0"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -21,6 +21,7 @@ from PyQt6.QtGui import QPainter, QPen, QColor, QIcon, QAction, QPixmap
 # Import components from our other local workspace files
 from twitch_worker import TwitchCommandWorker
 from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_hotkey_display, ICON_PATH, get_app_icon
+from updater import CURRENT_VERSION, UpdateCheckWorker, DownloadWorker, apply_update_and_restart
 
 def get_app_directory():
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -349,6 +350,7 @@ class RedBorderOverlay(QMainWindow):
     def __init__(self, app):
         super().__init__()
         self.app = app
+        self.app_dir = APP_DIR
         
         # Check first run status before loading settings or writing files
         self.is_first_run = not os.path.exists(CONFIG_FILE)
@@ -381,6 +383,9 @@ class RedBorderOverlay(QMainWindow):
         if self.is_first_run:
             QTimer.singleShot(200, self.show_welcome_message)
 
+        if getattr(self, "check_updates_on_startup", True):
+            QTimer.singleShot(4000, self.run_startup_update_check)
+
     def load_settings(self):
         self.target_monitor_index = 0
         self.border_thickness = 10
@@ -391,6 +396,8 @@ class RedBorderOverlay(QMainWindow):
         self.activation_hotkey = "ctrl+add"
         self.streamer_mode = True
         self.debug_mode = False
+        self.check_updates_on_startup = True
+        self.auto_update_enabled = False
         self.twitch_channel = "thawizanator"
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
         self.twitch_redirect_uri = "http://localhost:17563"
@@ -418,6 +425,8 @@ class RedBorderOverlay(QMainWindow):
                     self.activation_hotkey = normalize_hotkey(d.get("activation_hotkey", "ctrl+add"))
                     self.streamer_mode = d.get("streamer_mode", True)
                     self.debug_mode = d.get("debug_mode", False)
+                    self.check_updates_on_startup = d.get("check_updates_on_startup", True)
+                    self.auto_update_enabled = d.get("auto_update_enabled", False)
                     set_debug_mode(self.debug_mode)
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
                     if loaded_client_id and loaded_client_id != "testclientid":
@@ -456,6 +465,8 @@ class RedBorderOverlay(QMainWindow):
             "activation_hotkey": normalize_hotkey(self.activation_hotkey),
             "streamer_mode": self.streamer_mode,
             "debug_mode": self.debug_mode,
+            "check_updates_on_startup": self.check_updates_on_startup,
+            "auto_update_enabled": self.auto_update_enabled,
             "twitch_channel": self.twitch_channel,
             "twitch_client_id": self.twitch_client_id,
             "twitch_redirect_uri": self.twitch_redirect_uri,
@@ -489,11 +500,85 @@ class RedBorderOverlay(QMainWindow):
         self.save_settings()
         log_debug("SYSTEM", f"Debug logging toggled: {'ENABLED' if self.debug_mode else 'DISABLED'}")
 
+    def set_update_settings(self, check_on_startup=None, auto_update=None):
+        if check_on_startup is not None:
+            self.check_updates_on_startup = bool(check_on_startup)
+        if auto_update is not None:
+            self.auto_update_enabled = bool(auto_update)
+        self.save_settings()
+        log_debug("SYSTEM", f"Update settings saved: check_on_startup={self.check_updates_on_startup}, auto_update={self.auto_update_enabled}")
+
+    def run_startup_update_check(self):
+        log_debug("UPDATER", "Running startup update check...")
+        self.startup_check_worker = UpdateCheckWorker(CURRENT_VERSION)
+        self.startup_check_worker.update_available.connect(self.on_startup_update_found)
+        self.startup_check_worker.start()
+
+    def on_startup_update_found(self, latest_tag, release_url, download_url, notes):
+        log_debug("UPDATER", f"Startup check found update: {latest_tag}")
+        if self.auto_update_enabled and download_url:
+            log_debug("UPDATER", f"Auto-update enabled. Starting background download for {latest_tag}...")
+            temp_exe = os.path.join(APP_DIR, f"HotKeyOverlayAlert_new_{latest_tag}.exe")
+            self.bg_download_worker = DownloadWorker(download_url, temp_exe)
+            self.bg_download_worker.finished.connect(lambda p: self.on_bg_download_finished(p, latest_tag))
+            self.bg_download_worker.start()
+        else:
+            msg_box = QMessageBox()
+            msg_box.setWindowTitle("Application Update Available")
+            msg_box.setWindowIcon(get_app_icon())
+            msg_box.setText(
+                f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
+                f"Installed Version: <b>v{CURRENT_VERSION}</b><br>"
+                f"Latest Version: <b>{latest_tag}</b><br><br>"
+                f"Would you like to download and install this update now?"
+            )
+            msg_box.setTextFormat(Qt.TextFormat.RichText)
+            btn_now = msg_box.addButton("Download Now", QMessageBox.ButtonRole.AcceptRole)
+            btn_later = msg_box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            msg_box.setDefaultButton(btn_now)
+            msg_box.exec()
+
+            if msg_box.clickedButton() == btn_now:
+                self.open_settings()
+                if hasattr(self.settings_window, "tabs"):
+                    self.settings_window.tabs.setCurrentIndex(4)  # System tab
+                if hasattr(self.settings_window, "tab_system"):
+                    self.settings_window.tab_system.latest_tag = latest_tag
+                    self.settings_window.tab_system.latest_download_url = download_url
+                    self.settings_window.tab_system.latest_release_url = release_url
+                    self.settings_window.tab_system.lbl_update_status.setText(f"<span style='color: #57F287; font-weight: bold;'>🎉 Update Available: {latest_tag}!</span>")
+                    self.settings_window.tab_system.btn_download_update.setEnabled(bool(download_url))
+                    if download_url:
+                        self.settings_window.tab_system.download_update_clicked()
+
+    def on_bg_download_finished(self, downloaded_path, tag):
+        log_debug("UPDATER", f"Background download completed: {downloaded_path}")
+        msg_box = QMessageBox()
+        msg_box.setWindowTitle("Update Ready to Install")
+        msg_box.setWindowIcon(get_app_icon())
+        msg_box.setText(
+            f"<b>Update {tag} has been downloaded automatically!</b><br><br>"
+            f"The application needs to restart to apply the new version.<br><br>"
+            f"Restart now?"
+        )
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        btn_restart = msg_box.addButton("Restart Now", QMessageBox.ButtonRole.AcceptRole)
+        btn_later = msg_box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton(btn_restart)
+        msg_box.exec()
+
+        if msg_box.clickedButton() == btn_restart:
+            ok, msg = apply_update_and_restart(downloaded_path)
+            if ok:
+                self.close_application()
+            else:
+                QMessageBox.information(None, "Update Note", f"{msg}\n\nDownloaded update saved to:\n{downloaded_path}")
+
     def open_debug_log(self):
         try:
             if not os.path.exists(DEBUG_LOG_FILE):
                 with open(DEBUG_LOG_FILE, "w", encoding="utf-8") as f:
-                    f.write("=== HotKey Overlay Alert Debug Log (v2.2.1) ===\n")
+                    f.write(f"=== HotKey Overlay Alert Debug Log (v{CURRENT_VERSION}) ===\n")
             os.startfile(DEBUG_LOG_FILE)
             log_debug("SYSTEM", "Opened debug.txt in default viewer")
         except Exception as e:
@@ -711,8 +796,14 @@ class RedBorderOverlay(QMainWindow):
         self.setWindowOpacity(new_op)
 
     def open_settings(self):
-        self.settings_window.view_visual.monitor_combo.setCurrentIndex(self.target_monitor_index)
+        if hasattr(self.settings_window, "tab_monitor"):
+            self.settings_window.tab_monitor.refresh_monitors()
+            self.settings_window.tab_monitor.monitor_combo.setCurrentIndex(self.target_monitor_index)
+        elif hasattr(self.settings_window, "view_visual"):
+            self.settings_window.view_visual.monitor_combo.setCurrentIndex(self.target_monitor_index)
         self.settings_window.show()
+        self.settings_window.raise_()
+        self.settings_window.activateWindow()
 
     def close_application(self):
         global lock_file_handle
@@ -732,7 +823,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.2.1")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.3.0")
         except Exception:
             pass
 
