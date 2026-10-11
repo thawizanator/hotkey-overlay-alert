@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.3.4"
+CURRENT_VERSION = "2.3.5"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -147,7 +147,8 @@ if (Test-Path -LiteralPath $lockFile) {{
     Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
 }}
 
-Start-Sleep -Seconds 1
+# Grace period for Windows OS and Defender filesystem release
+Start-Sleep -Seconds 2
 
 $replaced = $false
 for ($i = 0; $i -lt 15; $i++) {{
@@ -160,15 +161,17 @@ for ($i = 0; $i -lt 15; $i++) {{
     }}
 }}
 
+$env:_MEIPASS = $null
 $env:_MEIPASS2 = $null
 $env:PYTHONPATH = $null
 $env:PYTHONHOME = $null
+[System.Environment]::SetEnvironmentVariable('_MEIPASS', $null, 'Process')
 [System.Environment]::SetEnvironmentVariable('_MEIPASS2', $null, 'Process')
 [System.Environment]::SetEnvironmentVariable('PYTHONPATH', $null, 'Process')
 [System.Environment]::SetEnvironmentVariable('PYTHONHOME', $null, 'Process')
 
 if ($replaced) {{
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 1
     $workingDir = Split-Path -Parent '{current_exe}'
     Start-Process -FilePath '{current_exe}' -WorkingDirectory $workingDir
 }}
@@ -178,7 +181,7 @@ Remove-Item -LiteralPath '{updater_ps1}' -Force -ErrorAction SilentlyContinue
         f.write(script_content)
 
     clean_env = os.environ.copy()
-    for var in ["_MEIPASS2", "PYTHONPATH", "PYTHONHOME"]:
+    for var in ["_MEIPASS", "_MEIPASS2", "PYTHONPATH", "PYTHONHOME"]:
         clean_env.pop(var, None)
 
     cmd = [
