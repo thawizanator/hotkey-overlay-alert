@@ -7,7 +7,7 @@ import keyboard
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.3.0"
+        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.3.1"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -56,6 +56,54 @@ def check_single_instance():
         lock_file_handle.flush()
         return True
     except Exception: return False
+
+def set_autostart_registry(enable: bool) -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE
+        )
+        app_name = "HotKeyOverlayAlert"
+        if enable:
+            if getattr(sys, "frozen", False):
+                exe_path = f'"{sys.executable}"'
+            else:
+                exe_path = f'"{sys.executable}" "{os.path.abspath(sys.argv[0])}"'
+            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+            log_debug("SYSTEM", f"Set Windows startup registry key to: {exe_path}")
+        else:
+            try:
+                winreg.DeleteValue(key, app_name)
+                log_debug("SYSTEM", "Removed Windows startup registry key")
+            except FileNotFoundError:
+                pass
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        log_debug("SYSTEM", f"Error updating Windows autostart registry: {e}")
+        return False
+
+def is_autostart_registry_enabled() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_QUERY_VALUE
+        )
+        val, _ = winreg.QueryValueEx(key, "HotKeyOverlayAlert")
+        winreg.CloseKey(key)
+        return bool(val)
+    except Exception:
+        return False
 
 class HotkeySignaler(QObject):
     trigger = pyqtSignal(int)
@@ -386,6 +434,9 @@ class RedBorderOverlay(QMainWindow):
         if getattr(self, "check_updates_on_startup", True):
             QTimer.singleShot(4000, self.run_startup_update_check)
 
+        if getattr(self, "start_on_boot", False):
+            set_autostart_registry(True)
+
     def load_settings(self):
         self.target_monitor_index = 0
         self.border_thickness = 10
@@ -394,6 +445,8 @@ class RedBorderOverlay(QMainWindow):
         self.is_flashing = False
         self.flash_speed_name = "Squirrel"
         self.activation_hotkey = "ctrl+add"
+        self.primary_hotkey_enabled = True
+        self.start_on_boot = False
         self.streamer_mode = True
         self.debug_mode = False
         self.check_updates_on_startup = True
@@ -423,6 +476,8 @@ class RedBorderOverlay(QMainWindow):
                     self.is_flashing = d.get("is_flashing", False)
                     self.flash_speed_name = d.get("flash_speed_name", "Squirrel")
                     self.activation_hotkey = normalize_hotkey(d.get("activation_hotkey", "ctrl+add"))
+                    self.primary_hotkey_enabled = d.get("primary_hotkey_enabled", True)
+                    self.start_on_boot = d.get("start_on_boot", False)
                     self.streamer_mode = d.get("streamer_mode", True)
                     self.debug_mode = d.get("debug_mode", False)
                     self.check_updates_on_startup = d.get("check_updates_on_startup", True)
@@ -463,6 +518,8 @@ class RedBorderOverlay(QMainWindow):
             "is_flashing": self.is_flashing,
             "flash_speed_name": self.flash_speed_name,
             "activation_hotkey": normalize_hotkey(self.activation_hotkey),
+            "primary_hotkey_enabled": self.primary_hotkey_enabled,
+            "start_on_boot": self.start_on_boot,
             "streamer_mode": self.streamer_mode,
             "debug_mode": self.debug_mode,
             "check_updates_on_startup": self.check_updates_on_startup,
@@ -599,6 +656,18 @@ class RedBorderOverlay(QMainWindow):
         except Exception as e:
             print(f"Error opening crash log: {e}")
 
+    def set_primary_hotkey_enabled(self, enabled):
+        self.primary_hotkey_enabled = bool(enabled)
+        self.rebind_activation_hotkey()
+        self.save_settings()
+        log_debug("SYSTEM", f"Primary highlight hotkey toggled: {'ENABLED' if self.primary_hotkey_enabled else 'DISABLED'}")
+
+    def set_start_on_boot(self, enabled):
+        self.start_on_boot = bool(enabled)
+        set_autostart_registry(self.start_on_boot)
+        self.save_settings()
+        log_debug("SYSTEM", f"Windows startup auto-launch toggled: {'ENABLED' if self.start_on_boot else 'DISABLED'}")
+
     def rebind_activation_hotkey(self, new_hotkey=None):
         if new_hotkey is not None:
             self.activation_hotkey = normalize_hotkey(new_hotkey)
@@ -608,16 +677,19 @@ class RedBorderOverlay(QMainWindow):
                 keyboard.remove_hotkey(self._bound_activation_hotkey)
             except Exception:
                 pass
+            self._bound_activation_hotkey = ""
 
-        if self.activation_hotkey:
+        if self.primary_hotkey_enabled and self.activation_hotkey:
             try:
                 keyboard.add_hotkey(self.activation_hotkey, lambda: self.signaler.trigger.emit(0))
                 self._bound_activation_hotkey = self.activation_hotkey
+                log_debug("HOTKEY", f"Primary activation hotkey bound: '{self.activation_hotkey}'")
             except Exception as e:
                 print(f"Warning: Could not bind activation hotkey '{self.activation_hotkey}': {e}")
                 self._bound_activation_hotkey = ""
         else:
             self._bound_activation_hotkey = ""
+            log_debug("HOTKEY", "Primary activation hotkey is disabled or empty")
 
     def rebind_twitch_macros(self):
         for m in self.twitch_macros:
@@ -825,7 +897,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.3.0")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.3.1")
         except Exception:
             pass
 

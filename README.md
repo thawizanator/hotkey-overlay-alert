@@ -24,6 +24,7 @@ A lightweight, high-performance Windows system tray utility created to prevent s
   3. Click the button again with your mouse to lock and save.
   4. Press **Esc** anytime during recording to cancel without saving.
 - Dedicated **Reset Default** button to restore the primary activation hotkey (*Ctrl + Numpad +*).
+- **Enable / Disable Toggle**: Dedicated checkbox on the Main tab to enable or disable the primary monitor highlight hotkey entirely without losing your saved key combination.
 
 ### 🟣 Twitch Helix Integration
 - **Zero-Setup OAuth**: One-click login using a self-contained local web server callback. Automatically validates your token and discovers your Twitch User ID and Channel Name.
@@ -48,7 +49,7 @@ A lightweight, high-performance Windows system tray utility created to prevent s
 - **Monitor Tab (🖥️)**: Display selection dropdown and on-screen monitor identification overlay.
 - **Alert Overlay Tab (🎨)**: Border RGB color picker, thickness slider, opacity/transparency slider, and breathing/flashing effects.
 - **Twitch Tab (🟣)**: Account linking, broadcaster channel name, and up to 4 custom macro hotkeys with safe row management.
-- **System Tab (⚙️)**: Integrated updater, startup update checks, diagnostics/logging, crash logs, and app folder shortcuts. Compact 510x460 size cleanly fits on any monitor.
+- **System Tab (⚙️)**: Integrated updater, startup update checks, Windows startup launch option, diagnostics/logging, crash logs, and app folder shortcuts. Compact 520x545 size cleanly fits on any monitor.
 
 ### 🔄 GitHub Application Updates & Auto-Updater
 - **Direct GitHub Releases Integration**: Checks for new versions directly against GitHub Releases without requiring manual downloads.
@@ -133,7 +134,7 @@ Sensitive OAuth credentials are obfuscated and stored locally only. A template i
 
 - **Created by**: ThaWizanator
 - **Twitch**: [twitch.tv/thawizanator](https://twitch.tv/thawizanator)
-- **Version**: 2.3.0 (October 2026)
+- **Version**: 2.3.1 (October 2026)
 
 ---
 

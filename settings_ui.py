@@ -284,6 +284,12 @@ class MainTab(QWidget):
         lay_hk = QVBoxLayout(grp_hk)
         lay_hk.setSpacing(8)
 
+        self.chk_enable_primary_hk = QCheckBox("Enable Primary Monitor Highlight Hotkey")
+        self.chk_enable_primary_hk.setStyleSheet("font-weight: bold;")
+        self.chk_enable_primary_hk.setChecked(getattr(self.main_win.overlay, "primary_hotkey_enabled", True))
+        self.chk_enable_primary_hk.toggled.connect(self.on_enable_primary_hk_toggled)
+        lay_hk.addWidget(self.chk_enable_primary_hk)
+
         self.lbl_hotkey = QLabel()
         self.lbl_hotkey.setStyleSheet("font-size: 13px;")
         lay_hk.addWidget(self.lbl_hotkey)
@@ -320,10 +326,21 @@ class MainTab(QWidget):
         if hasattr(self.main_win.overlay, "set_streamer_mode"):
             self.main_win.overlay.set_streamer_mode(checked)
 
+    def on_enable_primary_hk_toggled(self, checked):
+        if hasattr(self.main_win.overlay, "set_primary_hotkey_enabled"):
+            self.main_win.overlay.set_primary_hotkey_enabled(checked)
+        self.update_activation_hotkey_label()
+
     def update_activation_hotkey_label(self):
         current = getattr(self.main_win.overlay, "activation_hotkey", "ctrl+add")
+        enabled = getattr(self.main_win.overlay, "primary_hotkey_enabled", True)
         formatted = format_hotkey_display(current)
-        self.lbl_hotkey.setText(f"Active Highlight Hotkey: <b>{formatted}</b>")
+        if enabled:
+            self.lbl_hotkey.setText(f"Active Highlight Hotkey: <b>{formatted}</b>")
+        else:
+            self.lbl_hotkey.setText(f"Active Highlight Hotkey: <span style='color: #71717a;'><b>{formatted}</b> (Disabled)</span>")
+        self.btn_change_hk.setEnabled(enabled)
+        self.btn_reset_hk.setEnabled(enabled)
 
     def on_activation_hotkey_btn_clicked(self):
         btn = self.btn_change_hk
@@ -873,6 +890,11 @@ class SystemTab(QWidget):
         self.chk_auto_download.toggled.connect(self.on_auto_download_toggled)
         lay_upd.addWidget(self.chk_auto_download)
 
+        self.chk_start_on_boot = QCheckBox("Start application automatically on Windows startup")
+        self.chk_start_on_boot.setChecked(getattr(self.main_win.overlay, "start_on_boot", False))
+        self.chk_start_on_boot.toggled.connect(self.on_start_on_boot_toggled)
+        lay_upd.addWidget(self.chk_start_on_boot)
+
         layout.addWidget(grp_upd)
 
         # Group 2: Diagnostics & Troubleshooting
@@ -1039,6 +1061,10 @@ class SystemTab(QWidget):
         if hasattr(self.main_win.overlay, "set_update_settings"):
             self.main_win.overlay.set_update_settings(auto_update=checked)
 
+    def on_start_on_boot_toggled(self, checked):
+        if hasattr(self.main_win.overlay, "set_start_on_boot"):
+            self.main_win.overlay.set_start_on_boot(checked)
+
     def on_debug_toggled(self, checked):
         if hasattr(self.main_win.overlay, "set_debug_mode"):
             self.main_win.overlay.set_debug_mode(checked)
@@ -1070,7 +1096,7 @@ class SettingsWindow(QWidget):
         super().__init__()
         self.overlay = overlay_app
         self.setWindowTitle(f"HotKey Overlay Alert Settings (v{CURRENT_VERSION})")
-        self.setFixedSize(520, 530)
+        self.setFixedSize(520, 545)
         self.setWindowIcon(get_app_icon())
 
         # Main Layout
