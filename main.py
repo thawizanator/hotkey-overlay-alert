@@ -7,7 +7,7 @@ import keyboard
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.3.2"
+        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.3.3"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -897,7 +897,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.3.2")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.3.3")
         except Exception:
             pass
 
