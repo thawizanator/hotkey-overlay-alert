@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.3.8"
+CURRENT_VERSION = "2.3.9"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -138,12 +138,19 @@ if ($parentPid) {{
 }}
 
 # Wait for ALL instances of HotKeyOverlayAlert (including parent bootloader) to fully terminate
-$maxWait = 20
+$maxWait = 10
 while ($maxWait -gt 0) {{
     $running = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
     if (-not $running) {{ break }}
     Start-Sleep -Milliseconds 500
     $maxWait--
+}}
+
+# If any lingering instance (such as an antivirus-suspended bootloader) is still alive, forcefully terminate it
+$lingering = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
+if ($lingering) {{
+    $lingering | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
 }}
 
 # Clean any lingering stale app.lock file
