@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.4.0"
+CURRENT_VERSION = "2.4.1"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -126,15 +126,33 @@ def apply_update_and_restart(downloaded_exe, current_exe=None):
     safe_current = current_exe.replace("'", "''")
     safe_updater_ps1 = updater_ps1.replace("'", "''")
 
+    updater_log = os.path.join(os.path.dirname(downloaded_exe), "updater_log.txt")
+    safe_updater_log = updater_log.replace("'", "''")
+
     script_content = f"""
+$logPath = '{safe_updater_log}'
+function Log-Update($msg) {{
+    $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    "[$ts] $msg" | Out-File -FilePath $logPath -Append -Encoding utf8
+}}
+
+Log-Update "--- Updater Script Started ---"
+Log-Update "Target parent PID: {parent_pid}"
+Log-Update "Downloaded: '{safe_downloaded}'"
+Log-Update "Current: '{safe_current}'"
+
 $parentPid = {parent_pid}
 if ($parentPid) {{
     try {{
         $proc = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
         if ($proc) {{
+            Log-Update "Waiting for parent PID $parentPid to exit..."
             $proc.WaitForExit(10000)
+            Log-Update "Parent PID $parentPid exit wait completed."
         }}
-    }} catch {{}}
+    }} catch {{
+        Log-Update "Error waiting for parent PID: $_"
+    }}
 }}
 
 # Wait for ALL instances of HotKeyOverlayAlert (including parent bootloader) to fully terminate
@@ -142,6 +160,7 @@ $maxWait = 10
 while ($maxWait -gt 0) {{
     $running = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
     if (-not $running) {{ break }}
+    Log-Update "Waiting for running HotKeyOverlayAlert instances to terminate ($maxWait remaining)..."
     Start-Sleep -Milliseconds 500
     $maxWait--
 }}
@@ -149,6 +168,7 @@ while ($maxWait -gt 0) {{
 # If any lingering instance (such as an antivirus-suspended bootloader) is still alive, forcefully terminate it
 $lingering = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
 if ($lingering) {{
+    Log-Update "Forcefully terminating lingering HotKeyOverlayAlert instance(s)..."
     $lingering | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 }}
@@ -156,6 +176,7 @@ if ($lingering) {{
 # Clean any lingering stale app.lock file
 $lockFile = "$env:APPDATA\\ThaWizanator_Overlay\\app.lock"
 if (Test-Path -LiteralPath $lockFile) {{
+    Log-Update "Removing stale app.lock file..."
     Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
 }}
 
@@ -165,15 +186,19 @@ Start-Sleep -Seconds 2
 $replaced = $false
 for ($i = 0; $i -lt 15; $i++) {{
     try {{
+        Log-Update "Attempting to replace executable (attempt $($i+1))..."
         Move-Item -LiteralPath '{safe_downloaded}' -Destination '{safe_current}' -Force
         $replaced = $true
+        Log-Update "Executable replaced successfully!"
         break
     }} catch {{
+        Log-Update "Replace attempt failed: $_"
         Start-Sleep -Seconds 1
     }}
 }}
 
 # Purge any PyInstaller, Qt, and Python environment leaks
+Log-Update "Purging PyInstaller and Qt environment variables..."
 Get-ChildItem Env: | Where-Object {{ $_.Name -like '_PYI*' -or $_.Name -like '_MEI*' -or $_.Name -like 'QT_*' -or $_.Name -like 'QML2_*' }} | ForEach-Object {{
     Remove-Item -LiteralPath "Env:\\$($_.Name)" -ErrorAction SilentlyContinue
     [System.Environment]::SetEnvironmentVariable($_.Name, $null, 'Process')
@@ -194,11 +219,18 @@ $env:PYINSTALLER_RESET_ENVIRONMENT = '1'
 [System.Environment]::SetEnvironmentVariable('PYINSTALLER_RESET_ENVIRONMENT', '1', 'Process')
 
 if ($replaced) {{
+    Log-Update "Relaunching updated executable: '{safe_current}'"
     Start-Sleep -Seconds 1
     $workingDir = Split-Path -Parent '{safe_current}'
-    Start-Process -FilePath '{safe_current}' -WorkingDirectory $workingDir
+    $started = Start-Process -FilePath '{safe_current}' -WorkingDirectory $workingDir -PassThru
+    Log-Update "Relaunched process PID: $($started.Id)"
+}} else {{
+    Log-Update "ERROR: Executable was not replaced, aborting relaunch."
 }}
+
+Log-Update "Cleaning up updater script..."
 Remove-Item -LiteralPath '{safe_updater_ps1}' -Force -ErrorAction SilentlyContinue
+Log-Update "--- Updater Script Complete ---"
 """
     with open(updater_ps1, "w", encoding="utf-8") as f:
         f.write(script_content)
@@ -222,12 +254,19 @@ Remove-Item -LiteralPath '{safe_updater_ps1}' -Force -ErrorAction SilentlyContin
         "-File", updater_ps1
     ]
 
-    # Detach completely from parent process/job tree
+    # Windows: run completely hidden in background without a console window.
+    # Do NOT pass DETACHED_PROCESS to powershell.exe as it breaks console subsystem initialization.
     creationflags = 0
     if sys.platform == "win32":
-        DETACHED_PROCESS = 0x00000008
-        CREATE_NEW_PROCESS_GROUP = 0x00000200
-        creationflags = subprocess.CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        creationflags = subprocess.CREATE_NO_WINDOW
 
-    subprocess.Popen(cmd, env=clean_env, creationflags=creationflags)
+    subprocess.Popen(
+        cmd,
+        env=clean_env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creationflags
+    )
     return True, "Update scheduled"
+
