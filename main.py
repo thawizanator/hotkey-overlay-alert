@@ -7,7 +7,7 @@ import keyboard
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.3.3"
+        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.3.4"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -45,17 +45,50 @@ def obfuscate(data_str, key=140):
     if not data_str: return ""
     return "".join(chr(ord(c) ^ key) for c in data_str)
 
+def is_pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        SYNCHRONIZE = 0x00100000
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        exit_code = ctypes.c_ulong()
+        is_running = False
+        if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            STILL_ACTIVE = 259
+            is_running = (exit_code.value == STILL_ACTIVE)
+        kernel32.CloseHandle(handle)
+        return is_running
+    except Exception:
+        return False
+
 def check_single_instance():
     global lock_file_handle
     try:
         if os.path.exists(LOCK_FILE):
-            try: os.remove(LOCK_FILE)
-            except Exception: return False
+            # Check if previous PID recorded in lock file is still running
+            try:
+                with open(LOCK_FILE, 'r') as f:
+                    old_pid = int(f.read().strip())
+                if is_pid_running(old_pid):
+                    return False
+            except Exception:
+                pass
+            # Old PID is no longer running; safe to remove stale lock file
+            try:
+                os.remove(LOCK_FILE)
+            except Exception:
+                return False
         lock_file_handle = open(LOCK_FILE, 'w')
         lock_file_handle.write(str(os.getpid()))
         lock_file_handle.flush()
         return True
-    except Exception: return False
+    except Exception:
+        return False
 
 def set_autostart_registry(enable: bool) -> bool:
     if sys.platform != "win32":
@@ -897,7 +930,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.3.3")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.3.4")
         except Exception:
             pass
 

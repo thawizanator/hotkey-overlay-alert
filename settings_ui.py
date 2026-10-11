@@ -1039,7 +1039,10 @@ class SystemTab(QWidget):
         if res == QMessageBox.StandardButton.Yes:
             ok, msg = apply_update_and_restart(downloaded_path)
             if ok:
-                QApplication.quit()
+                if hasattr(self.main_win.overlay, "close_application"):
+                    self.main_win.overlay.close_application()
+                else:
+                    QApplication.quit()
             else:
                 QMessageBox.information(
                     self, 

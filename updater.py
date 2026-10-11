@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.3.3"
+CURRENT_VERSION = "2.3.4"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -131,6 +131,22 @@ if ($parentPid) {{
         }}
     }} catch {{}}
 }}
+
+# Wait for ALL instances of HotKeyOverlayAlert (including parent bootloader) to fully terminate
+$maxWait = 20
+while ($maxWait -gt 0) {{
+    $running = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
+    if (-not $running) {{ break }}
+    Start-Sleep -Milliseconds 500
+    $maxWait--
+}}
+
+# Clean any lingering stale app.lock file
+$lockFile = "$env:APPDATA\\ThaWizanator_Overlay\\app.lock"
+if (Test-Path -LiteralPath $lockFile) {{
+    Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+}}
+
 Start-Sleep -Seconds 1
 
 $replaced = $false
@@ -152,6 +168,7 @@ $env:PYTHONHOME = $null
 [System.Environment]::SetEnvironmentVariable('PYTHONHOME', $null, 'Process')
 
 if ($replaced) {{
+    Start-Sleep -Milliseconds 500
     $workingDir = Split-Path -Parent '{current_exe}'
     Start-Process -FilePath '{current_exe}' -WorkingDirectory $workingDir
 }}
