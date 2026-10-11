@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.3.6"
+CURRENT_VERSION = "2.3.7"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -121,6 +121,11 @@ def apply_update_and_restart(downloaded_exe, current_exe=None):
     updater_ps1 = os.path.join(os.path.dirname(downloaded_exe), "apply_update.ps1")
     parent_pid = os.getpid()
 
+    # Escape single quotes in paths for PowerShell
+    safe_downloaded = downloaded_exe.replace("'", "''")
+    safe_current = current_exe.replace("'", "''")
+    safe_updater_ps1 = updater_ps1.replace("'", "''")
+
     script_content = f"""
 $parentPid = {parent_pid}
 if ($parentPid) {{
@@ -153,7 +158,7 @@ Start-Sleep -Seconds 2
 $replaced = $false
 for ($i = 0; $i -lt 15; $i++) {{
     try {{
-        Move-Item -LiteralPath '{downloaded_exe}' -Destination '{current_exe}' -Force
+        Move-Item -LiteralPath '{safe_downloaded}' -Destination '{safe_current}' -Force
         $replaced = $true
         break
     }} catch {{
@@ -161,28 +166,46 @@ for ($i = 0; $i -lt 15; $i++) {{
     }}
 }}
 
-$env:_MEIPASS = $null
-$env:_MEIPASS2 = $null
+# Purge any PyInstaller, Qt, and Python environment leaks
+Get-ChildItem Env: | Where-Object {{ $_.Name -like '_PYI*' -or $_.Name -like '_MEI*' -or $_.Name -like 'QT_*' -or $_.Name -like 'QML2_*' }} | ForEach-Object {{
+    Remove-Item -LiteralPath "Env:\\$($_.Name)" -ErrorAction SilentlyContinue
+    [System.Environment]::SetEnvironmentVariable($_.Name, $null, 'Process')
+}}
+
 $env:PYTHONPATH = $null
 $env:PYTHONHOME = $null
-[System.Environment]::SetEnvironmentVariable('_MEIPASS', $null, 'Process')
-[System.Environment]::SetEnvironmentVariable('_MEIPASS2', $null, 'Process')
 [System.Environment]::SetEnvironmentVariable('PYTHONPATH', $null, 'Process')
 [System.Environment]::SetEnvironmentVariable('PYTHONHOME', $null, 'Process')
 
+# Strip old _MEI temporary paths from PATH
+$cleanPath = (($env:PATH -split ';') | Where-Object {{ $_ -and ($_ -notmatch '_MEI') }}) -join ';'
+$env:PATH = $cleanPath
+[System.Environment]::SetEnvironmentVariable('PATH', $cleanPath, 'Process')
+
+# Signal PyInstaller bootloader to treat this as a fresh top-level process
+$env:PYINSTALLER_RESET_ENVIRONMENT = '1'
+[System.Environment]::SetEnvironmentVariable('PYINSTALLER_RESET_ENVIRONMENT', '1', 'Process')
+
 if ($replaced) {{
     Start-Sleep -Seconds 1
-    $workingDir = Split-Path -Parent '{current_exe}'
-    Start-Process -FilePath '{current_exe}' -WorkingDirectory $workingDir
+    $workingDir = Split-Path -Parent '{safe_current}'
+    Start-Process -FilePath '{safe_current}' -WorkingDirectory $workingDir
 }}
-Remove-Item -LiteralPath '{updater_ps1}' -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath '{safe_updater_ps1}' -Force -ErrorAction SilentlyContinue
 """
     with open(updater_ps1, "w", encoding="utf-8") as f:
         f.write(script_content)
 
     clean_env = os.environ.copy()
-    for var in ["_MEIPASS", "_MEIPASS2", "PYTHONPATH", "PYTHONHOME"]:
-        clean_env.pop(var, None)
+    for key in list(clean_env.keys()):
+        k_upper = key.upper()
+        if k_upper.startswith(("_PYI", "_MEI", "QT_", "QML2_")) or k_upper in ("PYTHONPATH", "PYTHONHOME"):
+            clean_env.pop(key, None)
+    clean_env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+
+    # Also clean _MEI from PATH in clean_env
+    path_dirs = clean_env.get("PATH", "").split(os.pathsep)
+    clean_env["PATH"] = os.pathsep.join([d for d in path_dirs if "_MEI" not in d.upper()])
 
     cmd = [
         "powershell.exe",
@@ -191,5 +214,13 @@ Remove-Item -LiteralPath '{updater_ps1}' -Force -ErrorAction SilentlyContinue
         "-ExecutionPolicy", "Bypass",
         "-File", updater_ps1
     ]
-    subprocess.Popen(cmd, env=clean_env, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+
+    # Detach completely from parent process/job tree
+    creationflags = 0
+    if sys.platform == "win32":
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        creationflags = subprocess.CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+
+    subprocess.Popen(cmd, env=clean_env, creationflags=creationflags)
     return True, "Update scheduled"
