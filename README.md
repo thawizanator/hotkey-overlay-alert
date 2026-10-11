@@ -114,7 +114,7 @@ Sensitive OAuth credentials are obfuscated and stored locally only. A template i
 
 - **Created by**: ThaWizanator
 - **Twitch**: [twitch.tv/thawizanator](https://twitch.tv/thawizanator)
-- **Version**: 2.1.1 (October 2026)
+- **Version**: 2.1.2 (October 2026)
 
 ---
 

@@ -7,7 +7,7 @@ import keyboard
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.1.1"
+        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.1.2"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -52,6 +52,86 @@ def check_single_instance():
 
 class HotkeySignaler(QObject):
     trigger = pyqtSignal(int)
+
+class HUDToastNotification(QMainWindow):
+    def __init__(self, message, is_success=True, target_screen=None):
+        super().__init__()
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.Tool | 
+            Qt.WindowType.WindowTransparentForInput
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setWindowIcon(get_app_icon())
+
+        container = QWidget(self)
+        container.setObjectName("ToastContainer")
+
+        border_color = "#9146ff" if is_success else "#ff5555"
+        icon_symbol = "🟣" if is_success else "⚠️"
+        header_text = "TWITCH ACTION SUCCESS" if is_success else "TWITCH ALERT"
+        msg_lower = message.lower()
+        if "marker" in msg_lower:
+            header_text = "STREAM MARKER CREATED" if is_success else "STREAM MARKER (OFFLINE)"
+        elif "announcement" in msg_lower:
+            header_text = "CHAT ANNOUNCEMENT SENT" if is_success else "ANNOUNCEMENT NOTICE"
+        elif "shoutout" in msg_lower:
+            header_text = "SHOUTOUT CARD SENT" if is_success else "SHOUTOUT NOTICE"
+        elif "cooldown" in msg_lower or "429" in msg_lower:
+            header_text = "TWITCH COOLDOWN NOTICE"
+            border_color = "#ffaa00"
+            icon_symbol = "⏳"
+
+        container.setStyleSheet(f"""
+            QWidget#ToastContainer {{
+                background-color: rgba(24, 24, 27, 240);
+                border: 2px solid {border_color};
+                border-radius: 10px;
+            }}
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(18, 12, 18, 12)
+        layout.setSpacing(4)
+
+        lbl_hdr = QLabel(f"{icon_symbol} {header_text}")
+        lbl_hdr.setStyleSheet(f"color: {border_color}; font-size: 11px; font-weight: bold; letter-spacing: 1px;")
+        layout.addWidget(lbl_hdr)
+
+        lbl_msg = QLabel(message)
+        lbl_msg.setWordWrap(True)
+        lbl_msg.setStyleSheet("color: #ffffff; font-size: 13px; font-weight: 500;")
+        layout.addWidget(lbl_msg)
+
+        self.setCentralWidget(container)
+        self.adjustSize()
+        self.setFixedWidth(max(380, min(520, self.sizeHint().width() + 40)))
+
+        screens = QApplication.screens()
+        screen = target_screen if target_screen in screens else QApplication.primaryScreen()
+        if screen:
+            geom = screen.geometry()
+            x = geom.x() + (geom.width() - self.width()) // 2
+            y = geom.y() + 45
+            self.move(x, y)
+
+        self.fade_timer = QTimer(self)
+        self.opacity = 1.0
+        QTimer.singleShot(4000, self.start_fade_out)
+
+    def start_fade_out(self):
+        self.fade_timer.timeout.connect(self._fade_step)
+        self.fade_timer.start(30)
+
+    def _fade_step(self):
+        self.opacity -= 0.08
+        if self.opacity <= 0.05:
+            self.fade_timer.stop()
+            self.close()
+        else:
+            self.setWindowOpacity(self.opacity)
 
 class TextInputOverlay(QMainWindow):
     def __init__(self, command, parent_overlay):
@@ -136,7 +216,10 @@ class TextInputOverlay(QMainWindow):
         QTimer.singleShot(30, self.input_field.setFocus)
 
     def submit(self):
-        self.overlay.dispatch_twitch_call(self.cmd, self.input_field.text().strip())
+        val = self.input_field.text().strip()
+        if not val and "marker" in self.cmd.lower():
+            val = self.overlay.twitch_channel
+        self.overlay.dispatch_twitch_call(self.cmd, val)
         self.close()
 
     def mousePressEvent(self, event):
@@ -183,6 +266,7 @@ class RedBorderOverlay(QMainWindow):
         self.load_settings()
         self.is_visible = False
         self.id_windows = []
+        self.current_toast = None
         
         self.update_monitor_geometry(self.target_monitor_index)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool | Qt.WindowType.WindowTransparentForInput)
@@ -251,15 +335,21 @@ class RedBorderOverlay(QMainWindow):
                     self.twitch_token = obfuscate(d.get("twitch_token_obf", ""))
                     self.twitch_macros = d.get("twitch_macros", [])
                     for m in self.twitch_macros:
-                        if isinstance(m, dict) and "hotkey" in m:
-                            m["hotkey"] = normalize_hotkey(m["hotkey"])
+                        if isinstance(m, dict):
+                            if "hotkey" in m:
+                                m["hotkey"] = normalize_hotkey(m["hotkey"])
+                            if m.get("command") == "/marker":
+                                m["command"] = "/marker [username]"
             except Exception as e:
                 print(f"Error loading configuration: {e}")
 
     def save_settings(self):
         for m in self.twitch_macros:
-            if isinstance(m, dict) and "hotkey" in m:
-                m["hotkey"] = normalize_hotkey(m["hotkey"])
+            if isinstance(m, dict):
+                if "hotkey" in m:
+                    m["hotkey"] = normalize_hotkey(m["hotkey"])
+                if m.get("command") == "/marker":
+                    m["command"] = "/marker [username]"
 
         d = {
             "monitor_index": self.target_monitor_index,
@@ -333,10 +423,14 @@ class RedBorderOverlay(QMainWindow):
     def evaluate_macro_trigger(self, slot_index):
         if slot_index >= len(self.twitch_macros): return
         cmd = self.twitch_macros[slot_index]["command"]
-        if "[description]" in cmd or "[username]" in cmd:
+        if cmd in ["/marker [username]", "/marker"]:
+            # Drop marker using streamer's username as description without interrupting gameplay
+            self.dispatch_twitch_call(cmd, self.twitch_channel)
+        elif "[description]" in cmd or "[username]" in cmd:
             self.input_ui = TextInputOverlay(cmd, self)
             self.input_ui.show()
-        else: self.dispatch_twitch_call(cmd, "")
+        else:
+            self.dispatch_twitch_call(cmd, "")
 
     def dispatch_twitch_call(self, command, argument):
         self.worker = TwitchCommandWorker(
@@ -350,7 +444,22 @@ class RedBorderOverlay(QMainWindow):
         self.worker.result_signal.connect(self.on_twitch_worker_result)
         self.worker.start()
 
+    def show_hud_toast(self, message, is_success):
+        try:
+            if hasattr(self, "current_toast") and self.current_toast:
+                try:
+                    self.current_toast.close()
+                except Exception:
+                    pass
+            screens = QApplication.screens()
+            target_screen = screens[self.target_monitor_index] if self.target_monitor_index < len(screens) else QApplication.primaryScreen()
+            self.current_toast = HUDToastNotification(message, is_success, target_screen)
+            self.current_toast.show()
+        except Exception as e:
+            print(f"Toast display notice: {e}")
+
     def on_twitch_worker_result(self, message, is_success):
+        self.show_hud_toast(message, is_success)
         icon = QSystemTrayIcon.MessageIcon.Information if is_success else QSystemTrayIcon.MessageIcon.Warning
         if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
             self.tray_icon.showMessage("HotKey Overlay Alert - Twitch", message, icon, 4000)
@@ -470,7 +579,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.1.1")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.1.2")
         except Exception:
             pass
 

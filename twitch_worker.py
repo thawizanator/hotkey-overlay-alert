@@ -58,9 +58,11 @@ class TwitchCommandWorker(QThread):
             # Route A: Stream Marker (POST /helix/streams/markers)
             if "marker" in self.command.lower():
                 url = "https://api.twitch.tv/helix/streams/markers"
-                p_dict = {"user_id": str(broadcaster_id)}
-                if self.argument:
-                    p_dict["description"] = self.argument[:140]
+                desc = self.argument.strip() if self.argument else (self.channel_name or "streamer")
+                p_dict = {
+                    "user_id": str(broadcaster_id),
+                    "description": desc[:140]
+                }
 
                 req = urllib.request.Request(
                     url,
@@ -73,7 +75,7 @@ class TwitchCommandWorker(QThread):
                     marker_info = marker_data.get("data", [{}])[0]
                     pos = marker_info.get("position_seconds", "")
                     pos_str = f" at {pos}s" if pos != "" else ""
-                    msg = f"Stream Marker created successfully{pos_str}!"
+                    msg = f"Stream Marker created successfully{pos_str} ({desc})!"
                     print(msg)
                     self.result_signal.emit(msg, True)
 
@@ -158,7 +160,7 @@ class TwitchCommandWorker(QThread):
                 pass
 
             if he.code == 404 and "marker" in self.command.lower():
-                user_friendly = "Cannot create marker: Stream is not currently live."
+                user_friendly = "Cannot create marker: Stream is not currently live (broadcaster is offline)."
             elif he.code == 401:
                 user_friendly = "Twitch authorization token expired. Please re-link your Twitch account in Settings."
             elif he.code == 403:

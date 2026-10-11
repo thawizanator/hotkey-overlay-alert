@@ -14,7 +14,7 @@ from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
-TWITCH_COMMANDS = ["/marker [description]", "/marker", "/announce [description]", "/announceblue [description]", "/announcegreen [description]", "/announceorange [description]", "/announcepurple [description]", "/shoutout [username]"]
+TWITCH_COMMANDS = ["/marker [username]", "/marker [description]", "/announce [description]", "/announceblue [description]", "/announcegreen [description]", "/announceorange [description]", "/announcepurple [description]", "/shoutout [username]"]
 
 def fetch_twitch_user_info(token, client_id):
     """
@@ -416,7 +416,7 @@ class TwitchSettingsView(QWidget):
     def add_entry_row(self):
         if len(self.rows) >= 4:
             return
-        self.create_row_ui("/marker", "set hotkey...")
+        self.create_row_ui("/marker [username]", "set hotkey...")
 
     def create_row_ui(self, saved_command, saved_hotkey):
         row_widget = QWidget()
@@ -424,6 +424,8 @@ class TwitchSettingsView(QWidget):
         combo = QComboBox()
         for cmd in TWITCH_COMMANDS:
             combo.addItem(cmd)
+        if saved_command == "/marker":
+            saved_command = "/marker [username]"
         combo.setCurrentText(saved_command)
 
         btn_hk = QPushButton(saved_hotkey)
@@ -919,7 +921,7 @@ class SettingsWindow(QWidget):
             "right-click the app and select <b>Run as administrator</b>.<br><br>" 
             "<b>Created by ThaWizanator</b><br>" 
             "<a href='https://twitch.tv'>twitch.tv/thawizanator</a><br><br>" 
-            "Version 2.1.1 | October 2026" 
+            "Version 2.1.2 | October 2026" 
         )
         msg.setText(about_text)
         msg.setTextFormat(Qt.TextFormat.RichText)
