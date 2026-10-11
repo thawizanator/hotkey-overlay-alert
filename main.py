@@ -7,13 +7,15 @@ import keyboard
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.2.0"
+        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.2.1"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
 
 from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
-from PyQt6.QtWidgets import QApplication, QMainWindow, QSystemTrayIcon, QMenu, QWidget, QVBoxLayout, QLabel, QLineEdit, QMessageBox
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QSystemTrayIcon, QMenu, 
+                             QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+                             QMessageBox, QDialog, QPushButton)
 from PyQt6.QtGui import QPainter, QPen, QColor, QIcon, QAction, QPixmap
 
 # Import components from our other local workspace files
@@ -34,8 +36,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCAL_CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
 LOCK_FILE = os.path.join(APP_DIR, "app.lock")
 lock_file_handle = None
-from debug_logger import init_debug_logger, set_debug_mode, is_debug_mode, get_debug_log_path, log_debug
+from debug_logger import init_debug_logger, set_debug_mode, is_debug_mode, get_debug_log_path, log_debug, install_crash_handler
 init_debug_logger(DEBUG_LOG_FILE, False)
+install_crash_handler()
 
 def obfuscate(data_str, key=140):
     if not data_str: return ""
@@ -265,6 +268,72 @@ class TextInputOverlay(QMainWindow):
         else:
             super().keyPressEvent(event)
 
+class StandardInputModal(QDialog):
+    def __init__(self, command, parent_overlay):
+        super().__init__()
+        self.cmd = command
+        self.overlay = parent_overlay
+        self.setWindowTitle("Twitch Action - Input Required")
+        self.setWindowIcon(get_app_icon())
+        self.setFixedSize(450, 200)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
+
+        prompt_title = "<b>Execute Twitch Action</b>"
+        placeholder = "Enter text..."
+        if "[username]" in self.cmd.lower() or "shoutout" in self.cmd.lower():
+            prompt_title = f"<b>Enter Target Twitch Username:</b><br><span style='color: gray; font-size: 12px;'>Action: {self.cmd}</span>"
+            placeholder = "e.g. streamer_name"
+        elif "announce" in self.cmd.lower():
+            prompt_title = f"<b>Enter Chat Announcement Message:</b><br><span style='color: gray; font-size: 12px;'>Action: {self.cmd}</span>"
+            placeholder = "e.g. Stream starting soon!"
+        elif "marker" in self.cmd.lower():
+            prompt_title = f"<b>Enter Stream Marker Description:</b><br><span style='color: gray; font-size: 12px;'>Action: {self.cmd}</span>"
+            placeholder = "e.g. Epic boss victory"
+
+        lbl = QLabel(prompt_title)
+        lbl.setTextFormat(Qt.TextFormat.RichText)
+        lbl.setStyleSheet("font-size: 14px;")
+        layout.addWidget(lbl)
+
+        self.input_field = QLineEdit()
+        self.input_field.setMaxLength(140)
+        self.input_field.setPlaceholderText(placeholder)
+        self.input_field.setStyleSheet("font-size: 15px; padding: 6px 10px;")
+        self.input_field.returnPressed.connect(self.submit)
+        layout.addWidget(self.input_field)
+
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(10)
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.clicked.connect(self.reject)
+        
+        self.btn_submit = QPushButton("Submit Action")
+        self.btn_submit.setStyleSheet("background-color: #9146ff; color: white; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
+        self.btn_submit.clicked.connect(self.submit)
+        
+        btn_box.addStretch()
+        btn_box.addWidget(self.btn_cancel)
+        btn_box.addWidget(self.btn_submit)
+        layout.addLayout(btn_box)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.input_field.setFocus()
+        self.input_field.selectAll()
+
+    def submit(self):
+        val = self.input_field.text().strip()
+        if not val and "marker" in self.cmd.lower():
+            val = self.overlay.twitch_channel
+        log_debug("INPUT", f"Standard desktop modal submitted: cmd='{self.cmd}', value='{val}'")
+        self.overlay.dispatch_twitch_call(self.cmd, val)
+        self.accept()
+
 class IdentificationOverlay(QMainWindow):
     def __init__(self, number, geometry):
         super().__init__()
@@ -320,6 +389,7 @@ class RedBorderOverlay(QMainWindow):
         self.is_flashing = False
         self.flash_speed_name = "Squirrel"
         self.activation_hotkey = "ctrl+add"
+        self.streamer_mode = True
         self.debug_mode = False
         self.twitch_channel = "thawizanator"
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
@@ -346,6 +416,7 @@ class RedBorderOverlay(QMainWindow):
                     self.is_flashing = d.get("is_flashing", False)
                     self.flash_speed_name = d.get("flash_speed_name", "Squirrel")
                     self.activation_hotkey = normalize_hotkey(d.get("activation_hotkey", "ctrl+add"))
+                    self.streamer_mode = d.get("streamer_mode", True)
                     self.debug_mode = d.get("debug_mode", False)
                     set_debug_mode(self.debug_mode)
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
@@ -383,6 +454,7 @@ class RedBorderOverlay(QMainWindow):
             "is_flashing": self.is_flashing,
             "flash_speed_name": self.flash_speed_name,
             "activation_hotkey": normalize_hotkey(self.activation_hotkey),
+            "streamer_mode": self.streamer_mode,
             "debug_mode": self.debug_mode,
             "twitch_channel": self.twitch_channel,
             "twitch_client_id": self.twitch_client_id,
@@ -406,6 +478,11 @@ class RedBorderOverlay(QMainWindow):
         except Exception:
             pass
 
+    def set_streamer_mode(self, enabled):
+        self.streamer_mode = bool(enabled)
+        self.save_settings()
+        log_debug("SYSTEM", f"Streamer mode toggled: {'ENABLED' if self.streamer_mode else 'DISABLED'}")
+
     def set_debug_mode(self, enabled):
         self.debug_mode = bool(enabled)
         set_debug_mode(self.debug_mode)
@@ -416,11 +493,24 @@ class RedBorderOverlay(QMainWindow):
         try:
             if not os.path.exists(DEBUG_LOG_FILE):
                 with open(DEBUG_LOG_FILE, "w", encoding="utf-8") as f:
-                    f.write("=== HotKey Overlay Alert Debug Log (v2.2.0) ===\n")
+                    f.write("=== HotKey Overlay Alert Debug Log (v2.2.1) ===\n")
             os.startfile(DEBUG_LOG_FILE)
             log_debug("SYSTEM", "Opened debug.txt in default viewer")
         except Exception as e:
             print(f"Error opening debug log: {e}")
+
+    def open_crash_log(self):
+        try:
+            from debug_logger import get_crash_log_path
+            p = get_crash_log_path()
+            if p:
+                if not os.path.exists(p):
+                    with open(p, "w", encoding="utf-8") as f:
+                        f.write("=== HotKey Overlay Alert Crash Log ===\nNo crashes recorded.\n")
+                os.startfile(p)
+                log_debug("SYSTEM", "Opened crash_log.txt in default viewer")
+        except Exception as e:
+            print(f"Error opening crash log: {e}")
 
     def rebind_activation_hotkey(self, new_hotkey=None):
         if new_hotkey is not None:
@@ -469,9 +559,14 @@ class RedBorderOverlay(QMainWindow):
             # Drop marker using streamer's username as description without interrupting gameplay
             self.dispatch_twitch_call(cmd, self.twitch_channel)
         elif "[description]" in cmd or "[username]" in cmd:
-            log_debug("INPUT", f"Showing text input overlay for command='{cmd}'")
-            self.input_ui = TextInputOverlay(cmd, self)
-            self.input_ui.show()
+            if self.streamer_mode:
+                log_debug("INPUT", f"Showing transparent in-game HUD overlay for command='{cmd}'")
+                self.input_ui = TextInputOverlay(cmd, self)
+                self.input_ui.show()
+            else:
+                log_debug("INPUT", f"Showing standard desktop modal dialog for command='{cmd}'")
+                self.modal_ui = StandardInputModal(cmd, self)
+                self.modal_ui.exec()
         else:
             self.dispatch_twitch_call(cmd, "")
 
@@ -504,7 +599,18 @@ class RedBorderOverlay(QMainWindow):
 
     def on_twitch_worker_result(self, message, is_success):
         log_debug("TWITCH_RESPONSE", f"Success={is_success} | message='{message}'")
-        self.show_hud_toast(message, is_success)
+        if self.streamer_mode:
+            self.show_hud_toast(message, is_success)
+        else:
+            icon = QMessageBox.Icon.Information if is_success else QMessageBox.Icon.Warning
+            title = "Twitch Action Complete" if is_success else "Twitch Action Notice"
+            msg_box = QMessageBox(icon, title, message)
+            msg_box.setWindowIcon(get_app_icon())
+            msg_box.setText(f"<b>{title}</b><br><br>{message}")
+            msg_box.setTextFormat(Qt.TextFormat.RichText)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg_box.exec()
+
         icon = QSystemTrayIcon.MessageIcon.Information if is_success else QSystemTrayIcon.MessageIcon.Warning
         if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
             self.tray_icon.showMessage("HotKey Overlay Alert - Twitch", message, icon, 4000)
@@ -626,7 +732,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.2.0")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.2.1")
         except Exception:
             pass
 

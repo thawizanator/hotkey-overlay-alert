@@ -32,12 +32,16 @@ A lightweight, high-performance Windows system tray utility created to prevent s
   - `/marker [username]` or `/marker [description]` – Instantly places stream video markers for quick VOD review and clipping.
   - `/announce [description]` – Sends highlighted chat announcements (*Primary, Blue, Green, Orange, Purple*).
   - `/shoutout [username]` – Issues native Twitch streamer follow shoutout cards.
-- **Instant Auto-Focused Modal**: When an action requires text input, a sleek modal appears in the center of your screen with immediate keyboard focus—start typing right away without touching your mouse:
+- **Streamer Mode vs. Desktop Modal Popups**:
+  - **Streamer Mode (Enabled by default)**: Uses non-intrusive transparent HUD overlays and auto-fading toasts so game captures and full-screen streaming are never interrupted.
+  - **Non-Streamer Mode (Disabled)**: Switches to standard desktop modal dialogs with title bars, context prompts, and message boxes with "OK" confirmation buttons so desktop users and mods can read responses at their own pace.
+- **Instant Auto-Focused Modal**: When an action requires text input, the input prompt appears with immediate keyboard focus—start typing right away without touching your mouse:
   - Text input is auto-focused with typing cursor active immediately via Win32 foreground activation.
-  - Translucent backdrop with dark theme.
-  - Press **Enter** to submit • Press **Esc** or click outside to dismiss.
+  - Press **Enter** to submit • Press **Esc** or click outside / Cancel to dismiss.
 - **HUD Toast & System Tray Feedback**: Real-time on-screen HUD alerts and balloon notifications confirm action status (*e.g., marker timestamp, chat message status, cooldown warnings*).
-- **Diagnostics & Debug Logging**: A dedicated checkbox and "Open debug.txt" button on the main settings screen logs all hotkey events, window actions, Twitch API requests, and responses for easy troubleshooting.
+- **Diagnostics, Debug Logging & Automated Crash Capture**:
+  - Checkbox and "debug.txt" button on the main settings screen logs all hotkey events, window actions, Twitch API requests, and responses.
+  - Global crash interceptor (`sys.excepthook`, `threading.excepthook`, and `faulthandler`) catches unexpected errors and writes full stack traces to `%APPDATA%\ThaWizanator_Overlay\crash_log.txt` with one-click access in Settings.
 
 ---
 
@@ -116,7 +120,7 @@ Sensitive OAuth credentials are obfuscated and stored locally only. A template i
 
 - **Created by**: ThaWizanator
 - **Twitch**: [twitch.tv/thawizanator](https://twitch.tv/thawizanator)
-- **Version**: 2.2.0 (October 2026)
+- **Version**: 2.2.1 (October 2026)
 
 ---
 

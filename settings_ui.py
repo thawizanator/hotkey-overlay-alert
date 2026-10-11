@@ -464,9 +464,19 @@ class TwitchSettingsView(QWidget):
             btn._recorded_keys = []
 
     def remove_entry_row(self, r_data):
-        r_data["widget"].deleteLater()
-        self.entries_layout.removeWidget(r_data["widget"])
-        self.rows.remove(r_data)
+        try:
+            btn_hk = r_data.get("btn_hk")
+            if btn_hk:
+                btn_hk.removeEventFilter(self.main_win)
+            w = r_data.get("widget")
+            if w:
+                self.entries_layout.removeWidget(w)
+                w.deleteLater()
+            if r_data in self.rows:
+                self.rows.remove(r_data)
+        except Exception as e:
+            from debug_logger import log_debug
+            log_debug("ERROR", f"Error in remove_entry_row: {e}")
 
     def save_and_close(self):
         self.main_win.overlay.twitch_channel = self.txt_channel.text().strip()
@@ -524,6 +534,14 @@ class VisualSettingsView(QWidget):
         self.update_activation_hotkey_label()
 
         layout.addSpacing(10)
+        layout.addWidget(QLabel("<b>Display & Overlay Mode:</b>"))
+        self.chk_streamer = QCheckBox("Streamer Mode (In-Game Transparent Overlays)")
+        self.chk_streamer.setToolTip("Checked: Uses transparent in-game HUD overlays.\nUnchecked: Uses standard desktop modal dialog popups with OK/Cancel buttons.")
+        self.chk_streamer.setChecked(getattr(self.main_win.overlay, "streamer_mode", True))
+        self.chk_streamer.toggled.connect(self.on_streamer_toggled)
+        layout.addWidget(self.chk_streamer)
+
+        layout.addSpacing(10)
         layout.addWidget(QLabel("Border Customization:"))
 
         color_layout = QHBoxLayout()
@@ -577,9 +595,13 @@ class VisualSettingsView(QWidget):
         self.chk_debug.toggled.connect(self.on_debug_toggled)
         debug_layout.addWidget(self.chk_debug)
 
-        self.btn_open_debug = QPushButton("Open debug.txt")
+        self.btn_open_debug = QPushButton("debug.txt")
         self.btn_open_debug.clicked.connect(self.open_debug_log)
         debug_layout.addWidget(self.btn_open_debug)
+
+        self.btn_open_crash = QPushButton("crash_log.txt")
+        self.btn_open_crash.clicked.connect(self.open_crash_log)
+        debug_layout.addWidget(self.btn_open_crash)
         layout.addLayout(debug_layout)
 
         layout.addStretch()
@@ -667,6 +689,10 @@ class VisualSettingsView(QWidget):
         self.main_win.overlay.save_settings()
         self.update_activation_hotkey_label()
 
+    def on_streamer_toggled(self, checked):
+        if hasattr(self.main_win.overlay, "set_streamer_mode"):
+            self.main_win.overlay.set_streamer_mode(checked)
+
     def on_debug_toggled(self, checked):
         if hasattr(self.main_win.overlay, "set_debug_mode"):
             self.main_win.overlay.set_debug_mode(checked)
@@ -674,6 +700,10 @@ class VisualSettingsView(QWidget):
     def open_debug_log(self):
         if hasattr(self.main_win.overlay, "open_debug_log"):
             self.main_win.overlay.open_debug_log()
+
+    def open_crash_log(self):
+        if hasattr(self.main_win.overlay, "open_crash_log"):
+            self.main_win.overlay.open_crash_log()
 
 
 def get_resource_path(relative_path):
@@ -847,7 +877,7 @@ class SettingsWindow(QWidget):
         super().__init__()
         self.overlay = overlay_app
         self.setWindowTitle("HotKey Overlay Alert Settings")
-        self.setFixedSize(410, 680)
+        self.setFixedSize(430, 720)
         self.setWindowIcon(get_app_icon())
 
         self.stack = QStackedWidget(self)
@@ -872,8 +902,8 @@ class SettingsWindow(QWidget):
         btn.installEventFilter(self)
 
     def eventFilter(self, obj, event):
-        if obj.isCheckable() and obj.isChecked():
-            if event.type() == event.Type.KeyPress:
+        if event.type() == event.Type.KeyPress:
+            if hasattr(obj, "isCheckable") and obj.isCheckable() and obj.isChecked():
                 v = event.key()
 
                 # Escape cancels recording
@@ -942,7 +972,7 @@ class SettingsWindow(QWidget):
             "right-click the app and select <b>Run as administrator</b>.<br><br>" 
             "<b>Created by ThaWizanator</b><br>" 
             "<a href='https://twitch.tv'>twitch.tv/thawizanator</a><br><br>" 
-            "Version 2.2.0 | October 2026" 
+            "Version 2.2.1 | October 2026" 
         )
         msg.setText(about_text)
         msg.setTextFormat(Qt.TextFormat.RichText)
