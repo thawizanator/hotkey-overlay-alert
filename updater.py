@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.3.1"
+CURRENT_VERSION = "2.3.2"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -108,6 +108,8 @@ def apply_update_and_restart(downloaded_exe, current_exe=None):
     """
     Spawns a detached background process to replace the running executable
     and relaunch the new version, then signals the application to exit.
+    Cleans PyInstaller-specific environment variables (_MEIPASS2, PYTHONPATH, PYTHONHOME)
+    to ensure the new executable extracts its own runtime cleanly.
     """
     if not current_exe:
         current_exe = sys.executable
@@ -117,20 +119,50 @@ def apply_update_and_restart(downloaded_exe, current_exe=None):
         return False, "Application is running from Python source, not a standalone binary."
 
     updater_ps1 = os.path.join(os.path.dirname(downloaded_exe), "apply_update.ps1")
+    parent_pid = os.getpid()
+
     script_content = f"""
-Start-Sleep -Seconds 2
-try {{
-    Move-Item -LiteralPath '{downloaded_exe}' -Destination '{current_exe}' -Force
-    Start-Process -FilePath '{current_exe}'
-}} catch {{
-    Start-Sleep -Seconds 2
-    Move-Item -LiteralPath '{downloaded_exe}' -Destination '{current_exe}' -Force
-    Start-Process -FilePath '{current_exe}'
+$parentPid = {parent_pid}
+if ($parentPid) {{
+    try {{
+        $proc = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
+        if ($proc) {{
+            $proc.WaitForExit(10000)
+        }}
+    }} catch {{}}
+}}
+Start-Sleep -Seconds 1
+
+$replaced = $false
+for ($i = 0; $i -lt 15; $i++) {{
+    try {{
+        Move-Item -LiteralPath '{downloaded_exe}' -Destination '{current_exe}' -Force
+        $replaced = $true
+        break
+    }} catch {{
+        Start-Sleep -Seconds 1
+    }}
+}}
+
+$env:_MEIPASS2 = $null
+$env:PYTHONPATH = $null
+$env:PYTHONHOME = $null
+[System.Environment]::SetEnvironmentVariable('_MEIPASS2', $null, 'Process')
+[System.Environment]::SetEnvironmentVariable('PYTHONPATH', $null, 'Process')
+[System.Environment]::SetEnvironmentVariable('PYTHONHOME', $null, 'Process')
+
+if ($replaced) {{
+    $workingDir = Split-Path -Parent '{current_exe}'
+    Start-Process -FilePath '{current_exe}' -WorkingDirectory $workingDir
 }}
 Remove-Item -LiteralPath '{updater_ps1}' -Force -ErrorAction SilentlyContinue
 """
     with open(updater_ps1, "w", encoding="utf-8") as f:
         f.write(script_content)
+
+    clean_env = os.environ.copy()
+    for var in ["_MEIPASS2", "PYTHONPATH", "PYTHONHOME"]:
+        clean_env.pop(var, None)
 
     cmd = [
         "powershell.exe",
@@ -139,5 +171,5 @@ Remove-Item -LiteralPath '{updater_ps1}' -Force -ErrorAction SilentlyContinue
         "-ExecutionPolicy", "Bypass",
         "-File", updater_ps1
     ]
-    subprocess.Popen(cmd, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    subprocess.Popen(cmd, env=clean_env, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
     return True, "Update scheduled"
