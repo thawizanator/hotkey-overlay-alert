@@ -7,7 +7,7 @@ import keyboard
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.1.2"
+        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.2.0"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -29,10 +29,13 @@ def get_app_directory():
 
 APP_DIR = get_app_directory()
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
+DEBUG_LOG_FILE = os.path.join(APP_DIR, "debug.txt")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCAL_CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
 LOCK_FILE = os.path.join(APP_DIR, "app.lock")
 lock_file_handle = None
+from debug_logger import init_debug_logger, set_debug_mode, is_debug_mode, get_debug_log_path, log_debug
+init_debug_logger(DEBUG_LOG_FILE, False)
 
 def obfuscate(data_str, key=140):
     if not data_str: return ""
@@ -142,7 +145,7 @@ class TextInputOverlay(QMainWindow):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | 
             Qt.WindowType.WindowStaysOnTopHint | 
-            Qt.WindowType.Tool
+            Qt.WindowType.Dialog
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setWindowIcon(get_app_icon())
@@ -181,7 +184,8 @@ class TextInputOverlay(QMainWindow):
 
         self.input_field = QLineEdit()
         self.input_field.setMaxLength(140)
-        self.input_field.setPlaceholderText("Enter optional description...")
+        placeholder = "Enter target username..." if "[username]" in self.cmd else "Enter optional description..."
+        self.input_field.setPlaceholderText(placeholder)
         self.input_field.setStyleSheet("""
             QLineEdit {
                 font-size: 16px;
@@ -210,21 +214,36 @@ class TextInputOverlay(QMainWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._force_field_focus()
+        QTimer.singleShot(40, self._force_field_focus)
+        QTimer.singleShot(120, self._force_field_focus)
+
+    def _force_field_focus(self):
         self.activateWindow()
         self.raise_()
-        self.input_field.setFocus()
-        QTimer.singleShot(30, self.input_field.setFocus)
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+                ctypes.windll.user32.SetActiveWindow(hwnd)
+            except Exception:
+                pass
+        self.input_field.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        self.input_field.selectAll()
 
     def submit(self):
         val = self.input_field.text().strip()
         if not val and "marker" in self.cmd.lower():
             val = self.overlay.twitch_channel
+        log_debug("INPUT", f"Text input prompt submitted: cmd='{self.cmd}', value='{val}'")
         self.overlay.dispatch_twitch_call(self.cmd, val)
         self.close()
 
     def mousePressEvent(self, event):
         # Click outside the card closes the overlay
         if hasattr(self, "card") and not self.card.geometry().contains(event.pos()):
+            log_debug("INPUT", f"Text input prompt clicked outside/closed for '{self.cmd}'")
             self.close()
         else:
             super().mousePressEvent(event)
@@ -232,12 +251,14 @@ class TextInputOverlay(QMainWindow):
     def eventFilter(self, obj, event):
         if obj == self.input_field and event.type() == event.Type.KeyPress:
             if event.key() == Qt.Key.Key_Escape:
+                log_debug("INPUT", f"Text input prompt dismissed with Escape for '{self.cmd}'")
                 self.close()
                 return True
         return super().eventFilter(obj, event)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
+            log_debug("INPUT", f"Text input prompt dismissed with Escape for '{self.cmd}'")
             self.close()
         elif event.key() in [Qt.Key.Key_Return, Qt.Key.Key_Enter]:
             self.submit()
@@ -299,6 +320,7 @@ class RedBorderOverlay(QMainWindow):
         self.is_flashing = False
         self.flash_speed_name = "Squirrel"
         self.activation_hotkey = "ctrl+add"
+        self.debug_mode = False
         self.twitch_channel = "thawizanator"
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
         self.twitch_redirect_uri = "http://localhost:17563"
@@ -324,6 +346,8 @@ class RedBorderOverlay(QMainWindow):
                     self.is_flashing = d.get("is_flashing", False)
                     self.flash_speed_name = d.get("flash_speed_name", "Squirrel")
                     self.activation_hotkey = normalize_hotkey(d.get("activation_hotkey", "ctrl+add"))
+                    self.debug_mode = d.get("debug_mode", False)
+                    set_debug_mode(self.debug_mode)
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
                     if loaded_client_id and loaded_client_id != "testclientid":
                         self.twitch_client_id = loaded_client_id
@@ -359,6 +383,7 @@ class RedBorderOverlay(QMainWindow):
             "is_flashing": self.is_flashing,
             "flash_speed_name": self.flash_speed_name,
             "activation_hotkey": normalize_hotkey(self.activation_hotkey),
+            "debug_mode": self.debug_mode,
             "twitch_channel": self.twitch_channel,
             "twitch_client_id": self.twitch_client_id,
             "twitch_redirect_uri": self.twitch_redirect_uri,
@@ -380,6 +405,22 @@ class RedBorderOverlay(QMainWindow):
                 json.dump(d, f, indent=4)
         except Exception:
             pass
+
+    def set_debug_mode(self, enabled):
+        self.debug_mode = bool(enabled)
+        set_debug_mode(self.debug_mode)
+        self.save_settings()
+        log_debug("SYSTEM", f"Debug logging toggled: {'ENABLED' if self.debug_mode else 'DISABLED'}")
+
+    def open_debug_log(self):
+        try:
+            if not os.path.exists(DEBUG_LOG_FILE):
+                with open(DEBUG_LOG_FILE, "w", encoding="utf-8") as f:
+                    f.write("=== HotKey Overlay Alert Debug Log (v2.2.0) ===\n")
+            os.startfile(DEBUG_LOG_FILE)
+            log_debug("SYSTEM", "Opened debug.txt in default viewer")
+        except Exception as e:
+            print(f"Error opening debug log: {e}")
 
     def rebind_activation_hotkey(self, new_hotkey=None):
         if new_hotkey is not None:
@@ -423,16 +464,19 @@ class RedBorderOverlay(QMainWindow):
     def evaluate_macro_trigger(self, slot_index):
         if slot_index >= len(self.twitch_macros): return
         cmd = self.twitch_macros[slot_index]["command"]
+        log_debug("MACRO", f"Triggered macro slot {slot_index}: command='{cmd}'")
         if cmd in ["/marker [username]", "/marker"]:
             # Drop marker using streamer's username as description without interrupting gameplay
             self.dispatch_twitch_call(cmd, self.twitch_channel)
         elif "[description]" in cmd or "[username]" in cmd:
+            log_debug("INPUT", f"Showing text input overlay for command='{cmd}'")
             self.input_ui = TextInputOverlay(cmd, self)
             self.input_ui.show()
         else:
             self.dispatch_twitch_call(cmd, "")
 
     def dispatch_twitch_call(self, command, argument):
+        log_debug("TWITCH", f"Dispatching command='{command}', argument='{argument}' (channel='{self.twitch_channel}', user_id='{self.twitch_user_id}')")
         self.worker = TwitchCommandWorker(
             command=command,
             argument=argument,
@@ -459,6 +503,7 @@ class RedBorderOverlay(QMainWindow):
             print(f"Toast display notice: {e}")
 
     def on_twitch_worker_result(self, message, is_success):
+        log_debug("TWITCH_RESPONSE", f"Success={is_success} | message='{message}'")
         self.show_hud_toast(message, is_success)
         icon = QSystemTrayIcon.MessageIcon.Information if is_success else QSystemTrayIcon.MessageIcon.Warning
         if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
@@ -525,12 +570,14 @@ class RedBorderOverlay(QMainWindow):
         if self.is_visible:
             self.hide()
             self.flash_timer.stop()
+            log_debug("OVERLAY", "Overlay hidden")
         else:
             self.setWindowOpacity(self.border_opacity)
             self.show()
             self.raise_()
             if self.is_flashing and self.flash_speed_name != "Always On":
                 self.flash_timer.start(30)
+            log_debug("OVERLAY", f"Overlay displayed on monitor #{self.target_monitor_index + 1} (thickness={self.border_thickness}, opacity={self.border_opacity}, flashing={self.is_flashing})")
         self.is_visible = not self.is_visible
 
     def start_flash(self):
@@ -579,7 +626,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.1.2")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.2.0")
         except Exception:
             pass
 

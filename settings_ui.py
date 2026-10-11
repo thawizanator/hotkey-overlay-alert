@@ -9,7 +9,7 @@ import urllib.error
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QComboBox, QPushButton, QSlider, QColorDialog, 
-                             QMessageBox, QLineEdit, QStackedWidget)
+                             QMessageBox, QLineEdit, QStackedWidget, QCheckBox)
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -569,6 +569,19 @@ class VisualSettingsView(QWidget):
         self.btn_goto_twitch.clicked.connect(lambda: self.main_win.set_view_index(1))
         layout.addWidget(self.btn_goto_twitch)
 
+        layout.addSpacing(10)
+        layout.addWidget(QLabel("Diagnostics & Logging:"))
+        debug_layout = QHBoxLayout()
+        self.chk_debug = QCheckBox("Enable Debug Logging")
+        self.chk_debug.setChecked(getattr(self.main_win.overlay, "debug_mode", False))
+        self.chk_debug.toggled.connect(self.on_debug_toggled)
+        debug_layout.addWidget(self.chk_debug)
+
+        self.btn_open_debug = QPushButton("Open debug.txt")
+        self.btn_open_debug.clicked.connect(self.open_debug_log)
+        debug_layout.addWidget(self.btn_open_debug)
+        layout.addLayout(debug_layout)
+
         layout.addStretch()
 
         nav_btn_layout = QHBoxLayout()
@@ -653,6 +666,14 @@ class VisualSettingsView(QWidget):
         self.main_win.overlay.rebind_activation_hotkey("ctrl+add")
         self.main_win.overlay.save_settings()
         self.update_activation_hotkey_label()
+
+    def on_debug_toggled(self, checked):
+        if hasattr(self.main_win.overlay, "set_debug_mode"):
+            self.main_win.overlay.set_debug_mode(checked)
+
+    def open_debug_log(self):
+        if hasattr(self.main_win.overlay, "open_debug_log"):
+            self.main_win.overlay.open_debug_log()
 
 
 def get_resource_path(relative_path):
@@ -826,7 +847,7 @@ class SettingsWindow(QWidget):
         super().__init__()
         self.overlay = overlay_app
         self.setWindowTitle("HotKey Overlay Alert Settings")
-        self.setFixedSize(400, 620)
+        self.setFixedSize(410, 680)
         self.setWindowIcon(get_app_icon())
 
         self.stack = QStackedWidget(self)
@@ -921,7 +942,7 @@ class SettingsWindow(QWidget):
             "right-click the app and select <b>Run as administrator</b>.<br><br>" 
             "<b>Created by ThaWizanator</b><br>" 
             "<a href='https://twitch.tv'>twitch.tv/thawizanator</a><br><br>" 
-            "Version 2.1.2 | October 2026" 
+            "Version 2.2.0 | October 2026" 
         )
         msg.setText(about_text)
         msg.setTextFormat(Qt.TextFormat.RichText)

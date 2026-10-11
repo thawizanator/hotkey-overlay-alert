@@ -4,6 +4,15 @@ import urllib.error
 import urllib.parse
 from PyQt6.QtCore import QThread, pyqtSignal
 
+BROADCASTER_ID_CACHE = {}
+from debug_logger import log_debug
+
+def safe_log(category, msg):
+    try:
+        log_debug(category, msg)
+    except Exception:
+        print(f"[{category}] {msg}")
+
 class TwitchCommandWorker(QThread):
     """
     Executes non-blocking Twitch Helix REST API calls asynchronously.
@@ -24,7 +33,7 @@ class TwitchCommandWorker(QThread):
         # Gracefully abort if authentication credentials are unassigned
         if not self.token or not self.client_id:
             msg = "Twitch credentials incomplete. Please link your Twitch account in Settings."
-            print(msg)
+            safe_log("TWITCH_WORKER", msg)
             self.result_signal.emit(msg, False)
             return
 
@@ -34,26 +43,44 @@ class TwitchCommandWorker(QThread):
         }
 
         try:
-            # 1. Resolve broadcaster ID (use cached if available, otherwise fetch via Helix)
-            broadcaster_id = self.user_id
-            if not broadcaster_id and self.channel_name:
-                user_url = f"https://api.twitch.tv/helix/users?login={urllib.parse.quote(self.channel_name.lower().strip())}"
-                user_req = urllib.request.Request(user_url, headers=headers)
-                with urllib.request.urlopen(user_req) as res:
-                    user_data = json.loads(res.read().decode('utf-8'))
-                    users = user_data.get("data", [])
-                    if not users:
-                        msg = f"Twitch channel '{self.channel_name}' not found."
-                        print(msg)
-                        self.result_signal.emit(msg, False)
-                        return
-                    broadcaster_id = users[0]["id"]
+            moderator_id = str(self.user_id) if self.user_id else None
+            broadcaster_id = None
+
+            # 1. Resolve broadcaster ID from target channel
+            target_channel = self.channel_name.lower().strip() if self.channel_name else ""
+            if target_channel:
+                if target_channel in BROADCASTER_ID_CACHE:
+                    broadcaster_id = BROADCASTER_ID_CACHE[target_channel]
+                    safe_log("TWITCH_WORKER", f"Found broadcaster_id {broadcaster_id} for '{target_channel}' in cache")
+                else:
+                    user_url = f"https://api.twitch.tv/helix/users?login={urllib.parse.quote(target_channel)}"
+                    user_req = urllib.request.Request(user_url, headers=headers)
+                    with urllib.request.urlopen(user_req) as res:
+                        user_data = json.loads(res.read().decode('utf-8'))
+                        users = user_data.get("data", [])
+                        if users:
+                            broadcaster_id = str(users[0]["id"])
+                            BROADCASTER_ID_CACHE[target_channel] = broadcaster_id
+                            safe_log("TWITCH_WORKER", f"Resolved broadcaster_id {broadcaster_id} for '{target_channel}' via Helix")
+                        else:
+                            msg = f"Twitch channel '{self.channel_name}' not found."
+                            safe_log("TWITCH_WORKER", msg)
+                            self.result_signal.emit(msg, False)
+                            return
+
+            # Fallbacks: if no separate channel ID resolved, default to authenticated user
+            if not broadcaster_id:
+                broadcaster_id = moderator_id
+            if not moderator_id:
+                moderator_id = broadcaster_id
 
             if not broadcaster_id:
                 msg = "Could not identify Twitch broadcaster account."
-                print(msg)
+                safe_log("TWITCH_WORKER", msg)
                 self.result_signal.emit(msg, False)
                 return
+
+            safe_log("TWITCH_WORKER", f"Invoking command='{self.command}', arg='{self.argument}' | broadcaster_id={broadcaster_id}, moderator_id={moderator_id}")
 
             # Route A: Stream Marker (POST /helix/streams/markers)
             if "marker" in self.command.lower():
@@ -63,6 +90,7 @@ class TwitchCommandWorker(QThread):
                     "user_id": str(broadcaster_id),
                     "description": desc[:140]
                 }
+                safe_log("TWITCH_WORKER", f"POST {url} with body={p_dict}")
 
                 req = urllib.request.Request(
                     url,
@@ -76,12 +104,12 @@ class TwitchCommandWorker(QThread):
                     pos = marker_info.get("position_seconds", "")
                     pos_str = f" at {pos}s" if pos != "" else ""
                     msg = f"Stream Marker created successfully{pos_str} ({desc})!"
-                    print(msg)
+                    safe_log("TWITCH_WORKER", f"Success: {msg}")
                     self.result_signal.emit(msg, True)
 
             # Route B: Chat Announcement (POST /helix/chat/announcements)
             elif "announce" in self.command.lower():
-                url = f"https://api.twitch.tv/helix/chat/announcements?broadcaster_id={broadcaster_id}&moderator_id={broadcaster_id}"
+                url = f"https://api.twitch.tv/helix/chat/announcements?broadcaster_id={broadcaster_id}&moderator_id={moderator_id}"
                 color = "primary"
                 for c in ["blue", "green", "orange", "purple"]:
                     if c in self.command.lower():
@@ -92,6 +120,7 @@ class TwitchCommandWorker(QThread):
                     "message": self.argument[:500] if self.argument else "Attention Chat!",
                     "color": color
                 }
+                safe_log("TWITCH_WORKER", f"POST {url} with body={p_dict}")
                 req = urllib.request.Request(
                     url,
                     data=json.dumps(p_dict).encode('utf-8'),
@@ -100,7 +129,7 @@ class TwitchCommandWorker(QThread):
                 )
                 with urllib.request.urlopen(req):
                     msg = f"Chat Announcement ({color}) sent successfully."
-                    print(msg)
+                    safe_log("TWITCH_WORKER", f"Success: {msg}")
                     self.result_signal.emit(msg, True)
 
             # Route C: Follow-card Shoutout (POST /helix/chat/shoutouts)
@@ -108,7 +137,7 @@ class TwitchCommandWorker(QThread):
                 target_name = self.argument.lower().strip().lstrip('@')
                 if not target_name:
                     msg = "No target username specified for shoutout."
-                    print(msg)
+                    safe_log("TWITCH_WORKER", msg)
                     self.result_signal.emit(msg, False)
                     return
 
@@ -118,15 +147,16 @@ class TwitchCommandWorker(QThread):
                     targets = t_data.get("data", [])
                     if not targets:
                         msg = f"Target user '{target_name}' not found on Twitch."
-                        print(msg)
+                        safe_log("TWITCH_WORKER", msg)
                         self.result_signal.emit(msg, False)
                         return
                     target_id = targets[0]["id"]
 
-                url = f"https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id={broadcaster_id}&to_broadcaster_id={target_id}&moderator_id={broadcaster_id}"
+                url = f"https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id={broadcaster_id}&to_broadcaster_id={target_id}&moderator_id={moderator_id}"
+                safe_log("TWITCH_WORKER", f"POST {url} for target={target_name} ({target_id})")
                 with urllib.request.urlopen(urllib.request.Request(url, headers=headers, method="POST")):
                     msg = f"Shoutout sent for @{target_name}."
-                    print(msg)
+                    safe_log("TWITCH_WORKER", f"Success: {msg}")
                     self.result_signal.emit(msg, True)
 
             # Route D: General chat message fallback (POST /helix/chat/messages)
@@ -135,9 +165,10 @@ class TwitchCommandWorker(QThread):
                 chat_msg = self.argument if self.argument else self.command
                 p_dict = {
                     "broadcaster_id": str(broadcaster_id),
-                    "sender_id": str(broadcaster_id),
+                    "sender_id": str(moderator_id),
                     "message": chat_msg[:500]
                 }
+                safe_log("TWITCH_WORKER", f"POST {url} with body={p_dict}")
                 req = urllib.request.Request(
                     url,
                     data=json.dumps(p_dict).encode('utf-8'),
@@ -146,7 +177,7 @@ class TwitchCommandWorker(QThread):
                 )
                 with urllib.request.urlopen(req):
                     msg = f"Twitch chat message sent: {chat_msg}"
-                    print(msg)
+                    safe_log("TWITCH_WORKER", f"Success: {msg}")
                     self.result_signal.emit(msg, True)
 
         except urllib.error.HTTPError as he:
@@ -164,7 +195,7 @@ class TwitchCommandWorker(QThread):
             elif he.code == 401:
                 user_friendly = "Twitch authorization token expired. Please re-link your Twitch account in Settings."
             elif he.code == 403:
-                user_friendly = "Twitch permission denied. Ensure your account has broadcaster or moderator permissions."
+                user_friendly = f"Twitch permission denied (403): Your account must be a Moderator or Broadcaster in '{self.channel_name}'."
             elif he.code == 429:
                 if "announce" in self.command.lower():
                     user_friendly = "Twitch Announcement Cooldown: Twitch limits announcements to once every 2 minutes. Please wait before sending another."
@@ -175,10 +206,10 @@ class TwitchCommandWorker(QThread):
             else:
                 user_friendly = f"Twitch API Error ({he.code}): {err_msg}"
 
-            print(user_friendly)
+            safe_log("TWITCH_WORKER", f"HTTPError {he.code}: {err_msg} | User notice: {user_friendly}")
             self.result_signal.emit(user_friendly, False)
 
         except Exception as e:
             err_str = f"Twitch request error: {e}"
-            print(err_str)
+            safe_log("TWITCH_WORKER", f"Exception: {e}")
             self.result_signal.emit(err_str, False)
