@@ -7,7 +7,7 @@ import keyboard
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.4.1"
+        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.4.2"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -22,6 +22,7 @@ from PyQt6.QtGui import QPainter, QPen, QColor, QIcon, QAction, QPixmap
 from twitch_worker import TwitchCommandWorker
 from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_hotkey_display, ICON_PATH, get_app_icon
 from updater import CURRENT_VERSION, UpdateCheckWorker, DownloadWorker, apply_update_and_restart
+import theme_manager
 
 def get_app_directory():
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -459,8 +460,16 @@ class RedBorderOverlay(QMainWindow):
         self.flash_direction = -1
         self.init_system_tray()
         self.settings_window = SettingsWindow(self)
+        theme_manager.apply_theme_to_window(self.settings_window, getattr(self, "theme_preference", "system"))
         self.rebind_twitch_macros()
         
+        # Listen for OS Light/Dark theme changes live
+        if hasattr(self.app, "styleHints"):
+            try:
+                self.app.styleHints().colorSchemeChanged.connect(self.on_system_theme_changed)
+            except Exception:
+                pass
+
         if self.is_first_run:
             QTimer.singleShot(200, self.show_welcome_message)
 
@@ -469,6 +478,12 @@ class RedBorderOverlay(QMainWindow):
 
         if getattr(self, "start_on_boot", False):
             set_autostart_registry(True)
+
+    def on_system_theme_changed(self):
+        pref = getattr(self, "theme_preference", "system")
+        if pref == "system":
+            if hasattr(self, "settings_window") and self.settings_window:
+                self.settings_window.refresh_theme()
 
     def load_settings(self):
         self.target_monitor_index = 0
@@ -484,6 +499,7 @@ class RedBorderOverlay(QMainWindow):
         self.debug_mode = False
         self.check_updates_on_startup = True
         self.auto_update_enabled = False
+        self.theme_preference = "system"
         self.twitch_channel = "thawizanator"
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
         self.twitch_redirect_uri = "http://localhost:17563"
@@ -515,6 +531,7 @@ class RedBorderOverlay(QMainWindow):
                     self.debug_mode = d.get("debug_mode", False)
                     self.check_updates_on_startup = d.get("check_updates_on_startup", True)
                     self.auto_update_enabled = d.get("auto_update_enabled", False)
+                    self.theme_preference = d.get("theme_preference", "system")
                     set_debug_mode(self.debug_mode)
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
                     if loaded_client_id and loaded_client_id != "testclientid":
@@ -557,6 +574,7 @@ class RedBorderOverlay(QMainWindow):
             "debug_mode": self.debug_mode,
             "check_updates_on_startup": self.check_updates_on_startup,
             "auto_update_enabled": self.auto_update_enabled,
+            "theme_preference": getattr(self, "theme_preference", "system"),
             "twitch_channel": self.twitch_channel,
             "twitch_client_id": self.twitch_client_id,
             "twitch_redirect_uri": self.twitch_redirect_uri,
@@ -930,7 +948,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.4.1")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.4.2")
         except Exception:
             pass
 

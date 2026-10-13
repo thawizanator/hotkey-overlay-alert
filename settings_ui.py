@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from updater import (UpdateCheckWorker, DownloadWorker, apply_update_and_restart, 
                      CURRENT_VERSION, is_newer_version, GITHUB_REPO)
 from debug_logger import log_debug, get_crash_log_path, get_debug_log_path
+import theme_manager
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -266,17 +267,10 @@ class MainTab(QWidget):
         self.chk_streamer.toggled.connect(self.on_streamer_toggled)
         lay_mode.addWidget(self.chk_streamer)
 
-        lbl_mode_desc = QLabel(
-            "<span style='color: #a1a1aa; font-size: 12px;'>"
-            "• <b>Checked (Streamer Mode):</b> Uses non-intrusive transparent in-game HUD alerts "
-            "and auto-fading toasts so game captures and full-screen games are never interrupted.<br>"
-            "• <b>Unchecked (Desktop Mode):</b> Uses standard modal window dialogs with title bars "
-            "and persistent confirmation popups, designed for channel moderators and desktop users."
-            "</span>"
-        )
-        lbl_mode_desc.setWordWrap(True)
-        lbl_mode_desc.setTextFormat(Qt.TextFormat.RichText)
-        lay_mode.addWidget(lbl_mode_desc)
+        self.lbl_mode_desc = QLabel()
+        self.lbl_mode_desc.setWordWrap(True)
+        self.lbl_mode_desc.setTextFormat(Qt.TextFormat.RichText)
+        lay_mode.addWidget(self.lbl_mode_desc)
         layout.addWidget(grp_mode)
 
         # Group 2: Primary Activation Hotkey
@@ -310,17 +304,31 @@ class MainTab(QWidget):
 
         layout.addStretch()
 
-        lbl_hint = QLabel(
-            "<span style='color: #71717a; font-size: 11px;'>"
+        self.lbl_hint = QLabel()
+        self.lbl_hint.setWordWrap(True)
+        self.lbl_hint.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(self.lbl_hint)
+
+        self.refresh_theme_labels(theme_manager.get_effective_theme(getattr(self.main_win.overlay, "theme_preference", "system")))
+        self.update_activation_hotkey_label()
+
+    def refresh_theme_labels(self, effective):
+        sec_color = theme_manager.get_secondary_text_color(effective)
+        tert_color = theme_manager.get_tertiary_text_color(effective)
+        self.lbl_mode_desc.setText(
+            f"<span style='color: {sec_color}; font-size: 12px;'>"
+            "• <b>Checked (Streamer Mode):</b> Uses non-intrusive transparent in-game HUD alerts "
+            "and auto-fading toasts so game captures and full-screen games are never interrupted.<br>"
+            "• <b>Unchecked (Desktop Mode):</b> Uses standard modal window dialogs with title bars "
+            "and persistent confirmation popups, designed for channel moderators and desktop users."
+            "</span>"
+        )
+        self.lbl_hint.setText(
+            f"<span style='color: {tert_color}; font-size: 11px;'>"
             "💡 Tip: HotKey Overlay Alert runs quietly in your Windows system tray. "
             "Right-click the <b>wizanator icon</b> anytime to reopen settings or exit."
             "</span>"
         )
-        lbl_hint.setWordWrap(True)
-        lbl_hint.setTextFormat(Qt.TextFormat.RichText)
-        layout.addWidget(lbl_hint)
-
-        self.update_activation_hotkey_label()
 
     def on_streamer_toggled(self, checked):
         if hasattr(self.main_win.overlay, "set_streamer_mode"):
@@ -425,7 +433,14 @@ class MonitorTab(QWidget):
             self.main_win.overlay.save_settings()
             self.update_monitor_info()
 
+    def refresh_theme_labels(self, effective):
+        sec_color = theme_manager.get_secondary_text_color(effective)
+        self.lbl_info.setStyleSheet(f"color: {sec_color}; font-size: 12px;")
+
     def update_monitor_info(self):
+        pref = getattr(self.main_win.overlay, "theme_preference", "system")
+        effective = theme_manager.get_effective_theme(pref)
+        self.refresh_theme_labels(effective)
         idx = getattr(self.main_win.overlay, "target_monitor_index", 0)
         screens = QApplication.screens()
         if idx < len(screens):
@@ -897,7 +912,33 @@ class SystemTab(QWidget):
 
         layout.addWidget(grp_upd)
 
-        # Group 2: Diagnostics & Troubleshooting
+        # Group 2: Appearance & Theme
+        grp_theme = QGroupBox("Interface Appearance && Theme")
+        lay_theme = QVBoxLayout(grp_theme)
+        lay_theme.setSpacing(6)
+
+        theme_row = QHBoxLayout()
+        theme_row.addWidget(QLabel("Interface Theme:"))
+        self.combo_theme = QComboBox()
+        self.combo_theme.addItem("Auto (Match Windows Theme)", "system")
+        self.combo_theme.addItem("Dark Theme", "dark")
+        self.combo_theme.addItem("Light Theme", "light")
+
+        cur_pref = getattr(self.main_win.overlay, "theme_preference", "system")
+        idx = self.combo_theme.findData(cur_pref)
+        if idx >= 0:
+            self.combo_theme.setCurrentIndex(idx)
+        self.combo_theme.currentIndexChanged.connect(self.on_theme_selection_changed)
+        theme_row.addWidget(self.combo_theme)
+        theme_row.addStretch()
+        lay_theme.addLayout(theme_row)
+
+        self.lbl_theme_info = QLabel()
+        self.lbl_theme_info.setWordWrap(True)
+        lay_theme.addWidget(self.lbl_theme_info)
+        layout.addWidget(grp_theme)
+
+        # Group 3: Diagnostics & Troubleshooting
         grp_diag = QGroupBox("Diagnostics && Logs")
         lay_diag = QVBoxLayout(grp_diag)
         lay_diag.setSpacing(8)
@@ -923,24 +964,46 @@ class SystemTab(QWidget):
 
         layout.addWidget(grp_diag)
 
-        # Group 3: About
+        # Group 4: About
         grp_about = QGroupBox("About Application")
         lay_about = QVBoxLayout(grp_about)
         lay_about.setSpacing(4)
-        lbl_about_txt = QLabel(
-            f"<b>HotKey Overlay Alert</b> – Version {CURRENT_VERSION}<br>"
-            "Created by <b>ThaWizanator</b> • <a href='https://twitch.tv/thawizanator' style='color: #9146ff;'>twitch.tv/thawizanator</a><br>"
-            "<span style='color: #71717a;'>Licensed under the MIT License • Standalone Authenticode Signed</span>"
-        )
-        lbl_about_txt.setTextFormat(Qt.TextFormat.RichText)
-        lbl_about_txt.setOpenExternalLinks(True)
-        lay_about.addWidget(lbl_about_txt)
+        self.lbl_about_txt = QLabel()
+        self.lbl_about_txt.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_about_txt.setOpenExternalLinks(True)
+        lay_about.addWidget(self.lbl_about_txt)
         layout.addWidget(grp_about)
 
         layout.addStretch()
 
+        self.refresh_theme_labels(theme_manager.get_effective_theme(getattr(self.main_win.overlay, "theme_preference", "system")))
+
         # Trigger passive update check on tab creation
         self.check_updates_silently()
+
+    def on_theme_selection_changed(self, idx):
+        val = self.combo_theme.currentData()
+        self.main_win.overlay.theme_preference = val
+        self.main_win.overlay.save_settings()
+        self.main_win.refresh_theme()
+
+    def refresh_theme_labels(self, effective):
+        sec_color = theme_manager.get_secondary_text_color(effective)
+        tert_color = theme_manager.get_tertiary_text_color(effective)
+        active_os = theme_manager.detect_system_theme().capitalize()
+        pref = getattr(self.main_win.overlay, "theme_preference", "system")
+        if pref == "system":
+            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>Matching Windows system theme (<b>{active_os} Mode</b>). Live-adapts if your system theme changes.</span>")
+        elif pref == "dark":
+            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>Locked to <b>Dark Theme</b>.</span>")
+        else:
+            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>Locked to <b>Light Theme</b>.</span>")
+
+        self.lbl_about_txt.setText(
+            f"<b>HotKey Overlay Alert</b> – Version {CURRENT_VERSION}<br>"
+            "Created by <b>ThaWizanator</b> • <a href='https://twitch.tv/thawizanator' style='color: #9146ff;'>twitch.tv/thawizanator</a><br>"
+            f"<span style='color: {tert_color};'>Licensed under the MIT License • Standalone Authenticode Signed</span>"
+        )
 
     def check_updates_silently(self):
         self.check_worker = UpdateCheckWorker(CURRENT_VERSION)
@@ -1098,8 +1161,10 @@ class SettingsWindow(QWidget):
     def __init__(self, overlay_app):
         super().__init__()
         self.overlay = overlay_app
+        self.setObjectName("SettingsWindow")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle(f"HotKey Overlay Alert Settings (v{CURRENT_VERSION})")
-        self.setFixedSize(520, 545)
+        self.setFixedSize(520, 640)
         self.setWindowIcon(get_app_icon())
 
         # Main Layout
@@ -1109,67 +1174,6 @@ class SettingsWindow(QWidget):
 
         # Tab Widget
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #303032;
-                background-color: #18181b;
-                border-radius: 6px;
-                padding: 4px;
-            }
-            QTabBar::tab {
-                background: #27272a;
-                color: #a1a1aa;
-                padding: 7px 14px;
-                margin-right: 3px;
-                border-top-left-radius: 5px;
-                border-top-right-radius: 5px;
-                font-weight: 600;
-                font-size: 12px;
-            }
-            QTabBar::tab:selected {
-                background: #9146ff;
-                color: #ffffff;
-            }
-            QTabBar::tab:hover:!selected {
-                background: #3f3f46;
-                color: #efeff1;
-            }
-            QGroupBox {
-                border: 1px solid #303032;
-                border-radius: 6px;
-                margin-top: 8px;
-                font-weight: bold;
-                font-size: 12px;
-                color: #efeff1;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 4px;
-            }
-            QPushButton {
-                background-color: #27272a;
-                color: #efeff1;
-                border: 1px solid #3f3f46;
-                border-radius: 5px;
-                padding: 5px 12px;
-                font-size: 12px;
-                min-height: 26px;
-            }
-            QPushButton:hover {
-                background-color: #3f3f46;
-                border-color: #52525b;
-            }
-            QPushButton:pressed {
-                background-color: #18181b;
-            }
-            QPushButton:disabled {
-                background-color: #202022;
-                color: #636366;
-                border-color: #2c2c2e;
-            }
-        """)
 
         # Add the 5 requested tabs
         self.tab_main = MainTab(self)
@@ -1189,14 +1193,13 @@ class SettingsWindow(QWidget):
         # Bottom Action Bar
         bottom_bar = QHBoxLayout()
         bottom_bar.setContentsMargins(4, 0, 4, 0)
-        lbl_v = QLabel(f"<span style='color: #71717a; font-size: 11px;'>v{CURRENT_VERSION} • ThaWizanator</span>")
-        lbl_v.setTextFormat(Qt.TextFormat.RichText)
-        bottom_bar.addWidget(lbl_v)
+        self.lbl_v = QLabel()
+        self.lbl_v.setTextFormat(Qt.TextFormat.RichText)
+        bottom_bar.addWidget(self.lbl_v)
         bottom_bar.addStretch()
 
         self.btn_close = QPushButton("Close")
         self.btn_close.setFixedWidth(80)
-        self.btn_close.setStyleSheet("padding: 5px 12px;")
         self.btn_close.clicked.connect(self.close)
         bottom_bar.addWidget(self.btn_close)
         root_layout.addLayout(bottom_bar)
@@ -1204,6 +1207,25 @@ class SettingsWindow(QWidget):
         # Compatibility aliases for other modules
         self.view_visual = self.tab_monitor
         self.view_twitch = self.tab_twitch
+
+        # Apply initial theme
+        self.refresh_theme()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        pref = getattr(self.overlay, "theme_preference", "system")
+        effective = theme_manager.apply_theme_to_window(self, pref)
+        tert = theme_manager.get_tertiary_text_color(effective)
+        self.lbl_v.setText(f"<span style='color: {tert}; font-size: 11px;'>v{CURRENT_VERSION} • ThaWizanator</span>")
+        if hasattr(self, "tab_main"):
+            self.tab_main.refresh_theme_labels(effective)
+        if hasattr(self, "tab_monitor"):
+            self.tab_monitor.refresh_theme_labels(effective)
+        if hasattr(self, "tab_system"):
+            self.tab_system.refresh_theme_labels(effective)
 
     def set_view_index(self, idx):
         if idx < self.tabs.count():

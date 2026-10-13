@@ -1,0 +1,512 @@
+import sys
+from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtGui import QPalette, QColor
+from PyQt6.QtCore import Qt
+
+def detect_system_theme() -> str:
+    """
+    Detects whether the Windows host OS is currently using Light or Dark theme.
+    Returns 'dark' or 'light'.
+    """
+    # 1. Check Qt styleHints (PyQt 6.5+)
+    app = QApplication.instance()
+    if app and hasattr(app, "styleHints"):
+        try:
+            scheme = app.styleHints().colorScheme()
+            if scheme == Qt.ColorScheme.Light:
+                return "light"
+            elif scheme == Qt.ColorScheme.Dark:
+                return "dark"
+        except Exception:
+            pass
+
+    # 2. Check Windows Registry fallback
+    if sys.platform == "win32":
+        try:
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+            )
+            val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            winreg.CloseKey(key)
+            return "light" if val == 1 else "dark"
+        except Exception:
+            pass
+
+    return "dark"
+
+def get_effective_theme(preference: str = "system") -> str:
+    """
+    Resolves the active theme ('dark' or 'light') based on user preference ('system', 'dark', 'light').
+    """
+    pref = str(preference or "system").lower()
+    if pref in ("dark", "light"):
+        return pref
+    return detect_system_theme()
+
+def get_secondary_text_color(theme: str) -> str:
+    """Returns the hex color code for secondary / hint text for the given theme."""
+    return "#52525b" if theme == "light" else "#a1a1aa"
+
+def get_tertiary_text_color(theme: str) -> str:
+    """Returns the hex color code for small tip / footer text for the given theme."""
+    return "#71717a" if theme == "light" else "#71717a"
+
+def get_theme_palette(theme: str) -> QPalette:
+    """Generates a QPalette matching the given theme ('dark' or 'light')."""
+    pal = QPalette()
+    if theme == "light":
+        pal.setColor(QPalette.ColorRole.Window, QColor("#f4f4f6"))
+        pal.setColor(QPalette.ColorRole.WindowText, QColor("#18181b"))
+        pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#f4f4f5"))
+        pal.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.ToolTipText, QColor("#18181b"))
+        pal.setColor(QPalette.ColorRole.Text, QColor("#18181b"))
+        pal.setColor(QPalette.ColorRole.Button, QColor("#f4f4f5"))
+        pal.setColor(QPalette.ColorRole.ButtonText, QColor("#18181b"))
+        pal.setColor(QPalette.ColorRole.BrightText, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor("#9146ff"))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    else:
+        pal.setColor(QPalette.ColorRole.Window, QColor("#121214"))
+        pal.setColor(QPalette.ColorRole.WindowText, QColor("#efeff1"))
+        pal.setColor(QPalette.ColorRole.Base, QColor("#0e0e10"))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#18181b"))
+        pal.setColor(QPalette.ColorRole.ToolTipBase, QColor("#18181b"))
+        pal.setColor(QPalette.ColorRole.ToolTipText, QColor("#efeff1"))
+        pal.setColor(QPalette.ColorRole.Text, QColor("#efeff1"))
+        pal.setColor(QPalette.ColorRole.Button, QColor("#27272a"))
+        pal.setColor(QPalette.ColorRole.ButtonText, QColor("#efeff1"))
+        pal.setColor(QPalette.ColorRole.BrightText, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor("#9146ff"))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    return pal
+
+def get_theme_stylesheet(theme: str) -> str:
+    """Returns the CSS stylesheet matching the given theme ('dark' or 'light')."""
+    if theme == "light":
+        return """
+            /* Light Theme */
+            QWidget#SettingsWindow, QDialog#SettingsWindow {
+                background-color: #f4f4f6;
+                color: #18181b;
+            }
+            QWidget {
+                color: #18181b;
+                font-family: 'Segoe UI', -apple-system, sans-serif;
+            }
+            QTabWidget::pane {
+                border: 1px solid #d4d4d8;
+                background-color: #ffffff;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QTabBar::tab {
+                background: #e4e4e7;
+                color: #52525b;
+                padding: 7px 14px;
+                margin-right: 3px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+            QTabBar::tab:selected {
+                background: #9146ff;
+                color: #ffffff;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #d4d4d8;
+                color: #18181b;
+            }
+            QGroupBox {
+                border: 1px solid #e4e4e7;
+                background-color: #ffffff;
+                border-radius: 6px;
+                margin-top: 10px;
+                font-weight: bold;
+                font-size: 12px;
+                color: #18181b;
+                padding-top: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 4px;
+                color: #18181b;
+            }
+            QPushButton {
+                background-color: #f4f4f5;
+                color: #18181b;
+                border: 1px solid #d4d4d8;
+                border-radius: 5px;
+                padding: 5px 12px;
+                font-size: 12px;
+                min-height: 26px;
+            }
+            QPushButton:hover {
+                background-color: #e4e4e7;
+                border-color: #a1a1aa;
+            }
+            QPushButton:pressed {
+                background-color: #d4d4d8;
+            }
+            QPushButton:disabled {
+                background-color: #f4f4f5;
+                color: #a1a1aa;
+                border-color: #e4e4e7;
+            }
+            QCheckBox {
+                color: #18181b;
+                font-size: 12px;
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 1px solid #a1a1aa;
+                border-radius: 3px;
+                background-color: #ffffff;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #9146ff;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #9146ff;
+                border-color: #9146ff;
+            }
+            QComboBox {
+                background-color: #ffffff;
+                color: #18181b;
+                border: 1px solid #d4d4d8;
+                border-radius: 5px;
+                padding: 4px 8px;
+                min-height: 24px;
+            }
+            QComboBox:hover {
+                border-color: #a1a1aa;
+            }
+            QComboBox:focus {
+                border: 1px solid #9146ff;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #ffffff;
+                color: #18181b;
+                border: 1px solid #d4d4d8;
+                selection-background-color: #9146ff;
+                selection-color: #ffffff;
+                outline: none;
+            }
+            QLineEdit {
+                background-color: #ffffff;
+                color: #18181b;
+                border: 1px solid #d4d4d8;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #9146ff;
+            }
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: #e4e4e7;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #9146ff;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #ffffff;
+                border: 1px solid #a1a1aa;
+                width: 14px;
+                margin-top: -4px;
+                margin-bottom: -4px;
+                border-radius: 7px;
+            }
+            QSlider::handle:horizontal:hover {
+                border-color: #9146ff;
+            }
+            QProgressBar {
+                border: 1px solid #d4d4d8;
+                border-radius: 4px;
+                text-align: center;
+                height: 18px;
+                background-color: #f4f4f5;
+                color: #18181b;
+            }
+            QProgressBar::chunk {
+                background-color: #9146ff;
+                border-radius: 3px;
+            }
+            QLabel {
+                color: #18181b;
+            }
+            QMenu {
+                background-color: #ffffff;
+                color: #18181b;
+                border: 1px solid #d4d4d8;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 20px 6px 12px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #9146ff;
+                color: #ffffff;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #e4e4e7;
+                margin: 4px 6px;
+            }
+        """
+    else:
+        return """
+            /* Dark Theme */
+            QWidget#SettingsWindow, QDialog#SettingsWindow {
+                background-color: #121214;
+                color: #efeff1;
+            }
+            QWidget {
+                color: #efeff1;
+                font-family: 'Segoe UI', -apple-system, sans-serif;
+            }
+            QTabWidget::pane {
+                border: 1px solid #2d2d30;
+                background-color: #18181b;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QTabBar::tab {
+                background: #27272a;
+                color: #a1a1aa;
+                padding: 7px 14px;
+                margin-right: 3px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+            QTabBar::tab:selected {
+                background: #9146ff;
+                color: #ffffff;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #3f3f46;
+                color: #efeff1;
+            }
+            QGroupBox {
+                border: 1px solid #2d2d30;
+                background-color: #18181b;
+                border-radius: 6px;
+                margin-top: 10px;
+                font-weight: bold;
+                font-size: 12px;
+                color: #efeff1;
+                padding-top: 12px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 4px;
+                color: #ffffff;
+            }
+            QPushButton {
+                background-color: #27272a;
+                color: #efeff1;
+                border: 1px solid #3f3f46;
+                border-radius: 5px;
+                padding: 5px 12px;
+                font-size: 12px;
+                min-height: 26px;
+            }
+            QPushButton:hover {
+                background-color: #3f3f46;
+                border-color: #52525b;
+            }
+            QPushButton:pressed {
+                background-color: #18181b;
+            }
+            QPushButton:disabled {
+                background-color: #202022;
+                color: #636366;
+                border-color: #2c2c2e;
+            }
+            QCheckBox {
+                color: #efeff1;
+                font-size: 12px;
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 1px solid #52525b;
+                border-radius: 3px;
+                background-color: #27272a;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #9146ff;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #9146ff;
+                border-color: #9146ff;
+            }
+            QComboBox {
+                background-color: #27272a;
+                color: #efeff1;
+                border: 1px solid #3f3f46;
+                border-radius: 5px;
+                padding: 4px 8px;
+                min-height: 24px;
+            }
+            QComboBox:hover {
+                border-color: #52525b;
+            }
+            QComboBox:focus {
+                border: 1px solid #9146ff;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #18181b;
+                color: #efeff1;
+                border: 1px solid #3f3f46;
+                selection-background-color: #9146ff;
+                selection-color: #ffffff;
+                outline: none;
+            }
+            QLineEdit {
+                background-color: #0e0e10;
+                color: #efeff1;
+                border: 1px solid #3f3f46;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #9146ff;
+            }
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: #27272a;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #9146ff;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #efeff1;
+                border: 1px solid #3f3f46;
+                width: 14px;
+                margin-top: -4px;
+                margin-bottom: -4px;
+                border-radius: 7px;
+            }
+            QSlider::handle:horizontal:hover {
+                border-color: #9146ff;
+            }
+            QProgressBar {
+                border: 1px solid #303032;
+                border-radius: 4px;
+                text-align: center;
+                height: 18px;
+                background-color: #18181b;
+                color: #efeff1;
+            }
+            QProgressBar::chunk {
+                background-color: #9146ff;
+                border-radius: 3px;
+            }
+            QLabel {
+                color: #efeff1;
+            }
+            QMenu {
+                background-color: #18181b;
+                color: #efeff1;
+                border: 1px solid #3f3f46;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 20px 6px 12px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #9146ff;
+                color: #ffffff;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #3f3f46;
+                margin: 4px 6px;
+            }
+        """
+
+def set_window_immersive_dark_mode(hwnd, is_dark: bool):
+    """
+    Sets Windows 10/11 title bar immersive dark mode attribute via DwmSetWindowAttribute.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        # Windows 10 build 19041 (20H1)+ and Windows 11 use attribute 20
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        val = ctypes.c_int(1 if is_dark else 0)
+        res = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            int(hwnd),
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            ctypes.byref(val),
+            ctypes.sizeof(val)
+        )
+        if res != 0:
+            # Fallback for Windows 10 1809 - 1909
+            DWMWA_USE_IMMERSIVE_DARK_MODE_LEGACY = 19
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                int(hwnd),
+                DWMWA_USE_IMMERSIVE_DARK_MODE_LEGACY,
+                ctypes.byref(val),
+                ctypes.sizeof(val)
+            )
+    except Exception:
+        pass
+
+def apply_theme_to_window(window: QWidget, preference: str = "system") -> str:
+    """
+    Applies the appropriate theme to the specified window and the global application.
+    Returns the resolved effective theme ('dark' or 'light').
+    """
+    effective = get_effective_theme(preference)
+    palette = get_theme_palette(effective)
+    stylesheet = get_theme_stylesheet(effective)
+
+    app = QApplication.instance()
+    if app:
+        app.setPalette(palette)
+
+    if window:
+        window.setPalette(palette)
+        window.setStyleSheet(stylesheet)
+        if hasattr(window, "tabs") and window.tabs:
+            window.tabs.setStyleSheet(stylesheet)
+        
+        # Apply Windows 10/11 title bar dark mode
+        try:
+            hwnd = window.winId()
+            if hwnd:
+                set_window_immersive_dark_mode(hwnd, is_dark=(effective == "dark"))
+        except Exception:
+            pass
+
+    return effective
