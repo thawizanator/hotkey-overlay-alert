@@ -400,7 +400,7 @@ class MonitorTab(QWidget):
         lay_mon.addWidget(self.monitor_combo)
 
         self.btn_identify = QPushButton("🔍 Identify Displays (Show Numbers On-Screen)")
-        self.btn_identify.setStyleSheet("padding: 6px; font-weight: bold;")
+        self.btn_identify.setStyleSheet("padding: 3px 8px; font-weight: bold;")
         self.btn_identify.clicked.connect(self.main_win.overlay.identify_monitors)
         lay_mon.addWidget(self.btn_identify)
 
@@ -519,7 +519,7 @@ class AlertOverlayTab(QWidget):
 
         flash_state = "ON" if self.main_win.overlay.is_flashing else "OFF"
         self.btn_flash = QPushButton(f"Toggle Breathing/Flashing Effect: {flash_state}")
-        self.btn_flash.setStyleSheet("font-weight: bold; padding: 5px;")
+        self.btn_flash.setStyleSheet("font-weight: bold; padding: 3px 8px;")
         self.btn_flash.clicked.connect(self.toggle_flash)
         lay_fx.addWidget(self.btn_flash)
 
@@ -603,12 +603,12 @@ class TwitchTab(QWidget):
 
         btn_box = QHBoxLayout()
         self.btn_login = QPushButton("🔑 Login / Link with Twitch Account")
-        self.btn_login.setStyleSheet("background-color: #6441a5; color: white; font-weight: bold; padding: 5px 12px; border-radius: 4px;")
+        self.btn_login.setStyleSheet("background-color: #6441a5; color: white; font-weight: bold; padding: 3px 10px; border-radius: 4px;")
         self.btn_login.clicked.connect(self.start_twitch_oauth)
         btn_box.addWidget(self.btn_login)
 
         self.btn_unlink = QPushButton("Disconnect")
-        self.btn_unlink.setStyleSheet("background-color: #4b4b4e; color: white; padding: 5px 10px; border-radius: 4px;")
+        self.btn_unlink.setStyleSheet("background-color: #4b4b4e; color: white; padding: 3px 8px; border-radius: 4px;")
         self.btn_unlink.clicked.connect(self.unlink_twitch_account)
         btn_box.addWidget(self.btn_unlink)
         btn_box.addStretch()
@@ -631,7 +631,7 @@ class TwitchTab(QWidget):
         macro_actions_layout.addWidget(self.btn_add)
 
         self.btn_save = QPushButton("💾 Save Twitch Hotkeys")
-        self.btn_save.setStyleSheet("background-color: #2e6930; color: white; font-weight: bold; padding: 4px 12px;")
+        self.btn_save.setStyleSheet("background-color: #2e6930; color: white; font-weight: bold; padding: 3px 10px;")
         self.btn_save.clicked.connect(self.save_macros)
         macro_actions_layout.addWidget(self.btn_save)
         macro_actions_layout.addStretch()
@@ -659,12 +659,12 @@ class TwitchTab(QWidget):
                 info_text += f" <span style='color: gray;'>(ID: {user_id})</span>"
             self.lbl_status.setText(info_text)
             self.btn_login.setText("🔄 Re-link Account")
-            self.btn_login.setStyleSheet("background-color: #2e6930; color: white; font-weight: bold; padding: 5px 12px; border-radius: 4px;")
+            self.btn_login.setStyleSheet("background-color: #2e6930; color: white; font-weight: bold; padding: 3px 10px; border-radius: 4px;")
             self.btn_unlink.setVisible(True)
         else:
             self.lbl_status.setText("⚪ Status: <b>Not Connected</b> (Click below to link Twitch)")
             self.btn_login.setText("🔑 Login / Link with Twitch Account")
-            self.btn_login.setStyleSheet("background-color: #6441a5; color: white; font-weight: bold; padding: 5px 12px; border-radius: 4px;")
+            self.btn_login.setStyleSheet("background-color: #6441a5; color: white; font-weight: bold; padding: 3px 10px; border-radius: 4px;")
             self.btn_unlink.setVisible(False)
 
     def start_twitch_oauth(self):
@@ -869,8 +869,8 @@ class SystemTab(QWidget):
                 font-weight: bold;
                 border: 1px solid #3d8b40;
                 border-radius: 5px;
-                min-height: 28px;
-                padding: 6px 14px;
+                min-height: 22px;
+                padding: 4px 12px;
             }
             QPushButton#btn_download_update:hover {
                 background-color: #38843a;
