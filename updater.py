@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.4.3"
+CURRENT_VERSION = "2.5.0"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
