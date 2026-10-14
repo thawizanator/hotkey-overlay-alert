@@ -18,6 +18,7 @@ from updater import (UpdateCheckWorker, DownloadWorker, apply_update_and_restart
                      CURRENT_VERSION, is_newer_version, GITHUB_REPO)
 from debug_logger import log_debug, get_crash_log_path, get_debug_log_path
 import theme_manager
+from bug_report_dialog import BugReportDialog
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -894,6 +895,21 @@ class SystemTab(QWidget):
         """)
         lay_upd.addWidget(self.progress_bar)
 
+        # Update Channel Selection
+        chan_row = QHBoxLayout()
+        chan_row.addWidget(QLabel("Update Channel:"))
+        self.combo_channel = QComboBox()
+        self.combo_channel.addItem("Stable (Recommended)", "stable")
+        self.combo_channel.addItem("Beta / Early Access (v3.0 Preview)", "beta")
+        cur_chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        idx_chan = self.combo_channel.findData(cur_chan)
+        if idx_chan >= 0:
+            self.combo_channel.setCurrentIndex(idx_chan)
+        self.combo_channel.currentIndexChanged.connect(self.on_channel_selection_changed)
+        chan_row.addWidget(self.combo_channel)
+        chan_row.addStretch()
+        lay_upd.addLayout(chan_row)
+
         # Checkboxes
         self.chk_check_startup = QCheckBox("Check for updates automatically on startup")
         self.chk_check_startup.setChecked(getattr(self.main_win.overlay, "check_updates_on_startup", True))
@@ -962,6 +978,11 @@ class SystemTab(QWidget):
         diag_btns.addWidget(self.btn_open_appdata)
         lay_diag.addLayout(diag_btns)
 
+        self.btn_bug_report = QPushButton("🐞 Submit Bug Report...")
+        self.btn_bug_report.setObjectName("btn_bug_report")
+        self.btn_bug_report.clicked.connect(self.open_bug_report_dialog)
+        lay_diag.addWidget(self.btn_bug_report)
+
         layout.addWidget(grp_diag)
 
         # Group 4: About
@@ -987,6 +1008,16 @@ class SystemTab(QWidget):
         self.main_win.overlay.save_settings()
         self.main_win.refresh_theme()
 
+    def on_channel_selection_changed(self, idx):
+        val = self.combo_channel.currentData()
+        self.main_win.overlay.update_channel = val
+        self.main_win.overlay.save_settings()
+        self.check_updates_silently()
+
+    def open_bug_report_dialog(self):
+        dlg = BugReportDialog(self, self.main_win.overlay)
+        dlg.exec()
+
     def refresh_theme_labels(self, effective):
         sec_color = theme_manager.get_secondary_text_color(effective)
         tert_color = theme_manager.get_tertiary_text_color(effective)
@@ -999,6 +1030,38 @@ class SystemTab(QWidget):
         else:
             self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>Locked to <b>Light Theme</b>.</span>")
 
+        if hasattr(self, "btn_bug_report"):
+            if effective == "light":
+                self.btn_bug_report.setStyleSheet("""
+                    QPushButton#btn_bug_report {
+                        background-color: #f3e8ff;
+                        color: #6b21a8;
+                        border: 1px solid #c084fc;
+                        border-radius: 5px;
+                        font-weight: 600;
+                        padding: 4px 12px;
+                        min-height: 20px;
+                    }
+                    QPushButton#btn_bug_report:hover {
+                        background-color: #e9d5ff;
+                    }
+                """)
+            else:
+                self.btn_bug_report.setStyleSheet("""
+                    QPushButton#btn_bug_report {
+                        background-color: #2b1f40;
+                        color: #e9d5ff;
+                        border: 1px solid #7c3aed;
+                        border-radius: 5px;
+                        font-weight: 600;
+                        padding: 4px 12px;
+                        min-height: 20px;
+                    }
+                    QPushButton#btn_bug_report:hover {
+                        background-color: #3b2d54;
+                    }
+                """)
+
         self.lbl_about_txt.setText(
             f"<b>HotKey Overlay Alert</b> – Version {CURRENT_VERSION}<br>"
             "Created by <b>ThaWizanator</b> • <a href='https://twitch.tv/thawizanator' style='color: #9146ff;'>twitch.tv/thawizanator</a><br>"
@@ -1006,7 +1069,8 @@ class SystemTab(QWidget):
         )
 
     def check_updates_silently(self):
-        self.check_worker = UpdateCheckWorker(CURRENT_VERSION)
+        chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        self.check_worker = UpdateCheckWorker(CURRENT_VERSION, channel=chan)
         self.check_worker.update_available.connect(self.on_update_found)
         self.check_worker.up_to_date.connect(self.on_up_to_date)
         self.check_worker.check_error.connect(self.on_check_error)
@@ -1015,7 +1079,8 @@ class SystemTab(QWidget):
     def check_updates_clicked(self):
         self.btn_check_update.setEnabled(False)
         self.lbl_update_status.setText("<span style='color: #a1a1aa;'>Checking GitHub releases...</span>")
-        self.check_worker = UpdateCheckWorker(CURRENT_VERSION)
+        chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        self.check_worker = UpdateCheckWorker(CURRENT_VERSION, channel=chan)
         self.check_worker.update_available.connect(self.on_update_found_interactive)
         self.check_worker.up_to_date.connect(self.on_up_to_date_interactive)
         self.check_worker.check_error.connect(self.on_check_error_interactive)
@@ -1164,7 +1229,7 @@ class SettingsWindow(QWidget):
         self.setObjectName("SettingsWindow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle(f"HotKey Overlay Alert Settings (v{CURRENT_VERSION})")
-        self.setFixedSize(520, 640)
+        self.setFixedSize(520, 680)
         self.setWindowIcon(get_app_icon())
 
         # Main Layout

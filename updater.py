@@ -11,17 +11,44 @@ CURRENT_VERSION = "2.4.3"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
+import re
+
 def parse_version(v_str):
     if not v_str:
-        return (0, 0, 0)
+        return (0, 0, 0, 0, 0)
     cleaned = v_str.strip().lstrip("vV")
+    
+    pre_tag = ""
+    if "-" in cleaned:
+        main_part, pre_tag = cleaned.split("-", 1)
+    else:
+        main_part = cleaned
+        
     parts = []
-    for p in cleaned.split("."):
+    for p in main_part.split("."):
         digits = "".join(c for c in p if c.isdigit())
         parts.append(int(digits) if digits else 0)
     while len(parts) < 3:
         parts.append(0)
-    return tuple(parts[:3])
+    major, minor, patch = parts[:3]
+    
+    if not pre_tag:
+        return (major, minor, patch, 999, 0)
+        
+    pre_lower = pre_tag.lower()
+    pre_type = 1
+    if "rc" in pre_lower:
+        pre_type = 3
+    elif "beta" in pre_lower:
+        pre_type = 2
+    elif "dev" in pre_lower:
+        pre_type = 0
+    elif "alpha" in pre_lower or "preview" in pre_lower:
+        pre_type = 1
+        
+    pre_nums = re.findall(r'\d+', pre_lower)
+    pre_num = int(pre_nums[-1]) if pre_nums else 0
+    return (major, minor, patch, pre_type, pre_num)
 
 def is_newer_version(latest_tag, current_ver=CURRENT_VERSION):
     return parse_version(latest_tag) > parse_version(current_ver)
@@ -31,31 +58,60 @@ class UpdateCheckWorker(QThread):
     up_to_date = pyqtSignal(str)                       # current_version
     check_error = pyqtSignal(str)                      # error message
 
-    def __init__(self, current_version=CURRENT_VERSION):
+    def __init__(self, current_version=CURRENT_VERSION, channel="stable"):
         super().__init__()
         self.current_version = current_version
+        self.channel = str(channel or "stable").lower()
 
     def run(self):
         try:
-            req = urllib.request.Request(API_URL, headers={"User-Agent": "HotKeyOverlayAlert"})
-            with urllib.request.urlopen(req, timeout=10) as res:
-                data = json.loads(res.read().decode("utf-8"))
-                tag_name = data.get("tag_name", "")
-                release_url = data.get("html_url", "")
-                notes = data.get("body", "")
-
-                download_url = ""
-                for asset in data.get("assets", []):
-                    name = asset.get("name", "").lower()
-                    if name.endswith(".exe"):
-                        download_url = asset.get("browser_download_url", "")
-                        if "hotkeyoverlayalert" in name:
-                            break
-
-                if is_newer_version(tag_name, self.current_version):
-                    self.update_available.emit(tag_name, release_url, download_url, notes)
-                else:
-                    self.up_to_date.emit(self.current_version)
+            if self.channel == "beta":
+                api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=10"
+                req = urllib.request.Request(api_url, headers={"User-Agent": "HotKeyOverlayAlert"})
+                with urllib.request.urlopen(req, timeout=10) as res:
+                    releases = json.loads(res.read().decode("utf-8"))
+                    if not isinstance(releases, list) or not releases:
+                        self.up_to_date.emit(self.current_version)
+                        return
+                    valid = [r for r in releases if not r.get("draft", False)]
+                    if not valid:
+                        self.up_to_date.emit(self.current_version)
+                        return
+                    newest = max(valid, key=lambda r: parse_version(r.get("tag_name", "")))
+                    tag_name = newest.get("tag_name", "")
+                    release_url = newest.get("html_url", "")
+                    notes = newest.get("body", "")
+                    download_url = ""
+                    for asset in newest.get("assets", []):
+                        name = asset.get("name", "").lower()
+                        if name.endswith(".exe"):
+                            download_url = asset.get("browser_download_url", "")
+                            if "hotkeyoverlayalert" in name:
+                                break
+                    if is_newer_version(tag_name, self.current_version):
+                        self.update_available.emit(tag_name, release_url, download_url, notes)
+                    else:
+                        self.up_to_date.emit(self.current_version)
+            else:
+                # Stable channel: GitHub's /releases/latest automatically filters out pre-releases
+                api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+                req = urllib.request.Request(api_url, headers={"User-Agent": "HotKeyOverlayAlert"})
+                with urllib.request.urlopen(req, timeout=10) as res:
+                    data = json.loads(res.read().decode("utf-8"))
+                    tag_name = data.get("tag_name", "")
+                    release_url = data.get("html_url", "")
+                    notes = data.get("body", "")
+                    download_url = ""
+                    for asset in data.get("assets", []):
+                        name = asset.get("name", "").lower()
+                        if name.endswith(".exe"):
+                            download_url = asset.get("browser_download_url", "")
+                            if "hotkeyoverlayalert" in name:
+                                break
+                    if is_newer_version(tag_name, self.current_version):
+                        self.update_available.emit(tag_name, release_url, download_url, notes)
+                    else:
+                        self.up_to_date.emit(self.current_version)
         except Exception as e:
             self.check_error.emit(str(e))
 

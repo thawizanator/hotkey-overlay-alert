@@ -499,6 +499,7 @@ class RedBorderOverlay(QMainWindow):
         self.debug_mode = False
         self.check_updates_on_startup = True
         self.auto_update_enabled = False
+        self.update_channel = "stable"
         self.theme_preference = "system"
         self.twitch_channel = "thawizanator"
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
@@ -531,6 +532,7 @@ class RedBorderOverlay(QMainWindow):
                     self.debug_mode = d.get("debug_mode", False)
                     self.check_updates_on_startup = d.get("check_updates_on_startup", True)
                     self.auto_update_enabled = d.get("auto_update_enabled", False)
+                    self.update_channel = d.get("update_channel", "stable")
                     self.theme_preference = d.get("theme_preference", "system")
                     set_debug_mode(self.debug_mode)
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
@@ -574,6 +576,7 @@ class RedBorderOverlay(QMainWindow):
             "debug_mode": self.debug_mode,
             "check_updates_on_startup": self.check_updates_on_startup,
             "auto_update_enabled": self.auto_update_enabled,
+            "update_channel": getattr(self, "update_channel", "stable"),
             "theme_preference": getattr(self, "theme_preference", "system"),
             "twitch_channel": self.twitch_channel,
             "twitch_client_id": self.twitch_client_id,
@@ -608,17 +611,19 @@ class RedBorderOverlay(QMainWindow):
         self.save_settings()
         log_debug("SYSTEM", f"Debug logging toggled: {'ENABLED' if self.debug_mode else 'DISABLED'}")
 
-    def set_update_settings(self, check_on_startup=None, auto_update=None):
+    def set_update_settings(self, check_on_startup=None, auto_update=None, channel=None):
         if check_on_startup is not None:
             self.check_updates_on_startup = bool(check_on_startup)
         if auto_update is not None:
             self.auto_update_enabled = bool(auto_update)
+        if channel is not None:
+            self.update_channel = str(channel)
         self.save_settings()
-        log_debug("SYSTEM", f"Update settings saved: check_on_startup={self.check_updates_on_startup}, auto_update={self.auto_update_enabled}")
+        log_debug("SYSTEM", f"Update settings saved: check_on_startup={self.check_updates_on_startup}, auto_update={self.auto_update_enabled}, channel={self.update_channel}")
 
     def run_startup_update_check(self):
-        log_debug("UPDATER", "Running startup update check...")
-        self.startup_check_worker = UpdateCheckWorker(CURRENT_VERSION)
+        log_debug("UPDATER", f"Running startup update check (channel: {getattr(self, 'update_channel', 'stable')})...")
+        self.startup_check_worker = UpdateCheckWorker(CURRENT_VERSION, channel=getattr(self, "update_channel", "stable"))
         self.startup_check_worker.update_available.connect(self.on_startup_update_found)
         self.startup_check_worker.start()
 

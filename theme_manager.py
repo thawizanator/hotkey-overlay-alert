@@ -115,7 +115,7 @@ def get_theme_palette(theme: str) -> QPalette:
 
 LIGHT_STYLESHEET = """
     /* Light Theme */
-    QWidget#SettingsWindow, QDialog#SettingsWindow {
+    QWidget#SettingsWindow, QDialog#SettingsWindow, QDialog {
         background-color: #f4f4f6;
         color: #18181b;
     }
@@ -230,15 +230,26 @@ LIGHT_STYLESHEET = """
         selection-color: #ffffff;
         outline: none;
     }
-    QLineEdit {
+    QLineEdit, QTextEdit, QListWidget {
         background-color: #ffffff;
         color: #18181b;
         border: 1px solid #d4d4d8;
         border-radius: 4px;
         padding: 4px 8px;
     }
-    QLineEdit:focus {
+    QLineEdit:focus, QTextEdit:focus, QListWidget:focus {
         border: 1px solid #9146ff;
+    }
+    QListWidget::item {
+        padding: 4px 6px;
+        border-radius: 3px;
+    }
+    QListWidget::item:selected {
+        background-color: #9146ff;
+        color: #ffffff;
+    }
+    QListWidget::item:hover:!selected {
+        background-color: #e4e4e7;
     }
     QSlider::groove:horizontal {
         height: 6px;
@@ -299,7 +310,7 @@ LIGHT_STYLESHEET = """
 
 DARK_STYLESHEET = """
     /* Dark Theme */
-    QWidget#SettingsWindow, QDialog#SettingsWindow {
+    QWidget#SettingsWindow, QDialog#SettingsWindow, QDialog {
         background-color: #121214;
         color: #efeff1;
     }
@@ -414,15 +425,26 @@ DARK_STYLESHEET = """
         selection-color: #ffffff;
         outline: none;
     }
-    QLineEdit {
+    QLineEdit, QTextEdit, QListWidget {
         background-color: #0e0e10;
         color: #efeff1;
         border: 1px solid #3f3f46;
         border-radius: 4px;
         padding: 4px 8px;
     }
-    QLineEdit:focus {
+    QLineEdit:focus, QTextEdit:focus, QListWidget:focus {
         border: 1px solid #9146ff;
+    }
+    QListWidget::item {
+        padding: 4px 6px;
+        border-radius: 3px;
+    }
+    QListWidget::item:selected {
+        background-color: #9146ff;
+        color: #ffffff;
+    }
+    QListWidget::item:hover:!selected {
+        background-color: #27272a;
     }
     QSlider::groove:horizontal {
         height: 6px;
