@@ -204,23 +204,24 @@ LIGHT_STYLESHEET = """
         border-color: #9146ff;
         image: url("__CHECKMARK_URL__");
     }
-    QComboBox {
+    QComboBox, QSpinBox, QDateTimeEdit {
         background-color: #ffffff;
         color: #18181b;
         border: 1px solid #d4d4d8;
-        border-radius: 5px;
-        padding: 4px 8px;
-        min-height: 24px;
+        border-radius: 4px;
+        padding: 2px 6px;
+        min-height: 18px;
+        max-height: 22px;
     }
-    QComboBox:hover {
+    QComboBox:hover, QSpinBox:hover, QDateTimeEdit:hover {
         border-color: #a1a1aa;
     }
-    QComboBox:focus {
+    QComboBox:focus, QSpinBox:focus, QDateTimeEdit:focus {
         border: 1px solid #9146ff;
     }
     QComboBox::drop-down {
         border: none;
-        width: 20px;
+        width: 18px;
     }
     QComboBox QAbstractItemView {
         background-color: #ffffff;
@@ -449,23 +450,24 @@ DARK_STYLESHEET = """
         border-color: #9146ff;
         image: url("__CHECKMARK_URL__");
     }
-    QComboBox {
+    QComboBox, QSpinBox, QDateTimeEdit {
         background-color: #27272a;
         color: #efeff1;
         border: 1px solid #3f3f46;
-        border-radius: 5px;
-        padding: 4px 8px;
-        min-height: 24px;
+        border-radius: 4px;
+        padding: 2px 6px;
+        min-height: 18px;
+        max-height: 22px;
     }
-    QComboBox:hover {
+    QComboBox:hover, QSpinBox:hover, QDateTimeEdit:hover {
         border-color: #52525b;
     }
-    QComboBox:focus {
+    QComboBox:focus, QSpinBox:focus, QDateTimeEdit:focus {
         border: 1px solid #9146ff;
     }
     QComboBox::drop-down {
         border: none;
-        width: 20px;
+        width: 18px;
     }
     QComboBox QAbstractItemView {
         background-color: #18181b;

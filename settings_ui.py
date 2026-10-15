@@ -833,13 +833,13 @@ class SystemTab(QWidget):
         self.latest_release_url = None
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
+        layout.setContentsMargins(12, 8, 12, 8)
 
         # Group 1: Software Updates
         grp_upd = QGroupBox("Application Updates")
         lay_upd = QVBoxLayout(grp_upd)
-        lay_upd.setSpacing(8)
+        lay_upd.setSpacing(5)
 
         status_box = QHBoxLayout()
         self.lbl_cur_ver = QLabel(f"Installed Version: <b>v{CURRENT_VERSION}</b>")
@@ -899,6 +899,7 @@ class SystemTab(QWidget):
 
         # Update Channel Selection
         chan_row = QHBoxLayout()
+        chan_row.setSpacing(10)
         chan_row.addWidget(QLabel("Update Channel:"))
         self.combo_channel = QComboBox()
         self.combo_channel.addItem("Stable (Recommended)", "stable")
@@ -909,13 +910,12 @@ class SystemTab(QWidget):
             self.combo_channel.setCurrentIndex(idx_chan)
         self.combo_channel.currentIndexChanged.connect(self.on_channel_selection_changed)
         chan_row.addWidget(self.combo_channel)
+
+        self.lbl_channel_note = QLabel()
+        self._update_channel_description(cur_chan)
+        chan_row.addWidget(self.lbl_channel_note)
         chan_row.addStretch()
         lay_upd.addLayout(chan_row)
-
-        self.lbl_channel_desc = QLabel()
-        self.lbl_channel_desc.setWordWrap(True)
-        self._update_channel_description(cur_chan)
-        lay_upd.addWidget(self.lbl_channel_desc)
 
         # Checkboxes
         self.chk_check_startup = QCheckBox("Check for updates automatically on startup")
@@ -938,9 +938,10 @@ class SystemTab(QWidget):
         # Group 2: Appearance & Theme
         grp_theme = QGroupBox("Interface Appearance && Theme")
         lay_theme = QVBoxLayout(grp_theme)
-        lay_theme.setSpacing(6)
+        lay_theme.setSpacing(5)
 
         theme_row = QHBoxLayout()
+        theme_row.setSpacing(10)
         theme_row.addWidget(QLabel("Interface Theme:"))
         self.combo_theme = QComboBox()
         self.combo_theme.addItem("Auto (Match Windows Theme)", "system")
@@ -953,18 +954,17 @@ class SystemTab(QWidget):
             self.combo_theme.setCurrentIndex(idx)
         self.combo_theme.currentIndexChanged.connect(self.on_theme_selection_changed)
         theme_row.addWidget(self.combo_theme)
-        theme_row.addStretch()
-        lay_theme.addLayout(theme_row)
 
         self.lbl_theme_info = QLabel()
-        self.lbl_theme_info.setWordWrap(True)
-        lay_theme.addWidget(self.lbl_theme_info)
+        theme_row.addWidget(self.lbl_theme_info)
+        theme_row.addStretch()
+        lay_theme.addLayout(theme_row)
         layout.addWidget(grp_theme)
 
         # Group 3: Diagnostics & Troubleshooting
         grp_diag = QGroupBox("Diagnostics && Logs")
         lay_diag = QVBoxLayout(grp_diag)
-        lay_diag.setSpacing(8)
+        lay_diag.setSpacing(5)
 
         self.chk_debug = QCheckBox("Enable Debug Logging")
         self.chk_debug.setChecked(getattr(self.main_win.overlay, "debug_mode", False))
@@ -1026,17 +1026,15 @@ class SystemTab(QWidget):
         self.check_updates_silently()
 
     def _update_channel_description(self, chan):
-        if not hasattr(self, "lbl_channel_desc") or not self.lbl_channel_desc:
+        if not hasattr(self, "lbl_channel_note") or not self.lbl_channel_note:
             return
         if chan == "beta":
-            self.lbl_channel_desc.setText(
-                "<span style='color: #eab308; font-size: 11px;'>● <b>Beta / Early Access Channel:</b> "
-                "Receives pre-release builds, experimental features, and v3.0 roadmap previews.</span>"
+            self.lbl_channel_note.setText(
+                "<span style='color: #eab308; font-size: 11px;'>● Preview builds & v3.0 features</span>"
             )
         else:
-            self.lbl_channel_desc.setText(
-                "<span style='color: #71717a; font-size: 11px;'>● <b>Stable Channel:</b> "
-                "Receives official, fully tested milestone releases (recommended for normal streaming).</span>"
+            self.lbl_channel_note.setText(
+                "<span style='color: #71717a; font-size: 11px;'>● Official milestone releases</span>"
             )
 
     def open_bug_report_dialog(self):
@@ -1049,11 +1047,11 @@ class SystemTab(QWidget):
         active_os = theme_manager.detect_system_theme().capitalize()
         pref = getattr(self.main_win.overlay, "theme_preference", "system")
         if pref == "system":
-            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>Matching Windows system theme (<b>{active_os} Mode</b>). Live-adapts if your system theme changes.</span>")
+            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>● Matching Windows (<b>{active_os} Mode</b>)</span>")
         elif pref == "dark":
-            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>Locked to <b>Dark Theme</b>.</span>")
+            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>● <b>Dark Theme</b></span>")
         else:
-            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>Locked to <b>Light Theme</b>.</span>")
+            self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>● <b>Light Theme</b></span>")
 
         if hasattr(self, "btn_bug_report"):
             if effective == "light":
