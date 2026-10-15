@@ -306,6 +306,56 @@ LIGHT_STYLESHEET = """
         background-color: #e4e4e7;
         margin: 4px 6px;
     }
+    /* Modern Left Sidebar Styles (Light) */
+    QWidget#sidebarContainer {
+        background-color: #f0f0f3;
+        border-right: 1px solid #d4d4d8;
+    }
+    QLabel#sidebarBrand {
+        color: #18181b;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    QLabel#sidebarSub {
+        color: #71717a;
+        font-size: 11px;
+    }
+    QLabel#navCatLabel {
+        color: #71717a;
+        font-size: 10px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        padding-top: 8px;
+        padding-bottom: 2px;
+        padding-left: 6px;
+    }
+    QPushButton[isNav="true"] {
+        text-align: left;
+        background-color: transparent;
+        color: #52525b;
+        border: none;
+        border-left: 3px solid transparent;
+        border-radius: 4px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        min-height: 20px;
+    }
+    QPushButton[isNav="true"]:hover:!checked {
+        background-color: #e4e4e7;
+        color: #18181b;
+    }
+    QPushButton[isNav="true"]:checked {
+        background-color: #ffffff;
+        color: #18181b;
+        border-left: 3px solid #9146ff;
+    }
+    QLabel#contentHeaderLabel {
+        color: #18181b;
+        font-size: 15px;
+        font-weight: bold;
+        padding-bottom: 4px;
+    }
 """
 
 DARK_STYLESHEET = """
@@ -501,6 +551,56 @@ DARK_STYLESHEET = """
         background-color: #3f3f46;
         margin: 4px 6px;
     }
+    /* Modern Left Sidebar Styles (Dark) */
+    QWidget#sidebarContainer {
+        background-color: #18181b;
+        border-right: 1px solid #2d2d30;
+    }
+    QLabel#sidebarBrand {
+        color: #efeff1;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    QLabel#sidebarSub {
+        color: #a1a1aa;
+        font-size: 11px;
+    }
+    QLabel#navCatLabel {
+        color: #a1a1aa;
+        font-size: 10px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        padding-top: 8px;
+        padding-bottom: 2px;
+        padding-left: 6px;
+    }
+    QPushButton[isNav="true"] {
+        text-align: left;
+        background-color: transparent;
+        color: #a1a1aa;
+        border: none;
+        border-left: 3px solid transparent;
+        border-radius: 4px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        min-height: 20px;
+    }
+    QPushButton[isNav="true"]:hover:!checked {
+        background-color: #27272a;
+        color: #efeff1;
+    }
+    QPushButton[isNav="true"]:checked {
+        background-color: #27272a;
+        color: #ffffff;
+        border-left: 3px solid #9146ff;
+    }
+    QLabel#contentHeaderLabel {
+        color: #efeff1;
+        font-size: 15px;
+        font-weight: bold;
+        padding-bottom: 4px;
+    }
 """
 
 def get_theme_stylesheet(theme: str) -> str:
@@ -554,8 +654,15 @@ def apply_theme_to_window(window: QWidget, preference: str = "system") -> str:
     if window:
         window.setPalette(palette)
         window.setStyleSheet(stylesheet)
-        if hasattr(window, "tabs") and window.tabs:
-            window.tabs.setStyleSheet(stylesheet)
+        if hasattr(window, "tabs") and window.tabs and hasattr(window.tabs, "setStyleSheet"):
+            try:
+                window.tabs.setStyleSheet(stylesheet)
+            except Exception:
+                pass
+        if hasattr(window, "stacked_pages") and window.stacked_pages:
+            window.stacked_pages.setStyleSheet(stylesheet)
+        if hasattr(window, "sidebar_widget") and window.sidebar_widget:
+            window.sidebar_widget.setStyleSheet(stylesheet)
         
         # Apply Windows 10/11 title bar dark mode
         try:

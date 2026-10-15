@@ -10,7 +10,8 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QComboBox, QPushButton, QSlider, QColorDialog, 
                              QMessageBox, QLineEdit, QTabWidget, QCheckBox, 
-                             QGroupBox, QProgressBar, QDialog)
+                             QGroupBox, QProgressBar, QDialog, QButtonGroup, 
+                             QStackedWidget, QFrame)
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -1220,61 +1221,274 @@ class SystemTab(QWidget):
 
 
 # ==============================================================================
-# MAIN SETTINGS CONTAINER (5-Tab Modern Layout)
 # ==============================================================================
+# MAIN SETTINGS CONTAINER (Modern Left Sidebar Layout - v3.0 Architecture)
+# ==============================================================================
+
+class TabsAdapter:
+    """Compatibility adapter emulating QTabWidget interface for external callers."""
+    def __init__(self, win):
+        self.win = win
+
+    def setCurrentIndex(self, idx):
+        self.win.set_view_index(idx)
+
+    def currentIndex(self):
+        return self.win.stacked_pages.currentIndex()
+
+    def count(self):
+        return self.win.stacked_pages.count()
+
+    def currentWidget(self):
+        return self.win.stacked_pages.currentWidget()
+
+    def widget(self, idx):
+        return self.win.stacked_pages.widget(idx)
+
+    def setStyleSheet(self, style):
+        pass
+
+
+PAGE_TITLES = {
+    0: "🏠  Main Overlay & Streaming Mode",
+    1: "🖥️  Multi-Monitor Configuration",
+    2: "🎨  Alert Overlay Styles & Effects",
+    3: "🟣  Twitch Channel & Macro Hotkeys",
+    4: "⚙️  System, Updates & Diagnostics",
+    5: "⏱️  Chronos Timers (Phase 2 Preview)",
+    6: "📜  Rotating Text & Trivia Cycler (Phase 3 Preview)",
+    7: "🎬  Stream Director (Phase 4 Preview)"
+}
+
+
 class SettingsWindow(QWidget):
     def __init__(self, overlay_app):
         super().__init__()
         self.overlay = overlay_app
         self.setObjectName("SettingsWindow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setWindowTitle(f"HotKey Overlay Alert Settings (v{CURRENT_VERSION})")
-        self.setFixedSize(520, 680)
+        self.setWindowTitle(f"HotKey Overlay Alert - Streamer Hub (v{CURRENT_VERSION})")
+        self.setFixedSize(780, 680)
         self.setWindowIcon(get_app_icon())
 
-        # Main Layout
-        root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(10, 10, 10, 10)
-        root_layout.setSpacing(8)
+        # Root Horizontal Layout (Sidebar + Content Area)
+        root_layout = QHBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-        # Tab Widget
-        self.tabs = QTabWidget()
+        # ------------------ LEFT SIDEBAR ------------------
+        self.sidebar_widget = QWidget()
+        self.sidebar_widget.setObjectName("sidebarContainer")
+        self.sidebar_widget.setFixedWidth(210)
+        sidebar_layout = QVBoxLayout(self.sidebar_widget)
+        sidebar_layout.setContentsMargins(12, 14, 12, 14)
+        sidebar_layout.setSpacing(4)
 
-        # Add the 5 requested tabs
+        # App Brand Header
+        lbl_brand = QLabel("<b>HotKey Overlay</b>")
+        lbl_brand.setObjectName("sidebarBrand")
+        lbl_sub = QLabel("Streamer Control Hub")
+        lbl_sub.setObjectName("sidebarSub")
+        sidebar_layout.addWidget(lbl_brand)
+        sidebar_layout.addWidget(lbl_sub)
+        sidebar_layout.addSpacing(6)
+
+        # Exclusive navigation button group
+        self.nav_button_group = QButtonGroup(self)
+        self.nav_button_group.setExclusive(True)
+
+        # Category 1: DISPLAY & ALERTS
+        lbl_cat_display = QLabel("DISPLAY & ALERTS")
+        lbl_cat_display.setObjectName("navCatLabel")
+        sidebar_layout.addWidget(lbl_cat_display)
+
+        self.btn_nav_main = self._create_nav_btn("🏠  Main Overlay", 0)
+        self.btn_nav_monitor = self._create_nav_btn("🖥️  Monitor Setup", 1)
+        self.btn_nav_alert = self._create_nav_btn("🎨  Alert Overlay", 2)
+        sidebar_layout.addWidget(self.btn_nav_main)
+        sidebar_layout.addWidget(self.btn_nav_monitor)
+        sidebar_layout.addWidget(self.btn_nav_alert)
+
+        # Category 2: STREAM TOOLS
+        lbl_cat_tools = QLabel("STREAM TOOLS")
+        lbl_cat_tools.setObjectName("navCatLabel")
+        sidebar_layout.addWidget(lbl_cat_tools)
+
+        self.btn_nav_twitch = self._create_nav_btn("🟣  Twitch Macros", 3)
+        self.btn_nav_chronos = self._create_nav_btn("⏱️  Chronos Timers", 5)
+        self.btn_nav_trivia = self._create_nav_btn("📜  Rotating Text", 6)
+        self.btn_nav_director = self._create_nav_btn("🎬  Stream Director", 7)
+        sidebar_layout.addWidget(self.btn_nav_twitch)
+        sidebar_layout.addWidget(self.btn_nav_chronos)
+        sidebar_layout.addWidget(self.btn_nav_trivia)
+        sidebar_layout.addWidget(self.btn_nav_director)
+
+        # Category 3: SYSTEM & CONFIG
+        lbl_cat_sys = QLabel("APP & CONFIG")
+        lbl_cat_sys.setObjectName("navCatLabel")
+        sidebar_layout.addWidget(lbl_cat_sys)
+
+        self.btn_nav_system = self._create_nav_btn("⚙️  System && Logs", 4)
+        sidebar_layout.addWidget(self.btn_nav_system)
+
+        sidebar_layout.addStretch()
+
+        # Sidebar Footer
+        self.lbl_channel_badge = QLabel()
+        self.lbl_channel_badge.setStyleSheet("font-size: 11px; font-weight: bold; padding-left: 4px;")
+        self.lbl_v = QLabel()
+        self.lbl_v.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_v.setStyleSheet("font-size: 10px; padding-left: 4px;")
+        sidebar_layout.addWidget(self.lbl_channel_badge)
+        sidebar_layout.addWidget(self.lbl_v)
+
+        root_layout.addWidget(self.sidebar_widget)
+
+        # Vertical Divider Frame
+        self.divider = QFrame()
+        self.divider.setFrameShape(QFrame.Shape.VLine)
+        self.divider.setFrameShadow(QFrame.Shadow.Plain)
+        self.divider.setObjectName("sidebarDivider")
+        root_layout.addWidget(self.divider)
+
+        # ------------------ RIGHT CONTENT AREA ------------------
+        self.content_area = QWidget()
+        content_layout = QVBoxLayout(self.content_area)
+        content_layout.setContentsMargins(16, 14, 16, 12)
+        content_layout.setSpacing(8)
+
+        # Section Header Label
+        self.lbl_page_title = QLabel("🏠  Main Overlay & Streaming Mode")
+        self.lbl_page_title.setObjectName("contentHeaderLabel")
+        content_layout.addWidget(self.lbl_page_title)
+
+        # Stacked Pages
+        self.stacked_pages = QStackedWidget()
+
+        # Instantiate 5 core tabs
         self.tab_main = MainTab(self)
         self.tab_monitor = MonitorTab(self)
         self.tab_alert = AlertOverlayTab(self)
         self.tab_twitch = TwitchTab(self)
         self.tab_system = SystemTab(self)
 
-        self.tabs.addTab(self.tab_main, "🏠 Main")
-        self.tabs.addTab(self.tab_monitor, "🖥️ Monitor")
-        self.tabs.addTab(self.tab_alert, "🎨 Alert Overlay")
-        self.tabs.addTab(self.tab_twitch, "🟣 Twitch")
-        self.tabs.addTab(self.tab_system, "⚙️ System")
+        self.stacked_pages.addWidget(self.tab_main)      # 0
+        self.stacked_pages.addWidget(self.tab_monitor)   # 1
+        self.stacked_pages.addWidget(self.tab_alert)     # 2
+        self.stacked_pages.addWidget(self.tab_twitch)    # 3
+        self.stacked_pages.addWidget(self.tab_system)    # 4
 
-        root_layout.addWidget(self.tabs)
+        # Add preview placeholder pages for Phase 2, 3, 4
+        self.tab_chronos_preview = self._create_preview_page(
+            "⏱️  Chronos Timers",
+            "Multi-mode live timing suite broadcasting directly to OBS & Streamlabs text sources.",
+            "Phase 2 Milestone (v3.0.0-Beta 1)",
+            [
+                "Stopwatch / Count Up (indefinite or target cap)",
+                "Countdown Timer (duration with completion chime/text)",
+                "Countdown to Target Date & Time (subathons, releases)",
+                "Count Up Since Target Date & Time (milestones)",
+                "Real-time write to %APPDATA%\\ThaWizanator_Overlay\\obs_timer.txt"
+            ]
+        )
+        self.tab_trivia_preview = self._create_preview_page(
+            "📜  Rotating Text & Trivia Cycler",
+            "Auto-cycle stream notes, trivia questions, and rules directly into OBS.",
+            "Phase 3 Milestone (v3.0.0-Beta 2)",
+            [
+                "Custom line manager (add, edit, reorder, import from .txt)",
+                "Interval timer (rotate lines every 15s, 30s, 60s)",
+                "Sequential (1➔2➔3) and Shuffle / Trivia modes",
+                "Real-time write to %APPDATA%\\ThaWizanator_Overlay\\obs_text_cycler.txt"
+            ]
+        )
+        self.tab_director_preview = self._create_preview_page(
+            "🎬  Stream Director",
+            "Remote OBS & Streamlabs control for channel moderators and co-hosts.",
+            "Phase 4 Milestone (v3.0.0-RC)",
+            [
+                "OBS WebSocket v5 secure remote connection",
+                "Remote Scene Switcher & Source Toggles",
+                "Audio volume controls and mute toggles",
+                "Remotely trigger monitor overlay highlight on streamer's screen"
+            ]
+        )
+        self.stacked_pages.addWidget(self.tab_chronos_preview)   # 5
+        self.stacked_pages.addWidget(self.tab_trivia_preview)    # 6
+        self.stacked_pages.addWidget(self.tab_director_preview)  # 7
+
+        content_layout.addWidget(self.stacked_pages)
 
         # Bottom Action Bar
         bottom_bar = QHBoxLayout()
-        bottom_bar.setContentsMargins(4, 0, 4, 0)
-        self.lbl_v = QLabel()
-        self.lbl_v.setTextFormat(Qt.TextFormat.RichText)
-        bottom_bar.addWidget(self.lbl_v)
+        bottom_bar.setContentsMargins(0, 0, 0, 0)
         bottom_bar.addStretch()
 
         self.btn_close = QPushButton("Close")
         self.btn_close.setFixedWidth(80)
         self.btn_close.clicked.connect(self.close)
         bottom_bar.addWidget(self.btn_close)
-        root_layout.addLayout(bottom_bar)
+        content_layout.addLayout(bottom_bar)
+
+        root_layout.addWidget(self.content_area)
+
+        # Emulate QTabWidget for external callers
+        self.tabs = TabsAdapter(self)
 
         # Compatibility aliases for other modules
         self.view_visual = self.tab_monitor
         self.view_twitch = self.tab_twitch
 
+        # Connect button group clicks
+        self.nav_button_group.buttonClicked.connect(lambda btn: self.set_view_index(self.nav_button_group.id(btn)))
+
+        # Default to Page 0 (Main)
+        self.set_view_index(0)
+
         # Apply initial theme
         self.refresh_theme()
+
+    def _create_nav_btn(self, text, idx):
+        btn = QPushButton(text)
+        btn.setCheckable(True)
+        btn.setProperty("isNav", True)
+        btn.setObjectName(f"nav_btn_{idx}")
+        self.nav_button_group.addButton(btn, idx)
+        return btn
+
+    def _create_preview_page(self, title, description, phase_tag, feature_list):
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(12)
+
+        grp = QGroupBox(f"{title} – Preview")
+        grp_lay = QVBoxLayout(grp)
+        grp_lay.setSpacing(8)
+
+        lbl_badge = QLabel(f"<span style='background-color: #9146ff; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;'>{phase_tag}</span>")
+        grp_lay.addWidget(lbl_badge)
+
+        lbl_desc = QLabel(f"<b>{description}</b>")
+        lbl_desc.setWordWrap(True)
+        grp_lay.addWidget(lbl_desc)
+
+        lbl_feat_hdr = QLabel("<b>Planned Capabilities:</b>")
+        grp_lay.addWidget(lbl_feat_hdr)
+
+        for feat in feature_list:
+            lbl_f = QLabel(f"  •  {feat}")
+            lbl_f.setWordWrap(True)
+            grp_lay.addWidget(lbl_f)
+
+        grp_lay.addSpacing(6)
+        lbl_tip = QLabel("<i>💡 Want to test this tool before the public release? Switch to the <b>Beta / Early Access</b> channel in System settings to get preview updates as soon as they drop!</i>")
+        lbl_tip.setWordWrap(True)
+        grp_lay.addWidget(lbl_tip)
+
+        lay.addWidget(grp)
+        lay.addStretch()
+        return page
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1284,17 +1498,35 @@ class SettingsWindow(QWidget):
         pref = getattr(self.overlay, "theme_preference", "system")
         effective = theme_manager.apply_theme_to_window(self, pref)
         tert = theme_manager.get_tertiary_text_color(effective)
-        self.lbl_v.setText(f"<span style='color: {tert}; font-size: 11px;'>v{CURRENT_VERSION} • ThaWizanator</span>")
+        sec = theme_manager.get_secondary_text_color(effective)
+        chan = getattr(self.overlay, "update_channel", "stable")
+
+        self.lbl_v.setText(f"<span style='color: {tert};'>v{CURRENT_VERSION} • ThaWizanator</span>")
+        if chan == "beta":
+            self.lbl_channel_badge.setText("<span style='color: #eab308; font-size: 11px;'>● Beta Channel</span>")
+        else:
+            self.lbl_channel_badge.setText("<span style='color: #22c55e; font-size: 11px;'>● Stable Channel</span>")
+
+        if hasattr(self, "divider") and self.divider:
+            div_color = "#2d2d30" if effective == "dark" else "#d4d4d8"
+            self.divider.setStyleSheet(f"background-color: {div_color}; border: none; width: 1px;")
+
         if hasattr(self, "tab_main"):
             self.tab_main.refresh_theme_labels(effective)
         if hasattr(self, "tab_monitor"):
+            self.tab_monitor.refresh_monitors()
             self.tab_monitor.refresh_theme_labels(effective)
         if hasattr(self, "tab_system"):
             self.tab_system.refresh_theme_labels(effective)
 
     def set_view_index(self, idx):
-        if idx < self.tabs.count():
-            self.tabs.setCurrentIndex(idx)
+        if 0 <= idx < self.stacked_pages.count():
+            self.stacked_pages.setCurrentIndex(idx)
+            btn = self.nav_button_group.button(idx)
+            if btn:
+                btn.setChecked(True)
+            title = PAGE_TITLES.get(idx, "HotKey Overlay Alert")
+            self.lbl_page_title.setText(title)
 
     def refresh_monitors_box(self, box):
         self.tab_monitor.refresh_monitors()
