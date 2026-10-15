@@ -23,6 +23,7 @@ from twitch_worker import TwitchCommandWorker
 from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_hotkey_display, ICON_PATH, get_app_icon
 from updater import CURRENT_VERSION, UpdateCheckWorker, DownloadWorker, apply_update_and_restart
 import theme_manager
+from chronos_engine import ChronosEngine
 
 def get_app_directory():
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -437,6 +438,7 @@ class RedBorderOverlay(QMainWindow):
         # Check first run status before loading settings or writing files
         self.is_first_run = not os.path.exists(CONFIG_FILE)
         
+        self.chronos_engine = ChronosEngine(self)
         self.load_settings()
         self.is_visible = False
         self.id_windows = []
@@ -551,6 +553,8 @@ class RedBorderOverlay(QMainWindow):
                                 m["hotkey"] = normalize_hotkey(m["hotkey"])
                             if m.get("command") == "/marker":
                                 m["command"] = "/marker [username]"
+                    if hasattr(self, "chronos_engine") and self.chronos_engine and "chronos" in d:
+                        self.chronos_engine.import_settings(d.get("chronos", {}))
             except Exception as e:
                 print(f"Error loading configuration: {e}")
 
@@ -586,6 +590,8 @@ class RedBorderOverlay(QMainWindow):
             "twitch_token_obf": obfuscate(self.twitch_token),
             "twitch_macros": self.twitch_macros
         }
+        if hasattr(self, "chronos_engine") and self.chronos_engine:
+            d["chronos"] = self.chronos_engine.export_settings()
         # Save to primary APPDATA location
         try:
             with open(CONFIG_FILE, 'w') as f:

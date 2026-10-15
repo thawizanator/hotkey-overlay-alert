@@ -20,6 +20,7 @@ from updater import (UpdateCheckWorker, DownloadWorker, apply_update_and_restart
 from debug_logger import log_debug, get_crash_log_path, get_debug_log_path
 import theme_manager
 from bug_report_dialog import BugReportDialog
+from chronos_tab import ChronosTab
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -1255,7 +1256,7 @@ PAGE_TITLES = {
     2: "🎨  Alert Overlay Styles & Effects",
     3: "🟣  Twitch Channel & Macro Hotkeys",
     4: "⚙️  System, Updates & Diagnostics",
-    5: "⏱️  Chronos Timers (Phase 2 Preview)",
+    5: "⏱️  Chronos Live Stream Timers",
     6: "📜  Rotating Text & Trivia Cycler (Phase 3 Preview)",
     7: "🎬  Stream Director (Phase 4 Preview)"
 }
@@ -1378,19 +1379,15 @@ class SettingsWindow(QWidget):
         self.stacked_pages.addWidget(self.tab_twitch)    # 3
         self.stacked_pages.addWidget(self.tab_system)    # 4
 
-        # Add preview placeholder pages for Phase 2, 3, 4
-        self.tab_chronos_preview = self._create_preview_page(
-            "⏱️  Chronos Timers",
-            "Multi-mode live timing suite broadcasting directly to OBS & Streamlabs text sources.",
-            "Phase 2 Milestone (v3.0.0-Beta 1)",
-            [
-                "Stopwatch / Count Up (indefinite or target cap)",
-                "Countdown Timer (duration with completion chime/text)",
-                "Countdown to Target Date & Time (subathons, releases)",
-                "Count Up Since Target Date & Time (milestones)",
-                "Real-time write to %APPDATA%\\ThaWizanator_Overlay\\obs_timer.txt"
-            ]
-        )
+        # Initialize Chronos Timing Suite (Phase 2)
+        chronos_eng = getattr(self.overlay, "chronos_engine", None)
+        if chronos_eng is None:
+            from chronos_engine import ChronosEngine
+            chronos_eng = ChronosEngine(self)
+        self.tab_chronos = ChronosTab(self, chronos_eng)
+        self.stacked_pages.addWidget(self.tab_chronos)          # 5
+
+        # Add preview placeholder pages for Phase 3 and 4
         self.tab_trivia_preview = self._create_preview_page(
             "📜  Rotating Text & Trivia Cycler",
             "Auto-cycle stream notes, trivia questions, and rules directly into OBS.",
@@ -1413,7 +1410,6 @@ class SettingsWindow(QWidget):
                 "Remotely trigger monitor overlay highlight on streamer's screen"
             ]
         )
-        self.stacked_pages.addWidget(self.tab_chronos_preview)   # 5
         self.stacked_pages.addWidget(self.tab_trivia_preview)    # 6
         self.stacked_pages.addWidget(self.tab_director_preview)  # 7
 
@@ -1518,6 +1514,8 @@ class SettingsWindow(QWidget):
             self.tab_monitor.refresh_theme_labels(effective)
         if hasattr(self, "tab_system"):
             self.tab_system.refresh_theme_labels(effective)
+        if hasattr(self, "tab_chronos"):
+            self.tab_chronos.refresh_theme_labels(effective)
 
     def set_view_index(self, idx):
         if 0 <= idx < self.stacked_pages.count():
