@@ -912,6 +912,11 @@ class SystemTab(QWidget):
         chan_row.addStretch()
         lay_upd.addLayout(chan_row)
 
+        self.lbl_channel_desc = QLabel()
+        self.lbl_channel_desc.setWordWrap(True)
+        self._update_channel_description(cur_chan)
+        lay_upd.addWidget(self.lbl_channel_desc)
+
         # Checkboxes
         self.chk_check_startup = QCheckBox("Check for updates automatically on startup")
         self.chk_check_startup.setChecked(getattr(self.main_win.overlay, "check_updates_on_startup", True))
@@ -1014,7 +1019,25 @@ class SystemTab(QWidget):
         val = self.combo_channel.currentData()
         self.main_win.overlay.update_channel = val
         self.main_win.overlay.save_settings()
+        self._update_channel_description(val)
+        self.main_win.refresh_theme()
+        chan_title = "Beta / Early Access" if val == "beta" else "Stable"
+        self.lbl_update_status.setText(f"<span style='color: #eab308;'>Switched to <b>{chan_title}</b> • Checking GitHub...</span>")
         self.check_updates_silently()
+
+    def _update_channel_description(self, chan):
+        if not hasattr(self, "lbl_channel_desc") or not self.lbl_channel_desc:
+            return
+        if chan == "beta":
+            self.lbl_channel_desc.setText(
+                "<span style='color: #eab308; font-size: 11px;'>● <b>Beta / Early Access Channel:</b> "
+                "Receives pre-release builds, experimental features, and v3.0 roadmap previews.</span>"
+            )
+        else:
+            self.lbl_channel_desc.setText(
+                "<span style='color: #71717a; font-size: 11px;'>● <b>Stable Channel:</b> "
+                "Receives official, fully tested milestone releases (recommended for normal streaming).</span>"
+            )
 
     def open_bug_report_dialog(self):
         dlg = BugReportDialog(self, self.main_win.overlay)
@@ -1080,8 +1103,9 @@ class SystemTab(QWidget):
 
     def check_updates_clicked(self):
         self.btn_check_update.setEnabled(False)
-        self.lbl_update_status.setText("<span style='color: #a1a1aa;'>Checking GitHub releases...</span>")
         chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        chan_title = "Beta / Early Access" if chan == "beta" else "Stable"
+        self.lbl_update_status.setText(f"<span style='color: #a1a1aa;'>Checking GitHub releases ({chan_title})...</span>")
         self.check_worker = UpdateCheckWorker(CURRENT_VERSION, channel=chan)
         self.check_worker.update_available.connect(self.on_update_found_interactive)
         self.check_worker.up_to_date.connect(self.on_up_to_date_interactive)
@@ -1099,7 +1123,11 @@ class SystemTab(QWidget):
             self.btn_download_update.setEnabled(True)
 
     def on_up_to_date(self, current_ver):
-        self.lbl_update_status.setText(f"<span style='color: #43b581; font-weight: bold;'>✔️ Up to date (v{current_ver})</span>")
+        chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        if chan == "beta":
+            self.lbl_update_status.setText(f"<span style='color: #eab308; font-weight: bold;'>✔️ Up to date on Beta (v{current_ver})</span>")
+        else:
+            self.lbl_update_status.setText(f"<span style='color: #43b581; font-weight: bold;'>✔️ Up to date on Stable (v{current_ver})</span>")
         self.btn_download_update.setVisible(False)
         self.btn_download_update.setEnabled(False)
 
@@ -1126,7 +1154,16 @@ class SystemTab(QWidget):
     def on_up_to_date_interactive(self, current_ver):
         self.btn_check_update.setEnabled(True)
         self.on_up_to_date(current_ver)
-        QMessageBox.information(self, "Up to Date", f"HotKey Overlay Alert is up to date (version {current_ver}).")
+        chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        chan_title = "Beta / Early Access" if chan == "beta" else "Stable"
+        QMessageBox.information(
+            self,
+            "Update Check Complete",
+            f"<b>HotKey Overlay Alert is up to date!</b><br><br>"
+            f"• <b>Active Channel:</b> {chan_title}<br>"
+            f"• <b>Installed Version:</b> v{current_ver}<br><br>"
+            f"<i>Successfully connected to GitHub releases. There are currently no newer releases available on the {chan_title.lower()} channel.</i>"
+        )
 
     def on_check_error_interactive(self, err_str):
         self.btn_check_update.setEnabled(True)
