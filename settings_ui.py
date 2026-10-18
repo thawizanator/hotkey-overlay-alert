@@ -21,6 +21,7 @@ from debug_logger import log_debug, get_crash_log_path, get_debug_log_path
 import theme_manager
 from bug_report_dialog import BugReportDialog
 from chronos_tab import ChronosTab
+from cycler_tab import CyclerTab
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -1292,7 +1293,7 @@ PAGE_TITLES = {
     3: "🟣  Twitch Channel & Macro Hotkeys",
     4: "⚙️  System, Updates & Diagnostics",
     5: "⏱️  Chronos Live Stream Timers",
-    6: "📜  Rotating Text & Trivia Cycler (Phase 3 Preview)",
+    6: "📜  Rotating Text & Trivia Cycler",
     7: "🎬  Stream Director (Phase 4 Preview)"
 }
 
@@ -1422,18 +1423,15 @@ class SettingsWindow(QWidget):
         self.tab_chronos = ChronosTab(self, chronos_eng)
         self.stacked_pages.addWidget(self.tab_chronos)          # 5
 
-        # Add preview placeholder pages for Phase 3 and 4
-        self.tab_trivia_preview = self._create_preview_page(
-            "📜  Rotating Text & Trivia Cycler",
-            "Auto-cycle stream notes, trivia questions, and rules directly into OBS.",
-            "Phase 3 Milestone (v3.0.0-Beta 2)",
-            [
-                "Custom line manager (add, edit, reorder, import from .txt)",
-                "Interval timer (rotate lines every 15s, 30s, 60s)",
-                "Sequential (1➔2➔3) and Shuffle / Trivia modes",
-                "Real-time write to %APPDATA%\\ThaWizanator_Overlay\\obs_text_cycler.txt"
-            ]
-        )
+        # Initialize Rotating Text & Trivia Cycler (Phase 3)
+        cycler_eng = getattr(self.overlay, "cycler_engine", None)
+        if cycler_eng is None:
+            from cycler_engine import CyclerEngine
+            cycler_eng = CyclerEngine(self)
+        self.tab_cycler = CyclerTab(self, cycler_eng)
+        self.stacked_pages.addWidget(self.tab_cycler)           # 6
+
+        # Add preview placeholder page for Phase 4
         self.tab_director_preview = self._create_preview_page(
             "🎬  Stream Director",
             "Remote OBS & Streamlabs control for channel moderators and co-hosts.",
@@ -1445,7 +1443,6 @@ class SettingsWindow(QWidget):
                 "Remotely trigger monitor overlay highlight on streamer's screen"
             ]
         )
-        self.stacked_pages.addWidget(self.tab_trivia_preview)    # 6
         self.stacked_pages.addWidget(self.tab_director_preview)  # 7
 
         content_layout.addWidget(self.stacked_pages)
@@ -1551,6 +1548,8 @@ class SettingsWindow(QWidget):
             self.tab_system.refresh_theme_labels(effective)
         if hasattr(self, "tab_chronos"):
             self.tab_chronos.refresh_theme_labels(effective)
+        if hasattr(self, "tab_cycler"):
+            self.tab_cycler.refresh_theme_labels(effective)
 
     def set_view_index(self, idx):
         if 0 <= idx < self.stacked_pages.count():
