@@ -505,6 +505,7 @@ class RedBorderOverlay(QMainWindow):
         self.auto_update_enabled = False
         self.update_channel = "stable"
         self.theme_preference = "system"
+        self.sidebar_collapsed = False
         self.twitch_channel = "thawizanator"
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
         self.twitch_redirect_uri = "http://localhost:17563"
@@ -538,6 +539,7 @@ class RedBorderOverlay(QMainWindow):
                     self.auto_update_enabled = d.get("auto_update_enabled", False)
                     self.update_channel = d.get("update_channel", "stable")
                     self.theme_preference = d.get("theme_preference", "system")
+                    self.sidebar_collapsed = d.get("sidebar_collapsed", False)
                     set_debug_mode(self.debug_mode)
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
                     if loaded_client_id and loaded_client_id != "testclientid":
@@ -586,6 +588,7 @@ class RedBorderOverlay(QMainWindow):
             "auto_update_enabled": self.auto_update_enabled,
             "update_channel": getattr(self, "update_channel", "stable"),
             "theme_preference": getattr(self, "theme_preference", "system"),
+            "sidebar_collapsed": getattr(self, "sidebar_collapsed", False),
             "twitch_channel": self.twitch_channel,
             "twitch_client_id": self.twitch_client_id,
             "twitch_redirect_uri": self.twitch_redirect_uri,

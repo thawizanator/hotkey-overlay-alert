@@ -2,12 +2,12 @@ import os
 import sys
 import subprocess
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QSpinBox, QLineEdit, QCheckBox, QGroupBox,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
-    QFrame, QDialog, QDialogButtonBox, QFormLayout
+    QFrame, QDialog, QDialogButtonBox, QFormLayout, QTabWidget
 )
 from PyQt6.QtGui import QGuiApplication, QFont
 
@@ -187,7 +187,8 @@ class CyclerTab(QWidget):
 
         # Interactive List Widget
         self.list_items = QListWidget()
-        self.list_items.setFixedHeight(75)
+        self.list_items.setObjectName("cyclerList")
+        self.list_items.setFixedHeight(100)
         self.list_items.itemDoubleClicked.connect(self._on_item_double_clicked)
         grp_list_lay.addWidget(self.list_items)
 
@@ -243,11 +244,15 @@ class CyclerTab(QWidget):
 
         main_layout.addWidget(grp_list)
 
-        # ---------------- 3. MODE & TIMING CONFIGURATION ----------------
-        grp_cfg = QGroupBox("Rotation Timing && Mode")
-        grp_cfg_lay = QVBoxLayout(grp_cfg)
-        grp_cfg_lay.setSpacing(4)
-        grp_cfg_lay.setContentsMargins(10, 4, 10, 4)
+        # ---------------- 3. BOTTOM CONFIGURATION TABS ----------------
+        self.tabs_config = QTabWidget()
+        self.tabs_config.setObjectName("cyclerConfigTabs")
+
+        # Tab 1: Timing & Mode
+        tab_timing = QWidget()
+        tab_timing_lay = QVBoxLayout(tab_timing)
+        tab_timing_lay.setContentsMargins(8, 8, 8, 8)
+        tab_timing_lay.setSpacing(6)
 
         mode_row = QHBoxLayout()
         mode_row.setSpacing(8)
@@ -259,7 +264,7 @@ class CyclerTab(QWidget):
         self.combo_mode.currentIndexChanged.connect(self._on_mode_changed)
         mode_row.addWidget(self.combo_mode)
         mode_row.addStretch()
-        grp_cfg_lay.addLayout(mode_row)
+        tab_timing_lay.addLayout(mode_row)
 
         timing_row = QHBoxLayout()
         timing_row.setSpacing(8)
@@ -281,15 +286,16 @@ class CyclerTab(QWidget):
         self.spin_ans_dur.valueChanged.connect(self._on_ans_dur_changed)
         timing_row.addWidget(self.spin_ans_dur)
         timing_row.addStretch()
+        tab_timing_lay.addLayout(timing_row)
+        tab_timing_lay.addStretch()
 
-        grp_cfg_lay.addLayout(timing_row)
-        main_layout.addWidget(grp_cfg)
+        self.tabs_config.addTab(tab_timing, "⏱️  Rotation Timing && Mode")
 
-        # ---------------- 4. OBS TEXT SYNC & TEMPLATE ----------------
-        grp_obs = QGroupBox("OBS / Streamlabs Text Sync")
-        grp_obs_lay = QVBoxLayout(grp_obs)
-        grp_obs_lay.setSpacing(4)
-        grp_obs_lay.setContentsMargins(10, 4, 10, 4)
+        # Tab 2: OBS Text Sync
+        tab_obs = QWidget()
+        tab_obs_lay = QVBoxLayout(tab_obs)
+        tab_obs_lay.setContentsMargins(8, 8, 8, 8)
+        tab_obs_lay.setSpacing(5)
 
         # Path banner row
         path_box = QHBoxLayout()
@@ -299,7 +305,7 @@ class CyclerTab(QWidget):
         self.txt_obs_path.setReadOnly(True)
         self.txt_obs_path.setStyleSheet("font-family: Consolas, monospace; font-size: 11px;")
         path_box.addWidget(self.txt_obs_path)
-        grp_obs_lay.addLayout(path_box)
+        tab_obs_lay.addLayout(path_box)
 
         # Prefix / Suffix template
         template_row = QHBoxLayout()
@@ -315,7 +321,7 @@ class CyclerTab(QWidget):
         self.txt_suffix.setPlaceholderText("e.g.,  | !chat")
         self.txt_suffix.textChanged.connect(self._on_suffix_changed)
         template_row.addWidget(self.txt_suffix)
-        grp_obs_lay.addLayout(template_row)
+        tab_obs_lay.addLayout(template_row)
 
         # File actions row & checkboxes
         bot_row = QHBoxLayout()
@@ -340,9 +346,12 @@ class CyclerTab(QWidget):
         self.chk_clear_on_stop.toggled.connect(self._on_clear_on_stop_toggled)
         bot_row.addWidget(self.chk_clear_on_stop)
         bot_row.addStretch()
+        tab_obs_lay.addLayout(bot_row)
+        tab_obs_lay.addStretch()
 
-        grp_obs_lay.addLayout(bot_row)
-        main_layout.addWidget(grp_obs)
+        self.tabs_config.addTab(tab_obs, "📡  OBS / Streamlabs Text Sync")
+
+        main_layout.addWidget(self.tabs_config)
         main_layout.addStretch()
 
         # Connect engine signals
@@ -374,6 +383,7 @@ class CyclerTab(QWidget):
             else:
                 label = f"{i + 1}. {q}"
             it = QListWidgetItem(label)
+            it.setSizeHint(QSize(0, 22))
             self.list_items.addItem(it)
 
         if 0 <= self.engine.current_index < self.list_items.count():
@@ -714,3 +724,40 @@ class CyclerTab(QWidget):
         mode_color = "#a1a1aa" if is_dark else "#71717a"
         self.lbl_mode_badge.setStyleSheet(f"font-size: 11px; font-weight: bold; color: {mode_color};")
         self.lbl_meta_info.setStyleSheet(f"font-size: 11px; color: {mode_color};")
+
+        pane_bg = "#18181b" if is_dark else "#f4f4f5"
+        pane_border = "#2d2d30" if is_dark else "#d4d4d8"
+        list_bg = "#121214" if is_dark else "#ffffff"
+        list_border = "#2d2d30" if is_dark else "#d4d4d8"
+        item_color = "#f4f4f5" if is_dark else "#18181b"
+        self.tabs_config.setStyleSheet(f"""
+            QTabWidget#cyclerConfigTabs::pane {{
+                border: 1px solid {pane_border};
+                border-radius: 6px;
+                padding: 4px;
+                background-color: {pane_bg};
+            }}
+            QTabBar::tab {{
+                padding: 3px 12px;
+                font-weight: 600;
+                font-size: 11px;
+            }}
+        """)
+        self.list_items.setStyleSheet(f"""
+            QListWidget#cyclerList {{
+                background-color: {list_bg};
+                border: 1px solid {list_border};
+                border-radius: 4px;
+                font-size: 11px;
+            }}
+            QListWidget#cyclerList::item {{
+                padding: 1px 4px;
+                min-height: 18px;
+                color: {item_color};
+            }}
+            QListWidget#cyclerList::item:selected {{
+                background-color: #9146ff;
+                color: #ffffff;
+                border-radius: 3px;
+            }}
+        """)

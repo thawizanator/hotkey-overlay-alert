@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QL
                              QMessageBox, QLineEdit, QTabWidget, QCheckBox, 
                              QGroupBox, QProgressBar, QDialog, QButtonGroup, 
                              QStackedWidget, QFrame)
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QKeySequence, QShortcut
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from updater import (UpdateCheckWorker, DownloadWorker, apply_update_and_restart, 
@@ -1305,7 +1305,9 @@ class SettingsWindow(QWidget):
         self.setObjectName("SettingsWindow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle(f"HotKey Overlay Alert - Streamer Hub (v{CURRENT_VERSION})")
-        self.setFixedSize(780, 680)
+        self.is_sidebar_collapsed = getattr(self.overlay, "sidebar_collapsed", False)
+        init_width = 570 if self.is_sidebar_collapsed else 780
+        self.setFixedSize(init_width, 600)
         self.setWindowIcon(get_app_icon())
 
         # Root Horizontal Layout (Sidebar + Content Area)
@@ -1394,10 +1396,32 @@ class SettingsWindow(QWidget):
         content_layout.setContentsMargins(16, 14, 16, 12)
         content_layout.setSpacing(8)
 
-        # Section Header Label
+        # Section Header Row (Sidebar Toggle + Title / Collapsed Selector)
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(8)
+
+        self.btn_toggle_sidebar = QPushButton("◀")
+        self.btn_toggle_sidebar.setObjectName("btnToggleSidebar")
+        self.btn_toggle_sidebar.setToolTip("Toggle sidebar navigation (Ctrl+B)")
+        self.btn_toggle_sidebar.setFixedSize(28, 28)
+        self.btn_toggle_sidebar.clicked.connect(self.toggle_sidebar)
+        header_row.addWidget(self.btn_toggle_sidebar)
+
         self.lbl_page_title = QLabel("🏠  Main Overlay & Streaming Mode")
         self.lbl_page_title.setObjectName("contentHeaderLabel")
-        content_layout.addWidget(self.lbl_page_title)
+        header_row.addWidget(self.lbl_page_title, 1)
+
+        self.combo_collapsed_nav = QComboBox()
+        self.combo_collapsed_nav.setObjectName("comboCollapsedNav")
+        self.combo_collapsed_nav.setToolTip("Switch active view")
+        for p_idx in sorted(PAGE_TITLES.keys()):
+            self.combo_collapsed_nav.addItem(PAGE_TITLES[p_idx], p_idx)
+        self.combo_collapsed_nav.currentIndexChanged.connect(self._on_collapsed_nav_changed)
+        self.combo_collapsed_nav.setVisible(False)
+        header_row.addWidget(self.combo_collapsed_nav)
+
+        content_layout.addLayout(header_row)
 
         # Stacked Pages
         self.stacked_pages = QStackedWidget()
@@ -1470,8 +1494,10 @@ class SettingsWindow(QWidget):
         # Connect button group clicks
         self.nav_button_group.buttonClicked.connect(lambda btn: self.set_view_index(self.nav_button_group.id(btn)))
 
-        # Default to Page 0 (Main)
-        self.set_view_index(0)
+        # Setup shortcut and initial sidebar state
+        self.shortcut_sidebar = QShortcut(QKeySequence("Ctrl+B"), self)
+        self.shortcut_sidebar.activated.connect(self.toggle_sidebar)
+        self._apply_sidebar_state()
 
         # Apply initial theme
         self.refresh_theme()
@@ -1551,6 +1577,27 @@ class SettingsWindow(QWidget):
         if hasattr(self, "tab_cycler"):
             self.tab_cycler.refresh_theme_labels(effective)
 
+        if hasattr(self, "btn_toggle_sidebar") and self.btn_toggle_sidebar:
+            btn_border = "#3f3f46" if effective == "dark" else "#d4d4d8"
+            btn_hover = "#27272a" if effective == "dark" else "#e4e4e7"
+            btn_fg = "#a1a1aa" if effective == "dark" else "#71717a"
+            btn_active_fg = "#ffffff" if effective == "dark" else "#18181b"
+            self.btn_toggle_sidebar.setStyleSheet(f"""
+                QPushButton#btnToggleSidebar {{
+                    background-color: transparent;
+                    border: 1px solid {btn_border};
+                    border-radius: 4px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    color: {btn_fg};
+                }}
+                QPushButton#btnToggleSidebar:hover {{
+                    background-color: {btn_hover};
+                    color: {btn_active_fg};
+                    border-color: #9146ff;
+                }}
+            """)
+
     def set_view_index(self, idx):
         if 0 <= idx < self.stacked_pages.count():
             self.stacked_pages.setCurrentIndex(idx)
@@ -1559,6 +1606,49 @@ class SettingsWindow(QWidget):
                 btn.setChecked(True)
             title = PAGE_TITLES.get(idx, "HotKey Overlay Alert")
             self.lbl_page_title.setText(title)
+            if hasattr(self, "combo_collapsed_nav") and self.combo_collapsed_nav:
+                c_idx = self.combo_collapsed_nav.findData(idx)
+                if c_idx >= 0 and self.combo_collapsed_nav.currentIndex() != c_idx:
+                    self.combo_collapsed_nav.blockSignals(True)
+                    self.combo_collapsed_nav.setCurrentIndex(c_idx)
+                    self.combo_collapsed_nav.blockSignals(False)
+
+    def toggle_sidebar(self):
+        self.is_sidebar_collapsed = not self.is_sidebar_collapsed
+        self._apply_sidebar_state()
+        if hasattr(self.overlay, "sidebar_collapsed"):
+            self.overlay.sidebar_collapsed = self.is_sidebar_collapsed
+            if hasattr(self.overlay, "save_settings"):
+                self.overlay.save_settings()
+
+    def _apply_sidebar_state(self):
+        if self.is_sidebar_collapsed:
+            self.sidebar_widget.hide()
+            self.divider.hide()
+            self.btn_toggle_sidebar.setText("▶")
+            self.btn_toggle_sidebar.setToolTip("Expand sidebar navigation (Ctrl+B)")
+            self.combo_collapsed_nav.setVisible(True)
+            self.lbl_page_title.setVisible(False)
+            idx = self.stacked_pages.currentIndex()
+            c_idx = self.combo_collapsed_nav.findData(idx)
+            if c_idx >= 0 and self.combo_collapsed_nav.currentIndex() != c_idx:
+                self.combo_collapsed_nav.blockSignals(True)
+                self.combo_collapsed_nav.setCurrentIndex(c_idx)
+                self.combo_collapsed_nav.blockSignals(False)
+            self.setFixedSize(570, 600)
+        else:
+            self.sidebar_widget.show()
+            self.divider.show()
+            self.btn_toggle_sidebar.setText("◀")
+            self.btn_toggle_sidebar.setToolTip("Collapse sidebar navigation (Ctrl+B)")
+            self.combo_collapsed_nav.setVisible(False)
+            self.lbl_page_title.setVisible(True)
+            self.setFixedSize(780, 600)
+
+    def _on_collapsed_nav_changed(self, c_idx):
+        target_idx = self.combo_collapsed_nav.itemData(c_idx)
+        if target_idx is not None and target_idx != self.stacked_pages.currentIndex():
+            self.set_view_index(target_idx)
 
     def refresh_monitors_box(self, box):
         self.tab_monitor.refresh_monitors()
