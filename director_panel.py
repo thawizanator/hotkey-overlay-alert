@@ -251,11 +251,6 @@ class DirectorPanelWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAutoFillBackground(True)
 
-        self._topmost_timer = QTimer(self)
-        self._topmost_timer.setInterval(1500)
-        self._topmost_timer.timeout.connect(self.force_topmost)
-        self._topmost_timer.start()
-
         self.scene_buttons = []
         self.audio_buttons = []
         self.volume_faders = []
@@ -437,13 +432,37 @@ class DirectorPanelWindow(QWidget):
         # Populate defaults
         self.load_configuration()
 
+    def _clear_layout(self, layout):
+        """Safely removes and deletes all child widgets and items from a layout."""
+        if not layout:
+            return
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+    def update_faders(self, faders_data: list):
+        """Live updates existing fader labels and volume values in-place without destroying widgets or collapsing layouts."""
+        if not faders_data:
+            return
+        for i, f_info in enumerate(faders_data[:len(self.volume_faders)]):
+            fader_widget = self.volume_faders[i]
+            name = f_info.get("name", f"Audio {i+1}")
+            fader_widget.set_label(name)
+            # Sync volume percent from Streamlabs if connected
+            if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+                vol = self.slobs_client.get_source_volume_percent(name)
+                fader_widget.set_value_silently(vol)
+            elif "volume" in f_info:
+                fader_widget.set_value_silently(f_info["volume"])
+
     def load_configuration(self, scenes=None, audio=None, faders=None):
         """Builds or rebuilds the dynamic scene cards, audio buttons, and faders."""
         # 1. Populate Scene Cards (Up to 5)
         scenes = scenes or self.DEFAULT_SCENES
         # Clear existing
-        for b in self.scene_buttons:
-            b.setParent(None)
+        self._clear_layout(self.lay_scenes_row)
         self.scene_buttons.clear()
 
         for i, sc in enumerate(scenes[:5]):
@@ -462,8 +481,7 @@ class DirectorPanelWindow(QWidget):
 
         # 2. Populate Audio Mute Toggles (2 rows of 3)
         audio = audio or self.DEFAULT_AUDIO
-        for b in self.audio_buttons:
-            b.setParent(None)
+        self._clear_layout(self.lay_audio_grid)
         self.audio_buttons.clear()
 
         for i, a in enumerate(audio[:6]):
@@ -476,8 +494,7 @@ class DirectorPanelWindow(QWidget):
 
         # 3. Populate Volume Faders (3 Sliders)
         faders = faders or self.DEFAULT_FADERS
-        for f in self.volume_faders:
-            f.setParent(None)
+        self._clear_layout(self.lay_vol_row)
         self.volume_faders.clear()
 
         for i, f in enumerate(faders[:3]):
@@ -566,7 +583,7 @@ class DirectorPanelWindow(QWidget):
         self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, painter, self)
 
     def force_topmost(self):
-        """Forces the window to the top of the Z-order at the OS level using Win32 API."""
+        """Ensures the window stays on top at the OS level using Win32 API without stealing input focus."""
         if sys.platform == "win32":
             try:
                 import ctypes
@@ -582,9 +599,9 @@ class DirectorPanelWindow(QWidget):
                 HWND_TOPMOST = wintypes.HWND(-1)
                 SWP_NOMOVE = 0x0002
                 SWP_NOSIZE = 0x0001
+                SWP_NOACTIVATE = 0x0010
                 SWP_SHOWWINDOW = 0x0040
-                user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
-                user32.SetForegroundWindow(hwnd)
+                user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW)
             except Exception:
                 pass
 

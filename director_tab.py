@@ -30,6 +30,12 @@ class NoScrollComboBox(QComboBox):
         else:
             event.ignore()
 
+    def setCurrentText(self, text: str):
+        if text and self.findText(text) == -1:
+            insert_idx = max(0, self.count() - 1) if self.count() > 0 else 0
+            self.insertItem(insert_idx, text)
+        super().setCurrentText(text)
+
 class SceneEditDialog(QDialog):
     """Dialog to add or modify a scene card with live Streamlabs scene selection."""
     def __init__(self, name="New Scene", color_hex="#22c55e", available_scenes=None, scene_id=None, parent=None):
@@ -479,6 +485,7 @@ class DirectorTab(QWidget):
             _, act_name = self.slobs_client.get_active_scene_info()
             act_str = f" — Active: <b>{act_name}</b>" if act_name else ""
             self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Streamlabs Desktop Connected</span>{act_str}")
+            self._refresh_fader_combos()
         else:
             self.lbl_slobs_status.setText("<span style='color: #ef4444; font-weight: bold;'>🔴 Streamlabs Desktop Disconnected</span> <span style='color: #a1a1aa;'>(Launch Streamlabs Desktop to link)</span>")
 
@@ -558,7 +565,7 @@ class DirectorTab(QWidget):
             })
         self._refresh_scene_list_ui()
         self._on_settings_changed()
-        if self.panel_window and self.panel_window.isVisible():
+        if self.is_panel_open():
             fader_data = [
                 {"name": self.edit_fader1.currentText().strip() or "Audio 1", "volume": self.faders[0].get("volume", 80)},
                 {"name": self.edit_fader2.currentText().strip() or "Audio 2", "volume": self.faders[1].get("volume", 75)},
@@ -603,7 +610,7 @@ class DirectorTab(QWidget):
         self._refresh_audio_list_ui()
         self._on_settings_changed()
         self._refresh_fader_combos()
-        if self.panel_window and self.panel_window.isVisible():
+        if self.is_panel_open():
             fader_data = [
                 {"name": self.edit_fader1.currentText().strip() or "Audio 1", "volume": self.faders[0].get("volume", 80)},
                 {"name": self.edit_fader2.currentText().strip() or "Audio 2", "volume": self.faders[1].get("volume", 75)},
@@ -623,7 +630,7 @@ class DirectorTab(QWidget):
             self.scenes.append({"name": n, "color": c, "id": raw_id})
             self._refresh_scene_list_ui()
             self._on_settings_changed()
-            if self.panel_window and self.panel_window.isVisible():
+            if self.is_panel_open():
                 self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _edit_scene(self):
@@ -637,7 +644,7 @@ class DirectorTab(QWidget):
                 self.scenes[row] = {"name": n, "color": c, "id": raw_id}
                 self._refresh_scene_list_ui()
                 self._on_settings_changed()
-                if self.panel_window and self.panel_window.isVisible():
+                if self.is_panel_open():
                     self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _remove_scene(self):
@@ -646,7 +653,7 @@ class DirectorTab(QWidget):
             self.scenes.pop(row)
             self._refresh_scene_list_ui()
             self._on_settings_changed()
-            if self.panel_window and self.panel_window.isVisible():
+            if self.is_panel_open():
                 self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _add_audio(self):
@@ -660,7 +667,7 @@ class DirectorTab(QWidget):
             self.audio_toggles.append({"name": n, "id": raw_id, "muted": False})
             self._refresh_audio_list_ui()
             self._on_settings_changed()
-            if self.panel_window and self.panel_window.isVisible():
+            if self.is_panel_open():
                 self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _edit_audio(self):
@@ -674,7 +681,7 @@ class DirectorTab(QWidget):
                 self.audio_toggles[row] = {"name": n, "id": raw_id, "muted": cur.get("muted", False)}
                 self._refresh_audio_list_ui()
                 self._on_settings_changed()
-                if self.panel_window and self.panel_window.isVisible():
+                if self.is_panel_open():
                     self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _remove_audio(self):
@@ -683,7 +690,7 @@ class DirectorTab(QWidget):
             self.audio_toggles.pop(row)
             self._refresh_audio_list_ui()
             self._on_settings_changed()
-            if self.panel_window and self.panel_window.isVisible():
+            if self.is_panel_open():
                 self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _set_launch_button_state(self, is_open: bool):
@@ -718,11 +725,22 @@ class DirectorTab(QWidget):
                 }
             """)
 
+    def is_panel_open(self) -> bool:
+        """Safely returns whether the Director Panel dock is currently open and visible."""
+        if not self.panel_window:
+            return False
+        try:
+            return bool(self.panel_window.isVisible())
+        except (AttributeError, RuntimeError):
+            self.panel_window = None
+            return False
+
     def toggle_director_panel(self):
-        if self.panel_window and self.panel_window.isVisible():
+        if self.is_panel_open():
             log_debug("DIRECTOR", "Closing Director Panel via toggle")
             self.panel_window.close()
             self.panel_window = None
+            self._set_launch_button_state(is_open=False)
         else:
             self.launch_director_panel()
 
@@ -730,7 +748,13 @@ class DirectorTab(QWidget):
         log_debug("DIRECTOR", "User clicked Launch Director Panel")
 
         # 1. Instantiate or show panel first so we know exact geometry above taskbar
-        if not self.panel_window:
+        if not self.is_panel_open():
+            if self.panel_window is not None:
+                try:
+                    self.panel_window.deleteLater()
+                except Exception:
+                    pass
+                self.panel_window = None
             self.panel_window = DirectorPanelWindow()
             self.panel_window.panel_closed.connect(self._on_panel_closed)
             self.panel_window.settings_requested.connect(self._open_settings_from_panel)
@@ -871,13 +895,13 @@ class DirectorTab(QWidget):
         self.save_to_settings()
 
         # Update live Director Panel dock immediately if open
-        if self.panel_window and self.panel_window.isVisible():
+        if self.is_panel_open():
             fader_data = [
                 {"name": self.faders[0]["name"] or "Audio 1", "volume": self.faders[0].get("volume", 80)},
                 {"name": self.faders[1]["name"] or "Audio 2", "volume": self.faders[1].get("volume", 75)},
                 {"name": self.faders[2]["name"] or "Audio 3", "volume": self.faders[2].get("volume", 60)},
             ]
-            self.panel_window.load_configuration(self.scenes, self.audio_toggles, fader_data)
+            self.panel_window.update_faders(fader_data)
 
     def export_settings(self) -> dict:
         return {
