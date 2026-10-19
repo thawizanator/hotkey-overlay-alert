@@ -245,8 +245,8 @@ class DirectorTab(QWidget):
             }
         """)
         lay_slobs_box = QHBoxLayout(self.frame_slobs_status)
-        lay_slobs_box.setContentsMargins(8, 5, 8, 5)
-        lay_slobs_box.setSpacing(8)
+        lay_slobs_box.setContentsMargins(6, 4, 6, 4)
+        lay_slobs_box.setSpacing(6)
 
         self.lbl_slobs_status = QLabel("Checking Streamlabs Desktop...")
         self.lbl_slobs_status.setStyleSheet("font-size: 11px;")
@@ -254,23 +254,25 @@ class DirectorTab(QWidget):
         lay_slobs_box.addWidget(self.lbl_slobs_status, 1)
 
         self.btn_reconnect_slobs = QPushButton("🔄 Reconnect")
-        self.btn_reconnect_slobs.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_reconnect_slobs.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.btn_reconnect_slobs.clicked.connect(self._manual_reconnect_slobs)
         lay_slobs_box.addWidget(self.btn_reconnect_slobs)
         lay_conn.addWidget(self.frame_slobs_status)
 
         # Connection Mode selection row
         row_mode = QHBoxLayout()
-        row_mode.addWidget(QLabel("Connection Mode:"))
+        row_mode.addWidget(QLabel("Mode:"))
         self.combo_conn_mode = QComboBox()
-        self.combo_conn_mode.addItem("🖥️  Local PC (Named Pipe — Auto / Zero-Config)", "local")
-        self.combo_conn_mode.addItem("🌐  Remote LAN PC (WebSocket — Port 59650)", "remote")
+        self.combo_conn_mode.addItem("🖥️ Local PC (Named Pipe)", "local")
+        self.combo_conn_mode.addItem("🌐 Remote LAN PC (WebSocket)", "remote")
+        self.combo_conn_mode.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_conn_mode.setMinimumContentsLength(16)
         self.combo_conn_mode.currentIndexChanged.connect(self._on_conn_mode_changed)
         row_mode.addWidget(self.combo_conn_mode, 1)
 
-        self.btn_autodetect = QPushButton("⚡ Auto-Detect Local Token")
-        self.btn_autodetect.setToolTip("Queries local Streamlabs Desktop on this PC to automatically discover its API Token, port, and LAN IP.")
-        self.btn_autodetect.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_autodetect = QPushButton("⚡ Auto-Detect")
+        self.btn_autodetect.setToolTip("Queries local Streamlabs Desktop on this PC to discover its API Token, port, and LAN IP.")
+        self.btn_autodetect.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.btn_autodetect.clicked.connect(self._on_autodetect_clicked)
         row_mode.addWidget(self.btn_autodetect)
         lay_conn.addLayout(row_mode)
@@ -315,6 +317,7 @@ class DirectorTab(QWidget):
 
         # Local Mode Informational Notice (visible when local mode is selected)
         self.lbl_local_notice = QLabel("💡 <i>Local PC Mode uses the high-speed Windows Named Pipe (\\\\.\\pipe\\slobs). Zero token or network configuration required.</i>")
+        self.lbl_local_notice.setWordWrap(True)
         self.lbl_local_notice.setStyleSheet("font-size: 10px; color: #a1a1aa; padding-left: 2px;")
         lay_conn.addWidget(self.lbl_local_notice)
 
@@ -349,29 +352,30 @@ class DirectorTab(QWidget):
         lay_sc.setSpacing(4)
 
         sc_btn_row = QHBoxLayout()
-        self.lbl_scene_count = QLabel("Active Scenes: (5 / 5)")
+        sc_btn_row.setSpacing(4)
+        self.lbl_scene_count = QLabel("Scenes: (5 / 5)")
         self.lbl_scene_count.setStyleSheet("font-size: 11px; color: #a1a1aa;")
         sc_btn_row.addWidget(self.lbl_scene_count)
         sc_btn_row.addStretch()
 
         self.btn_autodetect_scenes = QPushButton("📥 Auto-Detect")
-        self.btn_autodetect_scenes.setStyleSheet("font-size: 11px; padding: 2px 6px; font-weight: 600;")
+        self.btn_autodetect_scenes.setStyleSheet("font-size: 11px; padding: 2px 5px; font-weight: 600;")
         self.btn_autodetect_scenes.setToolTip("Automatically import your live scenes from Streamlabs Desktop")
         self.btn_autodetect_scenes.clicked.connect(self._auto_detect_scenes)
         sc_btn_row.addWidget(self.btn_autodetect_scenes)
 
         self.btn_add_scene = QPushButton("➕ Add")
-        self.btn_add_scene.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_add_scene.setStyleSheet("font-size: 11px; padding: 2px 5px;")
         self.btn_add_scene.clicked.connect(self._add_scene)
         sc_btn_row.addWidget(self.btn_add_scene)
 
         self.btn_edit_scene = QPushButton("✏️ Edit")
-        self.btn_edit_scene.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_edit_scene.setStyleSheet("font-size: 11px; padding: 2px 5px;")
         self.btn_edit_scene.clicked.connect(self._edit_scene)
         sc_btn_row.addWidget(self.btn_edit_scene)
 
         self.btn_rem_scene = QPushButton("🗑️ Remove")
-        self.btn_rem_scene.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_rem_scene.setStyleSheet("font-size: 11px; padding: 2px 5px;")
         self.btn_rem_scene.clicked.connect(self._remove_scene)
         sc_btn_row.addWidget(self.btn_rem_scene)
         lay_sc.addLayout(sc_btn_row)
@@ -411,29 +415,30 @@ class DirectorTab(QWidget):
         lay_au.setSpacing(4)
 
         au_btn_row = QHBoxLayout()
-        self.lbl_audio_count = QLabel("Active Audio Toggles: (6 / 6)")
+        au_btn_row.setSpacing(4)
+        self.lbl_audio_count = QLabel("Audio Toggles: (6 / 6)")
         self.lbl_audio_count.setStyleSheet("font-size: 11px; color: #a1a1aa;")
         au_btn_row.addWidget(self.lbl_audio_count)
         au_btn_row.addStretch()
 
         self.btn_autodetect_audio = QPushButton("📥 Auto-Detect")
-        self.btn_autodetect_audio.setStyleSheet("font-size: 11px; padding: 2px 6px; font-weight: 600;")
+        self.btn_autodetect_audio.setStyleSheet("font-size: 11px; padding: 2px 5px; font-weight: 600;")
         self.btn_autodetect_audio.setToolTip("Automatically import your active audio mixer sources from Streamlabs Desktop")
         self.btn_autodetect_audio.clicked.connect(self._auto_detect_audio)
         au_btn_row.addWidget(self.btn_autodetect_audio)
 
         self.btn_add_audio = QPushButton("➕ Add")
-        self.btn_add_audio.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_add_audio.setStyleSheet("font-size: 11px; padding: 2px 5px;")
         self.btn_add_audio.clicked.connect(self._add_audio)
         au_btn_row.addWidget(self.btn_add_audio)
 
         self.btn_edit_audio = QPushButton("✏️ Edit")
-        self.btn_edit_audio.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_edit_audio.setStyleSheet("font-size: 11px; padding: 2px 5px;")
         self.btn_edit_audio.clicked.connect(self._edit_audio)
         au_btn_row.addWidget(self.btn_edit_audio)
 
         self.btn_rem_audio = QPushButton("🗑️ Remove")
-        self.btn_rem_audio.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_rem_audio.setStyleSheet("font-size: 11px; padding: 2px 5px;")
         self.btn_rem_audio.clicked.connect(self._remove_audio)
         au_btn_row.addWidget(self.btn_rem_audio)
         lay_au.addLayout(au_btn_row)
@@ -514,7 +519,7 @@ class DirectorTab(QWidget):
             it.setSizeHint(QSize(0, 19))
             self.list_scenes.addItem(it)
         count = len(self.scenes)
-        self.lbl_scene_count.setText(f"Active Scenes: ({count} / 5)")
+        self.lbl_scene_count.setText(f"Scenes: ({count} / 5)")
         self.btn_add_scene.setEnabled(count < 5)
 
     def _refresh_audio_list_ui(self):
@@ -524,7 +529,7 @@ class DirectorTab(QWidget):
             it.setSizeHint(QSize(0, 19))
             self.list_audio.addItem(it)
         count = len(self.audio_toggles)
-        self.lbl_audio_count.setText(f"Active Audio Toggles: ({count} / 6)")
+        self.lbl_audio_count.setText(f"Audio Toggles: ({count} / 6)")
         self.btn_add_audio.setEnabled(count < 6)
 
     def _on_conn_mode_changed(self):
@@ -570,13 +575,15 @@ class DirectorTab(QWidget):
             return
         if self.slobs_client and self.slobs_client.is_connected():
             _, act_name = self.slobs_client.get_active_scene_info()
+            if act_name and len(act_name) > 18:
+                act_name = act_name[:16] + "..."
             act_str = f" — Active: <b>{act_name}</b>" if act_name else ""
             mode_tag = "Local Pipe" if self.slobs_client._mode == "local" else f"LAN {self.slobs_client._remote_host}:{self.slobs_client._remote_port}"
-            self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Streamlabs Desktop Connected</span> <span style='color: #a1a1aa; font-size: 10px;'>({mode_tag})</span>{act_str}")
+            self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Streamlabs Connected</span> <span style='color: #a1a1aa; font-size: 10px;'>({mode_tag})</span>{act_str}")
             self._refresh_fader_combos()
         else:
             mode_str = "local PC" if getattr(self, "conn_mode", "local") == "local" else "remote LAN PC"
-            self.lbl_slobs_status.setText(f"<span style='color: #ef4444; font-weight: bold;'>🔴 Streamlabs Desktop Disconnected</span> <span style='color: #a1a1aa;'>(Launch Streamlabs Desktop on {mode_str} to link)</span>")
+            self.lbl_slobs_status.setText(f"<span style='color: #ef4444; font-weight: bold;'>🔴 Streamlabs Disconnected</span> <span style='color: #a1a1aa;'>(Launch Streamlabs on {mode_str})</span>")
 
     def _manual_reconnect_slobs(self):
         if self.slobs_client:
