@@ -8,7 +8,7 @@ import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
 CURRENT_VERSION = "3.0.0-beta.2"
-BUILD_COMMIT = "2e474d3"
+BUILD_COMMIT = "3fe215a"
 BUILD_DATE = "2026-10-18"
 
 _cached_build_commit = None
