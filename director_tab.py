@@ -11,6 +11,7 @@ from PyQt6.QtGui import QColor, QIcon
 
 from director_panel import DirectorPanelWindow
 import theme_manager
+from debug_logger import log_debug
 
 def obfuscate_str(data_str: str, key: int = 140) -> str:
     if not data_str:
@@ -383,23 +384,27 @@ class DirectorTab(QWidget):
 
     def toggle_director_panel(self):
         if self.panel_window and self.panel_window.isVisible():
+            log_debug("DIRECTOR", "Closing Director Panel via toggle")
             self.panel_window.close()
         else:
             self.launch_director_panel()
 
     def launch_director_panel(self):
+        log_debug("DIRECTOR", "User clicked Launch Director Panel")
         # 1. Open the streamer's livestream in default web browser if provided
         url = self.edit_stream_url.text().strip()
         if url:
             try:
+                log_debug("DIRECTOR", f"Opening livestream URL in browser: {url}")
                 webbrowser.open(url)
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug("DIRECTOR", f"Browser launch error: {e}")
 
         # 2. Instantiate or show panel
         if not self.panel_window:
             self.panel_window = DirectorPanelWindow()
             self.panel_window.panel_closed.connect(self._on_panel_closed)
+            self.panel_window.settings_requested.connect(self._open_settings_from_panel)
 
         fader_data = [
             {"name": self.edit_fader1.text().strip() or "Audio 1", "volume": self.faders[0].get("volume", 80)},
@@ -408,13 +413,32 @@ class DirectorTab(QWidget):
         ]
         self.panel_window.load_configuration(self.scenes, self.audio_toggles, fader_data)
         
-        target_mon = self.combo_monitor.currentData() or 0
+        target_mon = self.combo_monitor.currentData()
+        if target_mon is None:
+            target_mon = self.combo_monitor.currentIndex()
+        if target_mon is None or target_mon < 0:
+            target_mon = 0
+
+        log_debug("DIRECTOR", f"Target monitor index: {target_mon}")
         self.panel_window.reposition_above_taskbar(target_mon)
         self.panel_window.show()
         self.panel_window.raise_()
+        self.panel_window.activateWindow()
+        self.panel_window.force_topmost()
+        geom = self.panel_window.geometry()
+        log_debug("DIRECTOR", f"Director Panel shown at: ({geom.x()}, {geom.y()}, {geom.width()}x{geom.height()}) - IsVisible: {self.panel_window.isVisible()}")
         self._set_launch_button_state(is_open=True)
 
+    def _open_settings_from_panel(self):
+        log_debug("DIRECTOR", "Settings button clicked on Director Dock")
+        if self.main_win:
+            self.main_win.show()
+            self.main_win.raise_()
+            self.main_win.activateWindow()
+            self.main_win.set_view_index(7)
+
     def _on_panel_closed(self):
+        log_debug("DIRECTOR", "Director Panel closed event received")
         self._set_launch_button_state(is_open=False)
 
     def _on_settings_changed(self):

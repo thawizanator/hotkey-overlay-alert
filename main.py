@@ -922,11 +922,19 @@ class RedBorderOverlay(QMainWindow):
         self.settings_action = QAction("Settings", self)
         self.settings_action.triggered.connect(self.open_settings)
         self.tray_menu.addAction(self.settings_action)
+        self.director_action = QAction("🎬 Stream Director Dock", self)
+        self.director_action.triggered.connect(self.toggle_director_panel_from_tray)
+        self.tray_menu.addAction(self.director_action)
         self.exit_action = QAction("Exit", self)
         self.exit_action.triggered.connect(self.close_application)
         self.tray_menu.addAction(self.exit_action)
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.show()
+
+    def toggle_director_panel_from_tray(self):
+        log_debug("SYSTEM", "Toggled Stream Director Dock from system tray")
+        if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+            self.settings_window.tab_director.toggle_director_panel()
 
     def update_monitor_geometry(self, idx):
         screens = QApplication.screens()

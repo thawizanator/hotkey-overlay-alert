@@ -182,6 +182,7 @@ class VolumeFaderWidget(QWidget):
 class DirectorPanelWindow(QWidget):
     """Floating control dock positioned on the chosen monitor directly above the Windows taskbar."""
     panel_closed = pyqtSignal()
+    settings_requested = pyqtSignal()
     scene_selected = pyqtSignal(int, str)
     audio_toggled = pyqtSignal(int, str, bool)
     volume_adjusted = pyqtSignal(int, str, int)
@@ -212,10 +213,11 @@ class DirectorPanelWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("DirectorPanelWindow")
+        self.setWindowTitle("🎬 Stream Director Dock")
         self.setWindowFlags(
+            Qt.WindowType.Window |
             Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
+            Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
 
@@ -246,6 +248,27 @@ class DirectorPanelWindow(QWidget):
         self.lbl_status.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_status.setStyleSheet("font-size: 10px; padding-right: 6px;")
         top_bar.addWidget(self.lbl_status)
+
+        btn_settings = QPushButton("⚙️")
+        btn_settings.setFixedSize(20, 20)
+        btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_settings.setToolTip("Open Stream Director Settings")
+        btn_settings.setStyleSheet("""
+            QPushButton {
+                background: #27272a;
+                color: #a1a1aa;
+                border: 1px solid #3f3f46;
+                border-radius: 10px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background: #3f3f46;
+                color: #ffffff;
+                border-color: #71717a;
+            }
+        """)
+        btn_settings.clicked.connect(self.settings_requested.emit)
+        top_bar.addWidget(btn_settings)
 
         btn_close = QPushButton("✕")
         btn_close.setFixedSize(20, 20)
@@ -414,6 +437,21 @@ class DirectorPanelWindow(QWidget):
             b.set_active(i == scene_id)
         self.scene_selected.emit(scene_id, name)
 
+    def force_topmost(self):
+        """Forces the window to the top of the Z-order at the OS level using Win32 API."""
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                user32 = ctypes.windll.user32
+                hwnd = int(self.winId())
+                HWND_TOPMOST = -1
+                SWP_NOMOVE = 0x0002
+                SWP_NOSIZE = 0x0001
+                SWP_SHOWWINDOW = 0x0040
+                user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+            except Exception:
+                pass
+
     def reposition_above_taskbar(self, monitor_index: int = 0):
         """Places the dock horizontally centered directly above the taskbar on the target screen."""
         screens = QApplication.screens()
@@ -423,8 +461,12 @@ class DirectorPanelWindow(QWidget):
         screen = screens[idx]
         avail = screen.availableGeometry()
 
-        dock_height = 154
-        dock_width = min(1140, int(avail.width() * 0.96))
+        self.adjustSize()
+        hint = self.sizeHint()
+        dock_height = max(hint.height(), 154)
+        dock_width = min(1140, max(hint.width(), int(avail.width() * 0.96)))
+        if dock_width > avail.width():
+            dock_width = avail.width()
         
         # Position X centered on that screen, Y right above the taskbar
         pos_x = avail.x() + (avail.width() - dock_width) // 2
