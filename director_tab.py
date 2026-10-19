@@ -1,11 +1,13 @@
 import os
 import sys
+import subprocess
 import webbrowser
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QGroupBox, QListWidget, QListWidgetItem,
-    QMessageBox, QDialog, QInputDialog, QColorDialog, QFormLayout, QScrollArea, QFrame
+    QMessageBox, QDialog, QInputDialog, QColorDialog, QFormLayout, QScrollArea, QFrame,
+    QCheckBox
 )
 from PyQt6.QtGui import QColor, QIcon
 
@@ -80,6 +82,7 @@ class DirectorTab(QWidget):
         self.api_key = ""
         self.stream_url = "https://twitch.tv/thawizanator"
         self.target_monitor_idx = 0
+        self.app_mode = True
         self.scenes = [
             {"name": "Scene 1", "color": "#22c55e"},
             {"name": "Scene 2", "color": "#0284c7"},
@@ -153,6 +156,13 @@ class DirectorTab(QWidget):
         self.combo_monitor.currentIndexChanged.connect(self._on_settings_changed)
         row_mon.addWidget(self.combo_monitor, 1)
         lay_conn.addLayout(row_mon)
+
+        self.chk_app_mode = QCheckBox("Open stream in dedicated studio window (fitted above dock)")
+        self.chk_app_mode.setChecked(self.app_mode)
+        self.chk_app_mode.setToolTip("Launches Chrome or Edge in borderless app mode fitted exactly between the top of the monitor and the top of the dock without address or tab bars.")
+        self.chk_app_mode.setStyleSheet("font-size: 11px; color: #e4e4e7; margin-top: 2px;")
+        self.chk_app_mode.toggled.connect(self._on_settings_changed)
+        lay_conn.addWidget(self.chk_app_mode)
 
         scroll_layout.addWidget(grp_conn)
 
@@ -391,16 +401,8 @@ class DirectorTab(QWidget):
 
     def launch_director_panel(self):
         log_debug("DIRECTOR", "User clicked Launch Director Panel")
-        # 1. Open the streamer's livestream in default web browser if provided
-        url = self.edit_stream_url.text().strip()
-        if url:
-            try:
-                log_debug("DIRECTOR", f"Opening livestream URL in browser: {url}")
-                webbrowser.open(url)
-            except Exception as e:
-                log_debug("DIRECTOR", f"Browser launch error: {e}")
 
-        # 2. Instantiate or show panel
+        # 1. Instantiate or show panel first so we know exact geometry above taskbar
         if not self.panel_window:
             self.panel_window = DirectorPanelWindow()
             self.panel_window.panel_closed.connect(self._on_panel_closed)
@@ -429,6 +431,11 @@ class DirectorTab(QWidget):
         log_debug("DIRECTOR", f"Director Panel shown at: ({geom.x()}, {geom.y()}, {geom.width()}x{geom.height()}) - IsVisible: {self.panel_window.isVisible()}")
         self._set_launch_button_state(is_open=True)
 
+        # 2. Open the streamer's livestream in browser (Chromium App Mode fitted above dock, or standard browser)
+        url = self.edit_stream_url.text().strip()
+        if url:
+            self._launch_stream_browser(url, target_mon, geom.y())
+
         # Automatically hide Settings window so the user gets clean separate dock view
         if self.main_win:
             self.main_win.hide()
@@ -437,6 +444,69 @@ class DirectorTab(QWidget):
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(400, self.panel_window.force_topmost)
         QTimer.singleShot(1000, self.panel_window.force_topmost)
+
+    def _find_chromium_browser(self) -> str | None:
+        if sys.platform != "win32":
+            return None
+        import winreg
+        # 1. Check registry App Paths
+        for app in ["chrome.exe", "msedge.exe", "brave.exe"]:
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{app}") as k:
+                    val, _ = winreg.QueryValueEx(k, "")
+                    if val and os.path.exists(val):
+                        return val
+            except Exception:
+                pass
+        # 2. Check well-known filesystem paths
+        candidates = [
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+        ]
+        for p in candidates:
+            if os.path.exists(p):
+                return p
+        return None
+
+    def _launch_stream_browser(self, url: str, target_mon: int, dock_top_y: int):
+        screens = QApplication.screens()
+        idx = target_mon if 0 <= target_mon < len(screens) else 0
+        screen = screens[idx] if screens else None
+
+        if screen:
+            geo = screen.geometry()
+            pos_x = geo.x()
+            pos_y = geo.y()
+            win_w = geo.width()
+            win_h = max(300, dock_top_y - pos_y)
+        else:
+            pos_x, pos_y, win_w, win_h = 0, 0, 1360, 546
+
+        if hasattr(self, "chk_app_mode") and self.chk_app_mode.isChecked():
+            browser_exe = self._find_chromium_browser()
+            if browser_exe:
+                try:
+                    cmd = [
+                        browser_exe,
+                        f"--app={url}",
+                        f"--window-position={pos_x},{pos_y}",
+                        f"--window-size={win_w},{win_h}",
+                    ]
+                    log_debug("DIRECTOR", f"Launching studio app window ({os.path.basename(browser_exe)}): pos=({pos_x},{pos_y}) size=({win_w}x{win_h})")
+                    subprocess.Popen(cmd)
+                    return
+                except Exception as e:
+                    log_debug("DIRECTOR", f"Failed to launch Chromium app mode: {e}")
+
+        # Fallback to default browser
+        try:
+            log_debug("DIRECTOR", f"Opening livestream URL in default browser: {url}")
+            webbrowser.open(url)
+        except Exception as e:
+            log_debug("DIRECTOR", f"Browser launch error: {e}")
 
     def _open_settings_from_panel(self):
         log_debug("DIRECTOR", "Settings button clicked on Director Dock")
@@ -454,6 +524,8 @@ class DirectorTab(QWidget):
         self.api_key = self.edit_api_key.text()
         self.stream_url = self.edit_stream_url.text().strip()
         self.target_monitor_idx = self.combo_monitor.currentData() or 0
+        if hasattr(self, "chk_app_mode"):
+            self.app_mode = self.chk_app_mode.isChecked()
         self.faders[0]["name"] = self.edit_fader1.text().strip()
         self.faders[1]["name"] = self.edit_fader2.text().strip()
         self.faders[2]["name"] = self.edit_fader3.text().strip()
@@ -464,6 +536,7 @@ class DirectorTab(QWidget):
             "api_key_obf": obfuscate_str(self.edit_api_key.text()),
             "stream_url": self.edit_stream_url.text().strip(),
             "target_monitor": self.combo_monitor.currentData() or 0,
+            "app_mode": self.chk_app_mode.isChecked() if hasattr(self, "chk_app_mode") else True,
             "scenes": self.scenes,
             "audio_toggles": self.audio_toggles,
             "faders": [
@@ -481,6 +554,9 @@ class DirectorTab(QWidget):
             self.stream_url = d.get("stream_url", self.stream_url)
             self.edit_stream_url.setText(self.stream_url)
             self.target_monitor_idx = d.get("target_monitor", 0)
+            self.app_mode = d.get("app_mode", True)
+            if hasattr(self, "chk_app_mode"):
+                self.chk_app_mode.setChecked(self.app_mode)
             self.scenes = d.get("scenes", self.scenes)
             self.audio_toggles = d.get("audio_toggles", self.audio_toggles)
             self.faders = d.get("faders", self.faders)
