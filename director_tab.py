@@ -22,6 +22,14 @@ def obfuscate_str(data_str: str, key: int = 140) -> str:
         return ""
     return "".join(chr(ord(c) ^ key) for c in data_str)
 
+class NoScrollComboBox(QComboBox):
+    """Dropdown QComboBox that ignores mouse wheel when closed to prevent accidental scrolling."""
+    def wheelEvent(self, event):
+        if self.view() and self.view().isVisible():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
 class SceneEditDialog(QDialog):
     """Dialog to add or modify a scene card with live Streamlabs scene selection."""
     def __init__(self, name="New Scene", color_hex="#22c55e", available_scenes=None, scene_id=None, parent=None):
@@ -391,21 +399,21 @@ class DirectorTab(QWidget):
         lay_fd.setContentsMargins(10, 8, 10, 8)
 
         lay_fd.addWidget(QLabel("Slider 1:"), 0, 0)
-        self.edit_fader1 = QComboBox()
-        self.edit_fader1.setEditable(True)
+        self.edit_fader1 = NoScrollComboBox()
         self.edit_fader1.currentTextChanged.connect(self._on_settings_changed)
+        self.edit_fader1.activated.connect(lambda idx: self._on_fader_combo_activated(self.edit_fader1, idx))
         lay_fd.addWidget(self.edit_fader1, 0, 1)
 
         lay_fd.addWidget(QLabel("Slider 2:"), 0, 2)
-        self.edit_fader2 = QComboBox()
-        self.edit_fader2.setEditable(True)
+        self.edit_fader2 = NoScrollComboBox()
         self.edit_fader2.currentTextChanged.connect(self._on_settings_changed)
+        self.edit_fader2.activated.connect(lambda idx: self._on_fader_combo_activated(self.edit_fader2, idx))
         lay_fd.addWidget(self.edit_fader2, 0, 3)
 
         lay_fd.addWidget(QLabel("Slider 3:"), 1, 0)
-        self.edit_fader3 = QComboBox()
-        self.edit_fader3.setEditable(True)
+        self.edit_fader3 = NoScrollComboBox()
         self.edit_fader3.currentTextChanged.connect(self._on_settings_changed)
+        self.edit_fader3.activated.connect(lambda idx: self._on_fader_combo_activated(self.edit_fader3, idx))
         lay_fd.addWidget(self.edit_fader3, 1, 1)
 
         lay_fd.setColumnStretch(1, 1)
@@ -491,6 +499,17 @@ class DirectorTab(QWidget):
     def _on_slobs_audio_updated(self, sources):
         self._refresh_fader_combos()
 
+    def _on_fader_combo_activated(self, combo: QComboBox, idx: int):
+        if combo.itemText(idx) == "➕ Custom Source Name...":
+            text, ok = QInputDialog.getText(self, "Custom Source Name", "Enter audio source name:")
+            if ok and text.strip():
+                name = text.strip()
+                combo.insertItem(combo.count() - 1, name)
+                combo.setCurrentText(name)
+            else:
+                if combo.count() > 1:
+                    combo.setCurrentIndex(0)
+
     def _refresh_fader_combos(self):
         sources = self.slobs_client.get_cached_audio_sources() if self.slobs_client else []
         source_names = []
@@ -498,6 +517,9 @@ class DirectorTab(QWidget):
             n = s.get("name", "").strip()
             if n and n not in source_names:
                 source_names.append(n)
+
+        if not source_names:
+            source_names = ["Mic", "Game", "Music", "Discord", "Desktop", "Alerts"]
 
         for combo, default_val in [
             (self.edit_fader1, "Mic"),
@@ -509,8 +531,12 @@ class DirectorTab(QWidget):
             cur = combo.currentText() or default_val
             combo.blockSignals(True)
             combo.clear()
-            for name in source_names:
+            items = list(source_names)
+            if cur and cur not in items and cur != "➕ Custom Source Name...":
+                items.insert(0, cur)
+            for name in items:
                 combo.addItem(name)
+            combo.addItem("➕ Custom Source Name...")
             combo.setCurrentText(cur)
             combo.blockSignals(False)
 
@@ -696,6 +722,7 @@ class DirectorTab(QWidget):
         if self.panel_window and self.panel_window.isVisible():
             log_debug("DIRECTOR", "Closing Director Panel via toggle")
             self.panel_window.close()
+            self.panel_window = None
         else:
             self.launch_director_panel()
 
@@ -740,10 +767,13 @@ class DirectorTab(QWidget):
         if self.main_win:
             self.main_win.hide()
 
-        # Re-assert topmost after browser completes launch
+        # Re-assert topmost after browser completes launch (multi-stage)
         from PyQt6.QtCore import QTimer
-        QTimer.singleShot(400, self.panel_window.force_topmost)
+        QTimer.singleShot(200, self.panel_window.force_topmost)
+        QTimer.singleShot(500, self.panel_window.force_topmost)
         QTimer.singleShot(1000, self.panel_window.force_topmost)
+        QTimer.singleShot(2000, self.panel_window.force_topmost)
+        QTimer.singleShot(3500, self.panel_window.force_topmost)
 
     def _find_chromium_browser(self) -> str | None:
         if sys.platform != "win32":
@@ -772,6 +802,12 @@ class DirectorTab(QWidget):
         return None
 
     def _launch_stream_browser(self, url: str, target_mon: int, dock_top_y: int):
+        # Don't spawn duplicate browser process if already active
+        if hasattr(self, "_browser_proc") and self._browser_proc is not None:
+            if self._browser_proc.poll() is None:
+                log_debug("DIRECTOR", "Stream browser process is already running, skipping duplicate launch")
+                return
+
         screens = QApplication.screens()
         idx = target_mon if 0 <= target_mon < len(screens) else 0
         screen = screens[idx] if screens else None
@@ -795,7 +831,7 @@ class DirectorTab(QWidget):
                         "--start-maximized",
                     ]
                     log_debug("DIRECTOR", f"Launching studio app window maximized ({os.path.basename(browser_exe)}): {url}")
-                    subprocess.Popen(cmd)
+                    self._browser_proc = subprocess.Popen(cmd)
                     return
                 except Exception as e:
                     log_debug("DIRECTOR", f"Failed to launch Chromium app mode: {e}")
@@ -818,6 +854,7 @@ class DirectorTab(QWidget):
     def _on_panel_closed(self):
         log_debug("DIRECTOR", "Director Panel closed event received")
         self._set_launch_button_state(is_open=False)
+        self.panel_window = None
 
     def _on_settings_changed(self):
         self.api_key = self.edit_api_key.text()
@@ -832,6 +869,15 @@ class DirectorTab(QWidget):
         if hasattr(self, "edit_fader3"):
             self.faders[2]["name"] = self.edit_fader3.currentText().strip()
         self.save_to_settings()
+
+        # Update live Director Panel dock immediately if open
+        if self.panel_window and self.panel_window.isVisible():
+            fader_data = [
+                {"name": self.faders[0]["name"] or "Audio 1", "volume": self.faders[0].get("volume", 80)},
+                {"name": self.faders[1]["name"] or "Audio 2", "volume": self.faders[1].get("volume", 75)},
+                {"name": self.faders[2]["name"] or "Audio 3", "volume": self.faders[2].get("volume", 60)},
+            ]
+            self.panel_window.load_configuration(self.scenes, self.audio_toggles, fader_data)
 
     def export_settings(self) -> dict:
         return {
@@ -863,9 +909,15 @@ class DirectorTab(QWidget):
             self.audio_toggles = d.get("audio_toggles", self.audio_toggles)
             self.faders = d.get("faders", self.faders)
             if len(self.faders) >= 3 and hasattr(self, "edit_fader1"):
-                self.edit_fader1.setCurrentText(self.faders[0].get("name", "Mic"))
-                self.edit_fader2.setCurrentText(self.faders[1].get("name", "Game"))
-                self.edit_fader3.setCurrentText(self.faders[2].get("name", "Music"))
+                for combo, default_val, idx in [
+                    (self.edit_fader1, "Mic", 0),
+                    (self.edit_fader2, "Game", 1),
+                    (self.edit_fader3, "Music", 2)
+                ]:
+                    fname = self.faders[idx].get("name", default_val)
+                    if combo.findText(fname) == -1:
+                        combo.insertItem(0, fname)
+                    combo.setCurrentText(fname)
 
         self.refresh_monitors_list()
         self._refresh_scene_list_ui()

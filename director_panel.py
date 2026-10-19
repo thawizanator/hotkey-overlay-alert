@@ -1,5 +1,5 @@
 import sys
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QFrame, QGridLayout, QApplication, QStyleOption, QStyle
@@ -243,13 +243,18 @@ class DirectorPanelWindow(QWidget):
         self.setObjectName("DirectorPanelWindow")
         self.setWindowTitle("🎬 Stream Director Dock")
         self.setWindowFlags(
-            Qt.WindowType.Window |
+            Qt.WindowType.Tool |
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setAutoFillBackground(True)
+
+        self._topmost_timer = QTimer(self)
+        self._topmost_timer.setInterval(1500)
+        self._topmost_timer.timeout.connect(self.force_topmost)
+        self._topmost_timer.start()
 
         self.scene_buttons = []
         self.audio_buttons = []
@@ -619,5 +624,16 @@ class DirectorPanelWindow(QWidget):
         self._drag_pos = None
 
     def closeEvent(self, event):
+        if hasattr(self, "_topmost_timer") and self._topmost_timer:
+            self._topmost_timer.stop()
+        try:
+            if hasattr(self, "slobs_client") and self.slobs_client:
+                self.slobs_client.connected.disconnect(self._on_slobs_connected)
+                self.slobs_client.disconnected.disconnect(self._on_slobs_disconnected)
+                self.slobs_client.scene_switched.disconnect(self._on_slobs_scene_switched)
+                self.slobs_client.audio_muted_changed.disconnect(self._on_slobs_audio_muted_changed)
+                self.slobs_client.audio_volume_changed.disconnect(self._on_slobs_audio_volume_changed)
+        except Exception:
+            pass
         self.panel_closed.emit()
         super().closeEvent(event)
