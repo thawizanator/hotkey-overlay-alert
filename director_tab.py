@@ -170,6 +170,9 @@ class DirectorTab(QWidget):
         self.panel_window = None
 
         # Data defaults
+        self.conn_mode = "local"
+        self.remote_host = "127.0.0.1"
+        self.remote_port = "59650"
         self.api_key = ""
         self.stream_url = "https://twitch.tv/thawizanator"
         self.target_monitor_idx = 0
@@ -228,7 +231,7 @@ class DirectorTab(QWidget):
         scroll_layout.setSpacing(8)
 
         # ------------------ GROUP 1: REMOTE AUTH & MONITOR ------------------
-        grp_conn = QGroupBox("Stream Director Connection & Target Display")
+        grp_conn = QGroupBox("Streamlabs Connection & Target Display")
         lay_conn = QVBoxLayout(grp_conn)
         lay_conn.setSpacing(6)
 
@@ -256,11 +259,50 @@ class DirectorTab(QWidget):
         lay_slobs_box.addWidget(self.btn_reconnect_slobs)
         lay_conn.addWidget(self.frame_slobs_status)
 
-        row_api = QHBoxLayout()
-        row_api.addWidget(QLabel("Director API Key:"))
+        # Connection Mode selection row
+        row_mode = QHBoxLayout()
+        row_mode.addWidget(QLabel("Connection Mode:"))
+        self.combo_conn_mode = QComboBox()
+        self.combo_conn_mode.addItem("🖥️  Local PC (Named Pipe — Auto / Zero-Config)", "local")
+        self.combo_conn_mode.addItem("🌐  Remote LAN PC (WebSocket — Port 59650)", "remote")
+        self.combo_conn_mode.currentIndexChanged.connect(self._on_conn_mode_changed)
+        row_mode.addWidget(self.combo_conn_mode, 1)
+
+        self.btn_autodetect = QPushButton("⚡ Auto-Detect Local Token")
+        self.btn_autodetect.setToolTip("Queries local Streamlabs Desktop on this PC to automatically discover its API Token, port, and LAN IP.")
+        self.btn_autodetect.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_autodetect.clicked.connect(self._on_autodetect_clicked)
+        row_mode.addWidget(self.btn_autodetect)
+        lay_conn.addLayout(row_mode)
+
+        # Remote LAN Network parameters row (Host IP & Port)
+        self.row_remote_net_widget = QWidget()
+        row_remote_net = QHBoxLayout(self.row_remote_net_widget)
+        row_remote_net.setContentsMargins(0, 0, 0, 0)
+        row_remote_net.setSpacing(6)
+        row_remote_net.addWidget(QLabel("Streamlabs Host / IP:"))
+        self.edit_remote_host = QLineEdit("127.0.0.1")
+        self.edit_remote_host.setPlaceholderText("e.g. 192.168.1.150 or 127.0.0.1")
+        self.edit_remote_host.textChanged.connect(self._on_settings_changed)
+        row_remote_net.addWidget(self.edit_remote_host, 1)
+
+        row_remote_net.addWidget(QLabel("Port:"))
+        self.edit_remote_port = QLineEdit("59650")
+        self.edit_remote_port.setFixedWidth(65)
+        self.edit_remote_port.setPlaceholderText("59650")
+        self.edit_remote_port.textChanged.connect(self._on_settings_changed)
+        row_remote_net.addWidget(self.edit_remote_port)
+        lay_conn.addWidget(self.row_remote_net_widget)
+
+        # API Token Row
+        self.row_api_widget = QWidget()
+        row_api = QHBoxLayout(self.row_api_widget)
+        row_api.setContentsMargins(0, 0, 0, 0)
+        row_api.setSpacing(6)
+        row_api.addWidget(QLabel("Streamlabs API Token:"))
         self.edit_api_key = QLineEdit()
         self.edit_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.edit_api_key.setPlaceholderText("Enter streamer's secret token...")
+        self.edit_api_key.setPlaceholderText("From Streamlabs Desktop -> Settings -> Remote Control -> QR Code -> Show details")
         self.edit_api_key.textChanged.connect(self._on_settings_changed)
         row_api.addWidget(self.edit_api_key, 1)
 
@@ -269,7 +311,12 @@ class DirectorTab(QWidget):
         self.btn_toggle_key.setToolTip("Show/Hide Key")
         self.btn_toggle_key.clicked.connect(self._toggle_key_visibility)
         row_api.addWidget(self.btn_toggle_key)
-        lay_conn.addLayout(row_api)
+        lay_conn.addWidget(self.row_api_widget)
+
+        # Local Mode Informational Notice (visible when local mode is selected)
+        self.lbl_local_notice = QLabel("💡 <i>Local PC Mode uses the high-speed Windows Named Pipe (\\\\.\\pipe\\slobs). Zero token or network configuration required.</i>")
+        self.lbl_local_notice.setStyleSheet("font-size: 10px; color: #a1a1aa; padding-left: 2px;")
+        lay_conn.addWidget(self.lbl_local_notice)
 
         row_url = QHBoxLayout()
         row_url.addWidget(QLabel("Stream Live URL:"))
@@ -438,6 +485,8 @@ class DirectorTab(QWidget):
         self.btn_launch_panel.clicked.connect(self.toggle_director_panel)
         main_layout.addWidget(self.btn_launch_panel)
 
+        self._on_conn_mode_changed()
+
     def refresh_monitors_list(self):
         self.combo_monitor.blockSignals(True)
         self.combo_monitor.clear()
@@ -478,27 +527,74 @@ class DirectorTab(QWidget):
         self.lbl_audio_count.setText(f"Active Audio Toggles: ({count} / 6)")
         self.btn_add_audio.setEnabled(count < 6)
 
+    def _on_conn_mode_changed(self):
+        is_remote = (self.combo_conn_mode.currentData() == "remote")
+        self.row_remote_net_widget.setVisible(is_remote)
+        self.row_api_widget.setVisible(is_remote)
+        self.lbl_local_notice.setVisible(not is_remote)
+        self.conn_mode = "remote" if is_remote else "local"
+        self._on_settings_changed()
+
+    def _on_autodetect_clicked(self):
+        detected = self.slobs_client.auto_detect_local_settings()
+        if detected:
+            token = detected.get("token", "")
+            port = detected.get("port", 59650)
+            local_ip = detected.get("local_ip", "127.0.0.1")
+
+            self.edit_remote_host.setText(local_ip)
+            self.edit_remote_port.setText(str(port))
+            self.edit_api_key.setText(token)
+            self._on_settings_changed()
+
+            QMessageBox.information(
+                self,
+                "Streamlabs Auto-Detected",
+                f"Successfully auto-detected settings from local Streamlabs Desktop!\n\n"
+                f"• Streaming PC LAN IP: {local_ip}\n"
+                f"• Remote Port: {port}\n"
+                f"• API Token: {token[:8]}...{token[-4:] if len(token) > 8 else ''}\n\n"
+                f"💡 If configuring HotKey Overlay Alert on another PC on your LAN, enter these exact values on that second PC!"
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "Auto-Detect Not Available",
+                "Could not auto-detect settings from local Streamlabs Desktop.\n\n"
+                "Please make sure Streamlabs Desktop is running on this PC, or obtain your API Token manually via:\n"
+                "Streamlabs Desktop -> Settings -> Remote Control -> QR Code -> Show details."
+            )
+
     def _update_slobs_status_ui(self, *args):
         if not hasattr(self, "lbl_slobs_status"):
             return
         if self.slobs_client and self.slobs_client.is_connected():
             _, act_name = self.slobs_client.get_active_scene_info()
             act_str = f" — Active: <b>{act_name}</b>" if act_name else ""
-            self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Streamlabs Desktop Connected</span>{act_str}")
+            mode_tag = "Local Pipe" if self.slobs_client._mode == "local" else f"LAN {self.slobs_client._remote_host}:{self.slobs_client._remote_port}"
+            self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Streamlabs Desktop Connected</span> <span style='color: #a1a1aa; font-size: 10px;'>({mode_tag})</span>{act_str}")
             self._refresh_fader_combos()
         else:
-            self.lbl_slobs_status.setText("<span style='color: #ef4444; font-weight: bold;'>🔴 Streamlabs Desktop Disconnected</span> <span style='color: #a1a1aa;'>(Launch Streamlabs Desktop to link)</span>")
+            mode_str = "local PC" if getattr(self, "conn_mode", "local") == "local" else "remote LAN PC"
+            self.lbl_slobs_status.setText(f"<span style='color: #ef4444; font-weight: bold;'>🔴 Streamlabs Desktop Disconnected</span> <span style='color: #a1a1aa;'>(Launch Streamlabs Desktop on {mode_str} to link)</span>")
 
     def _manual_reconnect_slobs(self):
         if self.slobs_client:
             self.slobs_client.disconnect_client()
+            mode = self.combo_conn_mode.currentData() if hasattr(self, "combo_conn_mode") else "local"
+            host = self.edit_remote_host.text().strip() if hasattr(self, "edit_remote_host") else "127.0.0.1"
+            port = self.edit_remote_port.text().strip() if hasattr(self, "edit_remote_port") else 59650
+            token = self.edit_api_key.text().strip() if hasattr(self, "edit_api_key") else ""
+            self.slobs_client.configure_connection(mode=mode, host=host, port=port, token=token)
             ok = self.slobs_client.connect_client()
             self._update_slobs_status_ui()
             if ok:
                 self._refresh_fader_combos()
-                QMessageBox.information(self, "Connected", "Successfully connected to Streamlabs Desktop!")
+                mode_str = "Local PC (Named Pipe)" if mode == "local" else f"Remote LAN (ws://{host}:{port})"
+                QMessageBox.information(self, "Connected", f"Successfully connected to Streamlabs Desktop via {mode_str}!")
             else:
-                QMessageBox.warning(self, "Connection Failed", "Could not connect to Streamlabs Desktop.\n\nPlease verify that Streamlabs Desktop is running on this PC.")
+                mode_str = "Local Named Pipe" if mode == "local" else f"WebSocket (ws://{host}:{port})"
+                QMessageBox.warning(self, "Connection Failed", f"Could not connect to Streamlabs Desktop via {mode_str}.\n\nPlease verify that Streamlabs Desktop is running and Remote Control is enabled.")
 
     def _on_slobs_scenes_updated(self, scenes):
         pass
@@ -873,15 +969,19 @@ class DirectorTab(QWidget):
             self.main_win.show()
             self.main_win.raise_()
             self.main_win.activateWindow()
-            self.main_win.set_view_index(7)
-
     def _on_panel_closed(self):
         log_debug("DIRECTOR", "Director Panel closed event received")
         self._set_launch_button_state(is_open=False)
         self.panel_window = None
 
     def _on_settings_changed(self):
-        self.api_key = self.edit_api_key.text()
+        if hasattr(self, "combo_conn_mode"):
+            self.conn_mode = self.combo_conn_mode.currentData() or "local"
+        if hasattr(self, "edit_remote_host"):
+            self.remote_host = self.edit_remote_host.text().strip() or "127.0.0.1"
+        if hasattr(self, "edit_remote_port"):
+            self.remote_port = self.edit_remote_port.text().strip() or "59650"
+        self.api_key = self.edit_api_key.text().strip()
         self.stream_url = self.edit_stream_url.text().strip()
         self.target_monitor_idx = self.combo_monitor.currentData() or 0
         if hasattr(self, "chk_app_mode"):
@@ -894,6 +994,15 @@ class DirectorTab(QWidget):
             self.faders[2]["name"] = self.edit_fader3.currentText().strip()
         self.save_to_settings()
 
+        # Update live client connection configuration
+        if hasattr(self, "slobs_client") and self.slobs_client:
+            self.slobs_client.configure_connection(
+                mode=self.conn_mode,
+                host=self.remote_host,
+                port=self.remote_port,
+                token=self.api_key
+            )
+
         # Update live Director Panel dock immediately if open
         if self.is_panel_open():
             fader_data = [
@@ -905,6 +1014,9 @@ class DirectorTab(QWidget):
 
     def export_settings(self) -> dict:
         return {
+            "conn_mode": self.combo_conn_mode.currentData() if hasattr(self, "combo_conn_mode") else "local",
+            "remote_host": self.edit_remote_host.text().strip() if hasattr(self, "edit_remote_host") else "127.0.0.1",
+            "remote_port": self.edit_remote_port.text().strip() if hasattr(self, "edit_remote_port") else "59650",
             "api_key_obf": obfuscate_str(self.edit_api_key.text()),
             "stream_url": self.edit_stream_url.text().strip(),
             "target_monitor": self.combo_monitor.currentData() or 0,
@@ -918,11 +1030,38 @@ class DirectorTab(QWidget):
             ]
         }
 
-    def load_from_settings(self):
-        d = getattr(self.main_win.overlay, "director_settings", {})
+    def load_from_settings(self, settings_override: Optional[dict] = None):
+        if settings_override is not None:
+            d = settings_override
+        else:
+            overlay = getattr(self.main_win, "overlay", None) if self.main_win else None
+            d = getattr(overlay, "director_settings", {}) if overlay else {}
         if d:
+            self.conn_mode = d.get("conn_mode", "local")
+            self.remote_host = d.get("remote_host", "127.0.0.1")
+            self.remote_port = d.get("remote_port", "59650")
             self.api_key = obfuscate_str(d.get("api_key_obf", ""))
-            self.edit_api_key.setText(self.api_key)
+
+            if hasattr(self, "combo_conn_mode"):
+                idx = self.combo_conn_mode.findData(self.conn_mode)
+                if idx >= 0:
+                    self.combo_conn_mode.setCurrentIndex(idx)
+                self._on_conn_mode_changed()
+            if hasattr(self, "edit_remote_host"):
+                self.edit_remote_host.setText(self.remote_host)
+            if hasattr(self, "edit_remote_port"):
+                self.edit_remote_port.setText(str(self.remote_port))
+            if hasattr(self, "edit_api_key"):
+                self.edit_api_key.setText(self.api_key)
+
+            if hasattr(self, "slobs_client") and self.slobs_client:
+                self.slobs_client.configure_connection(
+                    mode=self.conn_mode,
+                    host=self.remote_host,
+                    port=self.remote_port,
+                    token=self.api_key
+                )
+
             self.stream_url = d.get("stream_url", self.stream_url)
             self.edit_stream_url.setText(self.stream_url)
             self.target_monitor_idx = d.get("target_monitor", 0)

@@ -9,7 +9,7 @@ a = Analysis(
         ('icon.ico', '.'),
         ('icon.png', '.')
     ],
-    hiddenimports=['PyQt6.QtGui', 'director_tab', 'director_panel', 'streamlabs_client'],
+    hiddenimports=['PyQt6.QtGui', 'PyQt6.QtWebSockets', 'director_tab', 'director_panel', 'streamlabs_client'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
