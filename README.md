@@ -65,9 +65,10 @@ Track upcoming milestones, completed phases, and design plans in **[ROADMAP.md](
 - **Phase 1 (Completed)**: Modern Left Sidebar Navigation Shell (`v3.0.0-alpha`)
 - **Phase 2 (Completed)**: Chronos Timers Engine & OBS Text Sync (`v3.0.0-beta.1`)
 - **Phase 3 (Completed)**: Rotating Text & Trivia Cycler Engine (`v3.0.0-beta.2`)
-- **Phase 4 (Next)**: Unified Hotkey Center & Native Gamepad / Controller Support (`v3.0.0-beta.3`)
-- **Phase 5**: Stream Director & OBS WebSocket Integration
-- **Phase 6**: Mobile & Local Web Deck Companion
+- **Phase 4 (Next)**: Stream Director & Secure Remote OBS/Streamlabs Integration (`v3.0.0-beta.3`)
+- **Phase 5**: Unified Hotkey Center & Native Gamepad / Controller Support (`v3.1.0`)
+- **Phase 6**: Soundboard Triggering & Audio Production Hub (`v3.2.0`)
+- **Phase 7**: Mobile & Local Web Deck Companion (`v3.3.0`)
 
 ---
 

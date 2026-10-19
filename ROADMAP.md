@@ -38,54 +38,42 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
 
 ---
 
-## 🚀 Newly Added: Phase 4 — Unified Hotkey Center & Gamepad Controller Support (`v3.0.0-beta.3`)
+## 🚀 Next Milestone: Phase 4 — Stream Director & Secure Remote OBS Integration (`v3.0.0-beta.3`)
 
-> [!NOTE]
-> **Streamer Problem Statement**: Streamers and gamers who play with a controller (Xbox, PlayStation, or generic gamepad) currently have to let go of their controller to reach for the keyboard to trigger hotkeys (muting/unmuting alerts, clipping stream markers, sending announcements, or controlling timers). Phase 4 introduces native background gamepad support so hotkeys can be triggered directly from the controller without interrupting gameplay!
+> [!IMPORTANT]
+> **Remote Producer & Director Vision**: Allow the streamer, trusted co-hosts, or remote channel directors to trigger actions and switch scenes in **OBS Studio** and **Streamlabs Desktop** from anywhere over the internet, while enforcing strict per-user authentication so only authorized users can connect.
 
-### 4.1 ⌨️ Central Hotkey Overview & Management Tab
-- **Dedicated Sidebar View**: A single central place in the sidebar (**Hotkeys & Gamepad**) to view, test, and rebind all shortcuts across the entire app.
-- **Unified Shortcut Matrix**:
-  - 🖥️ Primary Monitor Highlight Overlay
-  - 🟣 Twitch Macros (Slots 1–4: Markers, Announcements, Shoutouts)
-  - ⏱️ Chronos Timers (Timer #1–#4 Start/Stop/Reset)
-  - 📜 Rotating Text / Trivia (Next Line, Previous Line, Reveal Answer)
-  - 🗂️ App Controls (Toggle Sidebar `Ctrl+B`, Show/Hide Settings)
-- **Inline Conflict Detection**: Visual alert tags (`⚠️ Conflict`) if duplicate keyboard hotkeys or gamepad chords are assigned to multiple actions.
-- **Master Toggle & Per-Action Muting**: Temporarily disable individual hotkeys or the entire hotkey hook without deleting the assigned key combinations.
+### 4.1 🎬 OBS Studio & Streamlabs Desktop WebSocket Gateway
+- **WebSocket v5 Integration**: Direct low-latency connection to local OBS Studio and Streamlabs Desktop via OBS WebSocket protocol (`ws://localhost:4455`).
+- **Scene & Source Control**: Instantly switch scenes, toggle display/browser sources, mute/unmute audio tracks, and trigger transitions.
+- **Multi-Action Macros**: Chain actions into one-click triggers (e.g., *One command triggers monitor alert + starts Chronos 5-minute break timer + switches OBS to "Be Right Back" scene + posts Twitch chat announcement*).
 
-### 4.2 🎮 Native Gamepad & Controller Support (Xbox, PlayStation, Gamepads)
-- **Background Controller Hooking**:
-  - Utilizes Windows **XInput API** (`xinput1_4.dll`) to capture Xbox 360, Xbox One, Xbox Series X|S, and XInput-compatible PC gamepads globally in the background even while full-screen games have exclusive focus.
-  - Zero third-party heavyweight dependencies; pure low-latency Windows API integration running in an asynchronous worker thread.
-  - Automatic support for PlayStation DualShock 4 / DualSense controllers running through Steam Input or DS4Windows.
-- **Controller Button Mapping**:
-  - D-Pad: Up, Down, Left, Right
-  - Face Buttons: A, B, X, Y (Cross, Circle, Square, Triangle)
-  - Bumpers & Triggers: LB, RB, Left Trigger (LT > 50%), Right Trigger (RT > 50%)
-  - Stick Clicks: Left Stick Click (L3 / LS), Right Stick Click (R3 / RS)
-  - Center Buttons: Back / View, Start / Menu, Guide / Xbox button
-- **Safe "Streamer Chords" (Combinations & Hold Delays)**:
-  - Prevents game interference: In-game actions (e.g. jumping or shooting with A/RT) will not accidentally trigger hotkeys.
-  - Supports **Chords / Combinations**: e.g., `LB + RB`, `Back + Y`, `LT + D-Pad Down`, `L3 + R3`.
-  - Supports **Long-Press Threshold** (e.g., hold `Back` for 0.75 seconds) so tap functions in-game remain unaffected.
-
-### 4.3 🕹️ Live Controller Visualizer & Button Recorder
-- **Live Controller Tester**: An interactive visual HUD inside the Hotkey Tab that lights up controller buttons in real-time as you press them, confirming your gamepad is connected and detected.
-- **Click-to-Record Gamepad Button**:
-  1. Click **Assign Controller Button**.
-  2. Press your desired button or chord on your controller.
-  3. The app detects the combination and locks it in automatically.
+### 4.2 🔒 Secure Remote Access Control ("Connect from Anywhere")
+- **Strict User Whitelist & Authentication**:
+  - Only specific, explicitly approved users can connect remotely.
+  - **Per-User Access Keys / Tokens**: The streamer generates unique, revocable access tokens for individual directors/producers.
+  - **Twitch Identity Verification**: Option to authenticate remote users via their Twitch account, verifying they are an approved Twitch User ID, Moderator, or Channel Editor.
+  - **Permission Scoping**: Restrict what remote users can do (e.g., permit switching between pre-approved scenes, but restrict stopping stream or modifying settings).
+- **Remote "From Anywhere" Connectivity**:
+  - Secure encrypted gateway/tunnel allowing authorized remote directors to connect from any external network or mobile device without requiring hazardous router port forwarding or exposing private home IP addresses.
+- **Audit & Connection Logging**: Live visual log showing who connected, their IP/device, and every action triggered, with instant one-click ban/disconnect in Settings.
 
 ---
 
-## 🔮 Future Roadmap Milestones
+## 🔮 Upcoming Roadmap Milestones
 
-### Phase 5: Stream Director (Multi-Action Orchestration & OBS WebSocket)
-- **OBS Studio WebSocket v5 Integration**: Direct connection to OBS Studio to switch scenes, toggle sources, and start/stop recordings.
-- **Multi-Action Macros**: Chain actions together (e.g., *One button triggers monitor highlight + starts Chronos 5-minute break timer + switches OBS to "Be Right Back" scene*).
-- **Soundboard Triggering**: Assign local sound effects to hotkey actions.
+### Phase 5: Unified Hotkey Center & Gamepad Controller Support (`v3.1.0`)
+- **Central Hotkey Manager Tab**: A dedicated view (**Hotkeys & Gamepad**) in the left sidebar displaying a master table of all configured shortcuts across the entire app with inline conflict detection.
+- **Background Gamepad & Controller Support (Xbox, PlayStation, Generic Gamepads)**:
+  - Low-latency background controller polling via Windows **XInput API** (`xinput1_4.dll`), allowing gamepad players to trigger alerts, macros, and timers without setting down their controller.
+  - Works globally even when full-screen games have exclusive focus.
+  - **Safe "Streamer Chords" & Hold Delays**: Supports combination buttons (e.g., `LB + RB`, `Back + Y`, `L3 + R3`) or 0.75s hold thresholds so normal in-game button taps (jumping, shooting) are never disrupted.
+- **Live Controller Visualizer & Button Recorder**: Real-time HUD that highlights gamepad buttons as you press them, with a 1-click button recorder.
 
-### Phase 6: Mobile & Local Web Deck Companion
-- Lightweight local HTTP/WebSocket dashboard accessible from phones, tablets, or secondary browsers on the local Wi-Fi.
-- Touch buttons to trigger monitor alerts, timers, trivia cycling, and Twitch commands without needing external hardware like an Elgato Stream Deck.
+### Phase 6: Soundboard Triggering & Audio Production Hub (`v3.2.0`)
+- Standalone sound effect player and audio production routing.
+- Assign local sound effects, chimes, and audio cues to stream events and hotkeys.
+
+### Phase 7: Mobile & Local Web Deck Companion (`v3.3.0`)
+- Lightweight local and remote web dashboard accessible from phones, tablets, or secondary browsers.
+- Touch buttons to trigger monitor alerts, timers, trivia cycling, and Stream Director commands without needing external hardware like an Elgato Stream Deck.
