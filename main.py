@@ -3,11 +3,49 @@ import os
 import json
 import keyboard
 
+# Configure Multi-Monitor DPI scaling before Qt platform plugin initializes
+def get_initial_dpi_mode():
+    try:
+        appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
+        cfg_path = os.path.join(appdata_root, "ThaWizanator_Overlay", "config.json")
+        if not os.path.exists(cfg_path):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            cfg_path = os.path.join(script_dir, "config.json")
+        if os.path.exists(cfg_path):
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("dpi_mode", "system")
+    except Exception:
+        pass
+    return "system"
+
+_initial_dpi_mode = get_initial_dpi_mode()
+if _initial_dpi_mode == "per_monitor":
+    os.environ["QT_QPA_PLATFORM"] = "windows:dpiawareness=-1"
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        except Exception:
+            pass
+else:
+    # "system" mode: Uniform virtual coordinate space, prevents cross-monitor resize/blowup glitch
+    os.environ["QT_QPA_PLATFORM"] = "windows:dpiawareness=1"
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-2))
+        except Exception:
+            pass
+
+# Import components from our other local workspace files
+from updater import CURRENT_VERSION, BUILD_COMMIT, get_build_commit, get_full_version_string, UpdateCheckWorker, DownloadWorker, apply_update_and_restart
+
 # Ensure Windows Taskbar displays the application icon instead of Python's default icon
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = "thawizanator.hotkeyoverlayalert.app.2.5.0"
+        app_user_model_id = f"thawizanator.hotkeyoverlayalert.app.{CURRENT_VERSION}"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -18,10 +56,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QSystemTrayIcon, QMenu,
                              QMessageBox, QDialog, QPushButton)
 from PyQt6.QtGui import QPainter, QPen, QColor, QIcon, QAction, QPixmap
 
-# Import components from our other local workspace files
 from twitch_worker import TwitchCommandWorker
 from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_hotkey_display, ICON_PATH, get_app_icon
-from updater import CURRENT_VERSION, UpdateCheckWorker, DownloadWorker, apply_update_and_restart
 import theme_manager
 from chronos_engine import ChronosEngine
 from cycler_engine import CyclerEngine
@@ -506,6 +542,7 @@ class RedBorderOverlay(QMainWindow):
         self.update_channel = "stable"
         self.theme_preference = "system"
         self.sidebar_collapsed = False
+        self.dpi_mode = "system"
         self.twitch_channel = "thawizanator"
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
         self.twitch_redirect_uri = "http://localhost:17563"
@@ -540,6 +577,7 @@ class RedBorderOverlay(QMainWindow):
                     self.update_channel = d.get("update_channel", "stable")
                     self.theme_preference = d.get("theme_preference", "system")
                     self.sidebar_collapsed = d.get("sidebar_collapsed", False)
+                    self.dpi_mode = d.get("dpi_mode", "system")
                     set_debug_mode(self.debug_mode)
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
                     if loaded_client_id and loaded_client_id != "testclientid":
@@ -589,6 +627,7 @@ class RedBorderOverlay(QMainWindow):
             "update_channel": getattr(self, "update_channel", "stable"),
             "theme_preference": getattr(self, "theme_preference", "system"),
             "sidebar_collapsed": getattr(self, "sidebar_collapsed", False),
+            "dpi_mode": getattr(self, "dpi_mode", "system"),
             "twitch_channel": self.twitch_channel,
             "twitch_client_id": self.twitch_client_id,
             "twitch_redirect_uri": self.twitch_redirect_uri,
@@ -656,7 +695,7 @@ class RedBorderOverlay(QMainWindow):
             msg_box.setWindowIcon(get_app_icon())
             msg_box.setText(
                 f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
-                f"Installed Version: <b>v{CURRENT_VERSION}</b><br>"
+                f"Installed Version: <b>{get_full_version_string()}</b><br>"
                 f"Latest Version: <b>{latest_tag}</b><br><br>"
                 f"Would you like to download and install this update now?"
             )
@@ -708,7 +747,7 @@ class RedBorderOverlay(QMainWindow):
         try:
             if not os.path.exists(DEBUG_LOG_FILE):
                 with open(DEBUG_LOG_FILE, "w", encoding="utf-8") as f:
-                    f.write(f"=== HotKey Overlay Alert Debug Log (v{CURRENT_VERSION}) ===\n")
+                    f.write(f"=== HotKey Overlay Alert Debug Log ({get_full_version_string()}) ===\n")
             os.startfile(DEBUG_LOG_FILE)
             log_debug("SYSTEM", "Opened debug.txt in default viewer")
         except Exception as e:
@@ -968,10 +1007,11 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.5.0")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"thawizanator.hotkeyoverlayalert.app.{CURRENT_VERSION}")
         except Exception:
             pass
 
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
     app.setWindowIcon(get_app_icon())
 

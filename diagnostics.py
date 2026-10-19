@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 import platform
 import datetime
@@ -6,7 +6,7 @@ import re
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import PYQT_VERSION_STR
 
-from updater import CURRENT_VERSION
+from updater import CURRENT_VERSION, get_full_version_string, get_build_commit
 
 APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "ThaWizanator_Overlay")
 
@@ -37,20 +37,23 @@ def get_system_info(overlay_app=None) -> dict:
         for i, s in enumerate(screens):
             geom = s.geometry()
             is_pri = (s == QApplication.primaryScreen())
-            screen_info.append(f"Monitor #{i+1}: {geom.width()}x{geom.height()} @ ({geom.x()},{geom.y()}){' [Primary]' if is_pri else ''}")
+            screen_info.append(f"Monitor #{i+1}: {geom.width()}x{geom.height()} @ ({geom.x()},{geom.y()}){' [Primary]' if is_pri else ''} [DPR: {s.devicePixelRatio():.2f}]")
     except Exception:
         screen_info.append("Unable to detect display geometry")
 
     theme_pref = "system"
     streamer_mode = True
     update_chan = "stable"
+    dpi_mode = "system"
     if overlay_app:
         theme_pref = getattr(overlay_app, "theme_preference", "system")
         streamer_mode = getattr(overlay_app, "streamer_mode", True)
         update_chan = getattr(overlay_app, "update_channel", "stable")
+        dpi_mode = getattr(overlay_app, "dpi_mode", "system")
 
     info = {
-        "Application Version": f"v{CURRENT_VERSION}",
+        "Application Version": get_full_version_string(),
+        "Git Build Commit": get_build_commit(),
         "Operating System": f"{platform.system()} {platform.release()} (Build {platform.version()}) - {platform.machine()}",
         "Date & Time": now.strftime("%Y-%m-%d %H:%M:%S"),
         "Python Runtime": f"{platform.python_implementation()} {platform.python_version()} ({platform.architecture()[0]})",
@@ -59,6 +62,7 @@ def get_system_info(overlay_app=None) -> dict:
         "Packaging": "PyInstaller Standalone Executable" if getattr(sys, "frozen", False) else "Python Source",
         "Update Channel": update_chan.capitalize(),
         "Theme Preference": theme_pref.capitalize(),
+        "DPI Scaling Mode": dpi_mode.capitalize(),
         "Streamer Mode": "Enabled (Transparent HUDs)" if streamer_mode else "Disabled (Standard Modals)",
         "Monitors": screen_info
     }

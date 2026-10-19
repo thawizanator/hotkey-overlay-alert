@@ -16,7 +16,8 @@ from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QKeySequence, QS
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from updater import (UpdateCheckWorker, DownloadWorker, apply_update_and_restart, 
-                     CURRENT_VERSION, is_newer_version, GITHUB_REPO)
+                     CURRENT_VERSION, BUILD_COMMIT, get_build_commit, get_full_version_string,
+                     is_newer_version, GITHUB_REPO)
 from debug_logger import log_debug, get_crash_log_path, get_debug_log_path
 import theme_manager
 from bug_report_dialog import BugReportDialog
@@ -415,7 +416,52 @@ class MonitorTab(QWidget):
         self.update_monitor_info()
         layout.addWidget(self.lbl_info)
 
+        # Group 2: Multi-Monitor DPI & Scaling Behavior
+        grp_dpi = QGroupBox("Multi-Monitor DPI && Scaling Behavior")
+        lay_dpi = QVBoxLayout(grp_dpi)
+        lay_dpi.setSpacing(6)
+
+        dpi_row = QHBoxLayout()
+        dpi_row.setSpacing(10)
+        dpi_row.addWidget(QLabel("DPI Awareness Mode:"))
+        self.combo_dpi = QComboBox()
+        self.combo_dpi.addItem("System Aware (Uniform across monitors - No resizing glitch)", "system")
+        self.combo_dpi.addItem("Per-Monitor V2 (Per-display crisp scaling - standard Qt)", "per_monitor")
+        cur_dpi = getattr(self.main_win.overlay, "dpi_mode", "system")
+        idx_dpi = self.combo_dpi.findData(cur_dpi)
+        if idx_dpi >= 0:
+            self.combo_dpi.setCurrentIndex(idx_dpi)
+        self.combo_dpi.currentIndexChanged.connect(self.on_dpi_mode_changed)
+        dpi_row.addWidget(self.combo_dpi)
+        dpi_row.addStretch()
+        lay_dpi.addLayout(dpi_row)
+
+        self.lbl_dpi_desc = QLabel(
+            "<b>System Aware (Recommended):</b> Keeps the application window size uniform across displays "
+            "and prevents the window from violently resizing or blowing up when straddling monitors with "
+            "different DPI scales (e.g. 100% and 175%).<br>"
+            "<i>Note: Changing DPI awareness requires restarting the application to take effect.</i>"
+        )
+        self.lbl_dpi_desc.setWordWrap(True)
+        self.lbl_dpi_desc.setTextFormat(Qt.TextFormat.RichText)
+        lay_dpi.addWidget(self.lbl_dpi_desc)
+        layout.addWidget(grp_dpi)
+
         layout.addStretch()
+
+    def on_dpi_mode_changed(self, index):
+        val = self.combo_dpi.currentData()
+        old_val = getattr(self.main_win.overlay, "dpi_mode", "system")
+        if val != old_val:
+            self.main_win.overlay.dpi_mode = val
+            self.main_win.overlay.save_settings()
+            QMessageBox.information(
+                self,
+                "Restart Required",
+                "<b>DPI Awareness Setting Saved</b><br><br>"
+                "Windows requires the application to restart for new DPI awareness settings to take effect.<br><br>"
+                "Please restart HotKey Overlay Alert when convenient."
+            )
 
     def refresh_monitors(self):
         self.monitor_combo.blockSignals(True)
@@ -440,6 +486,8 @@ class MonitorTab(QWidget):
     def refresh_theme_labels(self, effective):
         sec_color = theme_manager.get_secondary_text_color(effective)
         self.lbl_info.setStyleSheet(f"color: {sec_color}; font-size: 12px;")
+        if hasattr(self, "lbl_dpi_desc") and self.lbl_dpi_desc:
+            self.lbl_dpi_desc.setStyleSheet(f"color: {sec_color}; font-size: 11px;")
 
     def update_monitor_info(self):
         pref = getattr(self.main_win.overlay, "theme_preference", "system")
@@ -843,7 +891,8 @@ class SystemTab(QWidget):
         lay_upd.setSpacing(5)
 
         status_box = QHBoxLayout()
-        self.lbl_cur_ver = QLabel(f"Installed Version: <b>v{CURRENT_VERSION}</b>")
+        self.lbl_cur_ver = QLabel(f"Installed Version: <b>v{CURRENT_VERSION}</b> <span style='color: #a1a1aa; font-size: 11px;'>(Commit: <code>{get_build_commit()}</code>)</span>")
+        self.lbl_cur_ver.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_update_status = QLabel("<span style='color: #a1a1aa;'>Status: Checking...</span>")
         self.lbl_update_status.setTextFormat(Qt.TextFormat.RichText)
         status_box.addWidget(self.lbl_cur_ver)
@@ -1087,7 +1136,7 @@ class SystemTab(QWidget):
                 """)
 
         self.lbl_about_txt.setText(
-            f"<b>HotKey Overlay Alert</b> – Version {CURRENT_VERSION}<br>"
+            f"<b>HotKey Overlay Alert</b> – Version {CURRENT_VERSION} <span style='font-weight: normal; color: {tert_color};'>(Commit: <code>{get_build_commit()}</code>)</span><br>"
             "Created by <b>ThaWizanator</b> • <a href='https://twitch.tv/thawizanator' style='color: #9146ff;'>twitch.tv/thawizanator</a><br>"
             f"<span style='color: {tert_color};'>Licensed under the MIT License • Standalone Authenticode Signed</span>"
         )
@@ -1142,7 +1191,7 @@ class SystemTab(QWidget):
             self,
             "Update Available",
             f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
-            f"Current version: <b>v{CURRENT_VERSION}</b><br>"
+            f"Current version: <b>{get_full_version_string()}</b><br>"
             f"Latest version: <b>{latest_tag}</b><br><br>"
             f"Would you like to download and install this update now?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
@@ -1160,7 +1209,7 @@ class SystemTab(QWidget):
             "Update Check Complete",
             f"<b>HotKey Overlay Alert is up to date!</b><br><br>"
             f"• <b>Active Channel:</b> {chan_title}<br>"
-            f"• <b>Installed Version:</b> v{current_ver}<br><br>"
+            f"• <b>Installed Version:</b> {get_full_version_string()}<br><br>"
             f"<i>Successfully connected to GitHub releases. There are currently no newer releases available on the {chan_title.lower()} channel.</i>"
         )
 
@@ -1304,7 +1353,7 @@ class SettingsWindow(QWidget):
         self.overlay = overlay_app
         self.setObjectName("SettingsWindow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setWindowTitle(f"HotKey Overlay Alert - Streamer Hub (v{CURRENT_VERSION})")
+        self.setWindowTitle(f"HotKey Overlay Alert - Streamer Hub ({get_full_version_string()})")
         self.is_sidebar_collapsed = getattr(self.overlay, "sidebar_collapsed", False)
         init_width = 570 if self.is_sidebar_collapsed else 780
         self.setFixedSize(init_width, 600)
@@ -1555,7 +1604,7 @@ class SettingsWindow(QWidget):
         sec = theme_manager.get_secondary_text_color(effective)
         chan = getattr(self.overlay, "update_channel", "stable")
 
-        self.lbl_v.setText(f"<span style='color: {tert};'>v{CURRENT_VERSION} • ThaWizanator</span>")
+        self.lbl_v.setText(f"<span style='color: {tert};'>{get_full_version_string()} • ThaWizanator</span>")
         if chan == "beta":
             self.lbl_channel_badge.setText("<span style='color: #eab308; font-size: 11px;'>● Beta Channel</span>")
         else:

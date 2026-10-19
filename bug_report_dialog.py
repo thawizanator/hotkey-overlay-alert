@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import urllib.parse
 import webbrowser
@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QIcon, QGuiApplication
 
-from updater import CURRENT_VERSION, GITHUB_REPO
+from updater import CURRENT_VERSION, GITHUB_REPO, get_full_version_string, get_build_commit
 from diagnostics import get_system_info, bundle_logs, APP_DIR
 import theme_manager
 
@@ -94,7 +94,7 @@ class BugReportDialog(QDialog):
         super().__init__(parent)
         self.overlay_app = overlay_app
         self.setObjectName("BugReportDialog")
-        self.setWindowTitle("Submit a Bug Report")
+        self.setWindowTitle(f"Submit a Bug Report ({get_full_version_string()})")
         self.resize(560, 680)
 
         pref = getattr(self.overlay_app, "theme_preference", "system") if self.overlay_app else "system"
@@ -107,7 +107,7 @@ class BugReportDialog(QDialog):
         main_layout.setContentsMargins(14, 14, 14, 14)
 
         # Header
-        lbl_title = QLabel("<b>🐞 Submit a Bug Report</b>")
+        lbl_title = QLabel(f"<b>🐞 Submit a Bug Report</b> <span style='font-size: 11px; color: {sec_color}; font-weight: normal;'>({get_full_version_string()})</span>")
         lbl_title.setStyleSheet("font-size: 15px;")
         main_layout.addWidget(lbl_title)
 

@@ -8,6 +8,33 @@ import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
 CURRENT_VERSION = "3.0.0-beta.2"
+BUILD_COMMIT = "2d10e2e"
+BUILD_DATE = "2026-10-18"
+
+def get_build_commit():
+    """Returns short git commit hash, checking live git first with fallback to baked BUILD_COMMIT."""
+    try:
+        cur_dir = os.path.dirname(os.path.abspath(__file__))
+        res = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=cur_dir,
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return BUILD_COMMIT
+
+def get_full_version_string():
+    """Returns formatted version string with commit, e.g. 'v3.0.0-beta.2 (207ecc5)'."""
+    commit = get_build_commit()
+    if commit:
+        return f"v{CURRENT_VERSION} ({commit})"
+    return f"v{CURRENT_VERSION}"
+
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
