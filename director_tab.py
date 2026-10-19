@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 import webbrowser
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QGroupBox, QListWidget, QListWidgetItem,
@@ -193,9 +193,32 @@ class DirectorTab(QWidget):
         sc_btn_row.addWidget(self.btn_rem_scene)
         lay_sc.addLayout(sc_btn_row)
 
+        slim_list_qss = """
+            QListWidget {
+                font-size: 11px;
+                padding: 1px;
+                border: 1px solid #27272a;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 1px 4px;
+                margin: 0px;
+                height: 19px;
+                min-height: 19px;
+                border-radius: 2px;
+            }
+            QListWidget::item:hover {
+                background-color: #27272a;
+            }
+            QListWidget::item:selected {
+                background-color: #0284c7;
+                color: #ffffff;
+            }
+        """
+
         self.list_scenes = QListWidget()
-        self.list_scenes.setFixedHeight(75)
-        self.list_scenes.setStyleSheet("font-size: 11px; padding: 2px;")
+        self.list_scenes.setFixedHeight(102)
+        self.list_scenes.setStyleSheet(slim_list_qss)
         lay_sc.addWidget(self.list_scenes)
         scroll_layout.addWidget(grp_scenes)
 
@@ -227,8 +250,8 @@ class DirectorTab(QWidget):
         lay_au.addLayout(au_btn_row)
 
         self.list_audio = QListWidget()
-        self.list_audio.setFixedHeight(70)
-        self.list_audio.setStyleSheet("font-size: 11px; padding: 2px;")
+        self.list_audio.setFixedHeight(120)
+        self.list_audio.setStyleSheet(slim_list_qss)
         lay_au.addWidget(self.list_audio)
         scroll_layout.addWidget(grp_audio)
 
@@ -289,6 +312,7 @@ class DirectorTab(QWidget):
         self.list_scenes.clear()
         for i, s in enumerate(self.scenes):
             it = QListWidgetItem(f"[{i+1}] {s['name']}  (Border: {s['color']})")
+            it.setSizeHint(QSize(0, 19))
             self.list_scenes.addItem(it)
         count = len(self.scenes)
         self.lbl_scene_count.setText(f"Active Scenes: ({count} / 5)")
@@ -298,6 +322,7 @@ class DirectorTab(QWidget):
         self.list_audio.clear()
         for i, a in enumerate(self.audio_toggles):
             it = QListWidgetItem(f"[{i+1}] {a['name']}")
+            it.setSizeHint(QSize(0, 19))
             self.list_audio.addItem(it)
         count = len(self.audio_toggles)
         self.lbl_audio_count.setText(f"Active Audio Toggles: ({count} / 6)")
