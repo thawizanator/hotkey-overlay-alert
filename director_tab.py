@@ -4,7 +4,7 @@ import subprocess
 import webbrowser
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QGroupBox, QListWidget, QListWidgetItem,
     QMessageBox, QDialog, QInputDialog, QColorDialog, QFormLayout, QScrollArea, QFrame,
     QCheckBox
@@ -207,6 +207,7 @@ class DirectorTab(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(4, 4, 4, 4)
@@ -292,24 +293,24 @@ class DirectorTab(QWidget):
         sc_btn_row.addWidget(self.lbl_scene_count)
         sc_btn_row.addStretch()
 
-        self.btn_autodetect_scenes = QPushButton("📥 Auto-Detect Scenes")
-        self.btn_autodetect_scenes.setStyleSheet("font-size: 11px; padding: 2px 8px; font-weight: 600;")
+        self.btn_autodetect_scenes = QPushButton("📥 Auto-Detect")
+        self.btn_autodetect_scenes.setStyleSheet("font-size: 11px; padding: 2px 6px; font-weight: 600;")
         self.btn_autodetect_scenes.setToolTip("Automatically import your live scenes from Streamlabs Desktop")
         self.btn_autodetect_scenes.clicked.connect(self._auto_detect_scenes)
         sc_btn_row.addWidget(self.btn_autodetect_scenes)
 
-        self.btn_add_scene = QPushButton("➕ Add Scene")
-        self.btn_add_scene.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_add_scene = QPushButton("➕ Add")
+        self.btn_add_scene.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.btn_add_scene.clicked.connect(self._add_scene)
         sc_btn_row.addWidget(self.btn_add_scene)
 
         self.btn_edit_scene = QPushButton("✏️ Edit")
-        self.btn_edit_scene.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_edit_scene.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.btn_edit_scene.clicked.connect(self._edit_scene)
         sc_btn_row.addWidget(self.btn_edit_scene)
 
         self.btn_rem_scene = QPushButton("🗑️ Remove")
-        self.btn_rem_scene.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_rem_scene.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.btn_rem_scene.clicked.connect(self._remove_scene)
         sc_btn_row.addWidget(self.btn_rem_scene)
         lay_sc.addLayout(sc_btn_row)
@@ -354,24 +355,24 @@ class DirectorTab(QWidget):
         au_btn_row.addWidget(self.lbl_audio_count)
         au_btn_row.addStretch()
 
-        self.btn_autodetect_audio = QPushButton("📥 Auto-Detect Audio")
-        self.btn_autodetect_audio.setStyleSheet("font-size: 11px; padding: 2px 8px; font-weight: 600;")
+        self.btn_autodetect_audio = QPushButton("📥 Auto-Detect")
+        self.btn_autodetect_audio.setStyleSheet("font-size: 11px; padding: 2px 6px; font-weight: 600;")
         self.btn_autodetect_audio.setToolTip("Automatically import your active audio mixer sources from Streamlabs Desktop")
         self.btn_autodetect_audio.clicked.connect(self._auto_detect_audio)
         au_btn_row.addWidget(self.btn_autodetect_audio)
 
-        self.btn_add_audio = QPushButton("➕ Add Source")
-        self.btn_add_audio.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_add_audio = QPushButton("➕ Add")
+        self.btn_add_audio.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.btn_add_audio.clicked.connect(self._add_audio)
         au_btn_row.addWidget(self.btn_add_audio)
 
         self.btn_edit_audio = QPushButton("✏️ Edit")
-        self.btn_edit_audio.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_edit_audio.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.btn_edit_audio.clicked.connect(self._edit_audio)
         au_btn_row.addWidget(self.btn_edit_audio)
 
         self.btn_rem_audio = QPushButton("🗑️ Remove")
-        self.btn_rem_audio.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_rem_audio.setStyleSheet("font-size: 11px; padding: 2px 6px;")
         self.btn_rem_audio.clicked.connect(self._remove_audio)
         au_btn_row.addWidget(self.btn_rem_audio)
         lay_au.addLayout(au_btn_row)
@@ -384,26 +385,31 @@ class DirectorTab(QWidget):
 
         # ------------------ GROUP 4: VOLUME FADERS (3 SLIDERS) ------------------
         grp_faders = QGroupBox("Volume Sliders (3 Channels)")
-        lay_fd = QHBoxLayout(grp_faders)
-        lay_fd.setSpacing(10)
+        lay_fd = QGridLayout(grp_faders)
+        lay_fd.setHorizontalSpacing(10)
+        lay_fd.setVerticalSpacing(8)
+        lay_fd.setContentsMargins(10, 8, 10, 8)
 
-        lay_fd.addWidget(QLabel("Slider 1:"))
+        lay_fd.addWidget(QLabel("Slider 1:"), 0, 0)
         self.edit_fader1 = QComboBox()
         self.edit_fader1.setEditable(True)
         self.edit_fader1.currentTextChanged.connect(self._on_settings_changed)
-        lay_fd.addWidget(self.edit_fader1, 1)
+        lay_fd.addWidget(self.edit_fader1, 0, 1)
 
-        lay_fd.addWidget(QLabel("Slider 2:"))
+        lay_fd.addWidget(QLabel("Slider 2:"), 0, 2)
         self.edit_fader2 = QComboBox()
         self.edit_fader2.setEditable(True)
         self.edit_fader2.currentTextChanged.connect(self._on_settings_changed)
-        lay_fd.addWidget(self.edit_fader2, 1)
+        lay_fd.addWidget(self.edit_fader2, 0, 3)
 
-        lay_fd.addWidget(QLabel("Slider 3:"))
+        lay_fd.addWidget(QLabel("Slider 3:"), 1, 0)
         self.edit_fader3 = QComboBox()
         self.edit_fader3.setEditable(True)
         self.edit_fader3.currentTextChanged.connect(self._on_settings_changed)
-        lay_fd.addWidget(self.edit_fader3, 1)
+        lay_fd.addWidget(self.edit_fader3, 1, 1)
+
+        lay_fd.setColumnStretch(1, 1)
+        lay_fd.setColumnStretch(3, 1)
         scroll_layout.addWidget(grp_faders)
 
         scroll.setWidget(scroll_content)
