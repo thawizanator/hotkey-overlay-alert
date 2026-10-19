@@ -352,22 +352,7 @@ class DirectorTab(QWidget):
 
     def _set_launch_button_state(self, is_open: bool):
         if is_open:
-            self.btn_launch_panel.setText("🟢 Director Panel Launched — Click to Close")
-            self.btn_launch_panel.setStyleSheet("""
-                QPushButton#btnLaunchDirector {
-                    background-color: #15803d;
-                    color: #ffffff;
-                    font-size: 13px;
-                    font-weight: bold;
-                    border: 1px solid #16a34a;
-                    border-radius: 6px;
-                }
-                QPushButton#btnLaunchDirector:hover {
-                    background-color: #16a34a;
-                }
-            """)
-        else:
-            self.btn_launch_panel.setText("🔴 Director Panel Closed — Click to Launch")
+            self.btn_launch_panel.setText("🟢 Close Director Panel")
             self.btn_launch_panel.setStyleSheet("""
                 QPushButton#btnLaunchDirector {
                     background-color: #b91c1c;
@@ -379,6 +364,21 @@ class DirectorTab(QWidget):
                 }
                 QPushButton#btnLaunchDirector:hover {
                     background-color: #dc2626;
+                }
+            """)
+        else:
+            self.btn_launch_panel.setText("🔴 Launch Director Panel")
+            self.btn_launch_panel.setStyleSheet("""
+                QPushButton#btnLaunchDirector {
+                    background-color: #15803d;
+                    color: #ffffff;
+                    font-size: 13px;
+                    font-weight: bold;
+                    border: 1px solid #16a34a;
+                    border-radius: 6px;
+                }
+                QPushButton#btnLaunchDirector:hover {
+                    background-color: #16a34a;
                 }
             """)
 
