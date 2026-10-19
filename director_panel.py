@@ -2,7 +2,7 @@ import sys
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSlider, QFrame, QGridLayout, QApplication
+    QSlider, QFrame, QGridLayout, QApplication, QStyleOption, QStyle
 )
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QIcon
 
@@ -219,7 +219,9 @@ class DirectorPanelWindow(QWidget):
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint
         )
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setAutoFillBackground(True)
 
         self.scene_buttons = []
         self.audio_buttons = []
@@ -437,18 +439,32 @@ class DirectorPanelWindow(QWidget):
             b.set_active(i == scene_id)
         self.scene_selected.emit(scene_id, name)
 
+    def paintEvent(self, event):
+        opt = QStyleOption()
+        opt.initFrom(self)
+        painter = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, painter, self)
+
     def force_topmost(self):
         """Forces the window to the top of the Z-order at the OS level using Win32 API."""
         if sys.platform == "win32":
             try:
                 import ctypes
+                from ctypes import wintypes
                 user32 = ctypes.windll.user32
-                hwnd = int(self.winId())
-                HWND_TOPMOST = -1
+                user32.SetWindowPos.argtypes = [
+                    wintypes.HWND, wintypes.HWND,
+                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                    wintypes.UINT
+                ]
+                user32.SetWindowPos.restype = wintypes.BOOL
+                hwnd = wintypes.HWND(int(self.winId()))
+                HWND_TOPMOST = wintypes.HWND(-1)
                 SWP_NOMOVE = 0x0002
                 SWP_NOSIZE = 0x0001
                 SWP_SHOWWINDOW = 0x0040
                 user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+                user32.SetForegroundWindow(hwnd)
             except Exception:
                 pass
 

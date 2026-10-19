@@ -421,13 +421,22 @@ class DirectorTab(QWidget):
 
         log_debug("DIRECTOR", f"Target monitor index: {target_mon}")
         self.panel_window.reposition_above_taskbar(target_mon)
-        self.panel_window.show()
+        self.panel_window.showNormal()
         self.panel_window.raise_()
         self.panel_window.activateWindow()
         self.panel_window.force_topmost()
         geom = self.panel_window.geometry()
         log_debug("DIRECTOR", f"Director Panel shown at: ({geom.x()}, {geom.y()}, {geom.width()}x{geom.height()}) - IsVisible: {self.panel_window.isVisible()}")
         self._set_launch_button_state(is_open=True)
+
+        # Automatically hide Settings window so the user gets clean separate dock view
+        if self.main_win:
+            self.main_win.hide()
+
+        # Re-assert topmost after browser completes launch
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(400, self.panel_window.force_topmost)
+        QTimer.singleShot(1000, self.panel_window.force_topmost)
 
     def _open_settings_from_panel(self):
         log_debug("DIRECTOR", "Settings button clicked on Director Dock")
