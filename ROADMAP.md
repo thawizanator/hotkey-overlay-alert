@@ -1,4 +1,4 @@
-﻿# HotKey Overlay Alert — Project Roadmap 🗺️
+# HotKey Overlay Alert — Project Roadmap 🗺️
 
 Welcome to the development roadmap for **HotKey Overlay Alert**. This document tracks completed milestones, current progress, and upcoming features designed to make this the ultimate visual overlay and workflow utility for streamers and gamers.
 
@@ -31,10 +31,10 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
 - Real-time OBS / Streamlabs output sync with prefix/suffix formatting.
 - Compacted UI item rows and collapsible sidebar navigation (`◀` / `▶` and `Ctrl+B`) fitting compact and portrait displays (Monitor #3).
 
-### Phase 3.5: Multi-Monitor Cross-DPI Fix & Traceability — *Completed*
-- Unified multi-monitor virtual coordinate space via **System DPI Awareness** (`windows:dpiawareness=1`), eliminating cross-monitor window stretch and abrupt resizing jumps between 100% and 175% scale monitors.
-- User-selectable DPI awareness toggle under **Monitor Setup**.
+### Phase 3.5: Multi-Monitor Cross-DPI Handling & Traceability — *Partial / Backburner*
+- Unified multi-monitor virtual coordinate space via **System DPI Awareness** (`windows:dpiawareness=1`) and user-selectable toggle under **Monitor Setup**.
 - Integrated Git commit hash (`get_build_commit()`) across sidebar footer, window titles, Updates tab, and diagnostic bug report templates.
+- *Status Note*: Core DPI mode toggle and build commit tracking are functional; minor cross-monitor spanning refinements placed on the backburner to prioritize Phase 4.
 
 ---
 
