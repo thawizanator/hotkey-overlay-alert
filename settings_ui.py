@@ -23,6 +23,7 @@ import theme_manager
 from bug_report_dialog import BugReportDialog
 from chronos_tab import ChronosTab
 from cycler_tab import CyclerTab
+from director_tab import DirectorTab
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -1343,7 +1344,7 @@ PAGE_TITLES = {
     4: "⚙️  System, Updates & Diagnostics",
     5: "⏱️  Chronos Live Stream Timers",
     6: "📜  Rotating Text & Trivia Cycler",
-    7: "🎬  Stream Director (Phase 4 Preview)"
+    7: "🎬  Stream Director Panel"
 }
 
 
@@ -1504,19 +1505,9 @@ class SettingsWindow(QWidget):
         self.tab_cycler = CyclerTab(self, cycler_eng)
         self.stacked_pages.addWidget(self.tab_cycler)           # 6
 
-        # Add preview placeholder page for Phase 4
-        self.tab_director_preview = self._create_preview_page(
-            "🎬  Stream Director",
-            "Remote OBS & Streamlabs control for channel moderators and co-hosts.",
-            "Phase 4 Milestone (v3.0.0-RC)",
-            [
-                "OBS WebSocket v5 secure remote connection",
-                "Remote Scene Switcher & Source Toggles",
-                "Audio volume controls and mute toggles",
-                "Remotely trigger monitor overlay highlight on streamer's screen"
-            ]
-        )
-        self.stacked_pages.addWidget(self.tab_director_preview)  # 7
+        # Initialize Stream Director (Phase 4)
+        self.tab_director = DirectorTab(self)
+        self.stacked_pages.addWidget(self.tab_director)          # 7
 
         content_layout.addWidget(self.stacked_pages)
 
@@ -1625,6 +1616,9 @@ class SettingsWindow(QWidget):
             self.tab_chronos.refresh_theme_labels(effective)
         if hasattr(self, "tab_cycler"):
             self.tab_cycler.refresh_theme_labels(effective)
+        if hasattr(self, "tab_director"):
+            self.tab_director.refresh_monitors_list()
+            self.tab_director.refresh_theme_labels(effective)
 
         if hasattr(self, "btn_toggle_sidebar") and self.btn_toggle_sidebar:
             btn_border = "#3f3f46" if effective == "dark" else "#d4d4d8"

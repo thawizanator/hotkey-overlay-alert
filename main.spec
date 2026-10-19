@@ -9,7 +9,7 @@ a = Analysis(
         ('icon.ico', '.'),
         ('icon.png', '.')
     ],
-    hiddenimports=['PyQt6.QtGui'],
+    hiddenimports=['PyQt6.QtGui', 'director_tab', 'director_panel'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

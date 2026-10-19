@@ -550,6 +550,7 @@ class RedBorderOverlay(QMainWindow):
         self.twitch_display_name = ""
         self.twitch_token = ""
         self.twitch_macros = []
+        self.director_settings = {}
 
         cfg_to_read = None
         if os.path.exists(CONFIG_FILE):
@@ -599,6 +600,7 @@ class RedBorderOverlay(QMainWindow):
                         self.chronos_engine.import_settings(d.get("chronos", {}))
                     if hasattr(self, "cycler_engine") and self.cycler_engine and "cycler" in d:
                         self.cycler_engine.import_settings(d.get("cycler", {}))
+                    self.director_settings = d.get("director", {})
             except Exception as e:
                 print(f"Error loading configuration: {e}")
 
@@ -640,6 +642,10 @@ class RedBorderOverlay(QMainWindow):
             d["chronos"] = self.chronos_engine.export_settings()
         if hasattr(self, "cycler_engine") and self.cycler_engine:
             d["cycler"] = self.cycler_engine.export_settings()
+        if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+            self.director_settings = self.settings_window.tab_director.export_settings()
+        if hasattr(self, "director_settings") and self.director_settings:
+            d["director"] = self.director_settings
         # Save to primary APPDATA location
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -985,6 +991,8 @@ class RedBorderOverlay(QMainWindow):
             self.settings_window.tab_monitor.monitor_combo.setCurrentIndex(self.target_monitor_index)
         elif hasattr(self.settings_window, "view_visual"):
             self.settings_window.view_visual.monitor_combo.setCurrentIndex(self.target_monitor_index)
+        if hasattr(self.settings_window, "tab_director"):
+            self.settings_window.tab_director.refresh_monitors_list()
         self.settings_window.show()
         self.settings_window.raise_()
         self.settings_window.activateWindow()
@@ -993,6 +1001,9 @@ class RedBorderOverlay(QMainWindow):
         global lock_file_handle
         keyboard.unhook_all()
         self.tray_icon.hide()
+        if hasattr(self, "settings_window") and self.settings_window:
+            if hasattr(self.settings_window, "tab_director") and self.settings_window.tab_director.panel_window:
+                self.settings_window.tab_director.panel_window.close()
         self.settings_window.close()
         if lock_file_handle:
             lock_file_handle.close()
