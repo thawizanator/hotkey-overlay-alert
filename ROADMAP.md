@@ -77,3 +77,11 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
 ### Phase 7: Mobile & Local Web Deck Companion (`v3.3.0`)
 - Lightweight local and remote web dashboard accessible from phones, tablets, or secondary browsers.
 - Touch buttons to trigger monitor alerts, timers, trivia cycling, and Stream Director commands without needing external hardware like an Elgato Stream Deck.
+
+---
+
+## 💡 Future Ideas & Research Backlog
+
+- **Dedicated Browser Extension / Chrome Plugin**:
+  - Research and develop a custom browser extension that can be packaged or installed alongside the app.
+  - Potential features: Custom stream video formatting, embedding the Stream Director dock directly within Twitch/YouTube web pages, synchronized two-way communication between the web stream player/chat and the desktop app, and automated stream viewport docking.

@@ -157,9 +157,9 @@ class DirectorTab(QWidget):
         row_mon.addWidget(self.combo_monitor, 1)
         lay_conn.addLayout(row_mon)
 
-        self.chk_app_mode = QCheckBox("Open stream in dedicated studio window (fitted above dock)")
+        self.chk_app_mode = QCheckBox("Open stream in dedicated studio window (Chromium App Mode)")
         self.chk_app_mode.setChecked(self.app_mode)
-        self.chk_app_mode.setToolTip("Launches Chrome or Edge in borderless app mode fitted exactly between the top of the monitor and the top of the dock without address or tab bars.")
+        self.chk_app_mode.setToolTip("Launches Chrome or Edge maximized in clean borderless app mode without address or tab bars.")
         self.chk_app_mode.setStyleSheet("font-size: 11px; color: #e4e4e7; margin-top: 2px;")
         self.chk_app_mode.toggled.connect(self._on_settings_changed)
         lay_conn.addWidget(self.chk_app_mode)
@@ -492,10 +492,9 @@ class DirectorTab(QWidget):
                     cmd = [
                         browser_exe,
                         f"--app={url}",
-                        f"--window-position={pos_x},{pos_y}",
-                        f"--window-size={win_w},{win_h}",
+                        "--start-maximized",
                     ]
-                    log_debug("DIRECTOR", f"Launching studio app window ({os.path.basename(browser_exe)}): pos=({pos_x},{pos_y}) size=({win_w}x{win_h})")
+                    log_debug("DIRECTOR", f"Launching studio app window maximized ({os.path.basename(browser_exe)}): {url}")
                     subprocess.Popen(cmd)
                     return
                 except Exception as e:
