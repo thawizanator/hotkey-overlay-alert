@@ -15,25 +15,44 @@ from director_panel import DirectorPanelWindow
 import theme_manager
 from debug_logger import log_debug
 
+from streamlabs_client import get_streamlabs_client
+
 def obfuscate_str(data_str: str, key: int = 140) -> str:
     if not data_str:
         return ""
     return "".join(chr(ord(c) ^ key) for c in data_str)
 
 class SceneEditDialog(QDialog):
-    """Dialog to add or modify a scene card."""
-    def __init__(self, name="New Scene", color_hex="#22c55e", parent=None):
+    """Dialog to add or modify a scene card with live Streamlabs scene selection."""
+    def __init__(self, name="New Scene", color_hex="#22c55e", available_scenes=None, scene_id=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Configure Scene Card")
-        self.setFixedSize(320, 160)
+        self.setFixedSize(360, 200)
         self.chosen_color = color_hex
+        self.raw_id = scene_id or ""
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
         form = QFormLayout()
+
+        self.combo_scenes = QComboBox()
+        self.combo_scenes.addItem("-- Custom Scene Name --", "")
+        sel_idx = 0
+        if available_scenes:
+            for sc in available_scenes:
+                sc_n = sc.get("name", "")
+                sc_i = sc.get("id", "")
+                self.combo_scenes.addItem(f"🎬 {sc_n}", sc_i)
+                if sc_n.lower() == name.lower() or (self.raw_id and sc_i == self.raw_id):
+                    sel_idx = self.combo_scenes.count() - 1
+        if sel_idx > 0:
+            self.combo_scenes.setCurrentIndex(sel_idx)
+        self.combo_scenes.currentIndexChanged.connect(self._on_scene_combo_changed)
+        form.addRow("Streamlabs Scene:", self.combo_scenes)
+
         self.edit_name = QLineEdit(name)
-        form.addRow("Scene Name:", self.edit_name)
+        form.addRow("Display Name:", self.edit_name)
 
         btn_row = QHBoxLayout()
         self.lbl_color_preview = QLabel("   ")
@@ -58,6 +77,12 @@ class SceneEditDialog(QDialog):
         btn_box.addWidget(btn_save)
         layout.addLayout(btn_box)
 
+    def _on_scene_combo_changed(self, idx):
+        if idx > 0:
+            text = self.combo_scenes.currentText().replace("🎬 ", "")
+            self.edit_name.setText(text)
+            self.raw_id = self.combo_scenes.currentData() or ""
+
     def _pick_color(self):
         col = QColorDialog.getColor(QColor(self.chosen_color), self, "Select Scene Border Color")
         if col.isValid():
@@ -68,7 +93,59 @@ class SceneEditDialog(QDialog):
         self.lbl_color_preview.setStyleSheet(f"background-color: {self.chosen_color}; border: 1px solid #ffffff; border-radius: 4px;")
 
     def get_data(self):
-        return self.edit_name.text().strip() or "Untitled Scene", self.chosen_color
+        return self.edit_name.text().strip() or "Untitled Scene", self.chosen_color, self.raw_id
+
+
+class AudioEditDialog(QDialog):
+    """Dialog to add or modify an audio toggle source with live Streamlabs picker."""
+    def __init__(self, name="New Audio", available_sources=None, source_id=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure Audio Source")
+        self.setFixedSize(360, 160)
+        self.raw_id = source_id or ""
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        form = QFormLayout()
+
+        self.combo_sources = QComboBox()
+        self.combo_sources.addItem("-- Custom Audio Name --", "")
+        sel_idx = 0
+        if available_sources:
+            for s in available_sources:
+                s_name = s.get("name", "")
+                s_id = s.get("sourceId") or s.get("id", "")
+                self.combo_sources.addItem(f"🔊 {s_name}", s_id)
+                if s_name.lower() == name.lower() or (self.raw_id and s_id == self.raw_id):
+                    sel_idx = self.combo_sources.count() - 1
+        if sel_idx > 0:
+            self.combo_sources.setCurrentIndex(sel_idx)
+        self.combo_sources.currentIndexChanged.connect(self._on_source_combo_changed)
+        form.addRow("Streamlabs Source:", self.combo_sources)
+
+        self.edit_name = QLineEdit(name)
+        form.addRow("Display Name:", self.edit_name)
+        layout.addLayout(form)
+
+        btn_box = QHBoxLayout()
+        btn_save = QPushButton("Save")
+        btn_save.clicked.connect(self.accept)
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(self.reject)
+        btn_box.addStretch()
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_save)
+        layout.addLayout(btn_box)
+
+    def _on_source_combo_changed(self, idx):
+        if idx > 0:
+            text = self.combo_sources.currentText().replace("🔊 ", "")
+            self.edit_name.setText(text)
+            self.raw_id = self.combo_sources.currentData() or ""
+
+    def get_data(self):
+        return self.edit_name.text().strip() or "Audio", self.raw_id
 
 
 class DirectorTab(QWidget):
@@ -84,19 +161,19 @@ class DirectorTab(QWidget):
         self.target_monitor_idx = 0
         self.app_mode = True
         self.scenes = [
-            {"name": "Scene 1", "color": "#22c55e"},
-            {"name": "Scene 2", "color": "#0284c7"},
-            {"name": "Scene 3", "color": "#ea580c"},
-            {"name": "Scene 4", "color": "#a855f7"},
-            {"name": "Scene 5", "color": "#ef4444"},
+            {"name": "Scene 1", "color": "#22c55e", "id": ""},
+            {"name": "Scene 2", "color": "#0284c7", "id": ""},
+            {"name": "Scene 3", "color": "#ea580c", "id": ""},
+            {"name": "Scene 4", "color": "#a855f7", "id": ""},
+            {"name": "Scene 5", "color": "#ef4444", "id": ""},
         ]
         self.audio_toggles = [
-            {"name": "Mic", "muted": False},
-            {"name": "Game", "muted": False},
-            {"name": "Music", "muted": False},
-            {"name": "Discord", "muted": False},
-            {"name": "Alerts", "muted": False},
-            {"name": "SFX", "muted": False},
+            {"name": "Mic", "muted": False, "id": ""},
+            {"name": "Game", "muted": False, "id": ""},
+            {"name": "Music", "muted": False, "id": ""},
+            {"name": "Discord", "muted": False, "id": ""},
+            {"name": "Alerts", "muted": False, "id": ""},
+            {"name": "SFX", "muted": False, "id": ""},
         ]
         self.faders = [
             {"name": "Mic", "volume": 80},
@@ -104,8 +181,22 @@ class DirectorTab(QWidget):
             {"name": "Music", "volume": 60},
         ]
 
+        # Initialize Streamlabs client & wire signals
+        self.slobs_client = get_streamlabs_client()
+        self.slobs_client.connected.connect(self._update_slobs_status_ui)
+        self.slobs_client.disconnected.connect(self._update_slobs_status_ui)
+        self.slobs_client.scene_switched.connect(self._update_slobs_status_ui)
+        self.slobs_client.scenes_updated.connect(self._on_slobs_scenes_updated)
+        self.slobs_client.audio_sources_updated.connect(self._on_slobs_audio_updated)
+
         self._build_ui()
         self.load_from_settings()
+
+        # Initial Streamlabs check
+        if not self.slobs_client.is_connected():
+            self.slobs_client.connect_client()
+        self._update_slobs_status_ui()
+        self._refresh_fader_combos()
 
     def _build_ui(self):
         main_layout = QVBoxLayout(self)
@@ -125,6 +216,30 @@ class DirectorTab(QWidget):
         grp_conn = QGroupBox("Stream Director Connection & Target Display")
         lay_conn = QVBoxLayout(grp_conn)
         lay_conn.setSpacing(6)
+
+        # Live Streamlabs connection status card
+        self.frame_slobs_status = QFrame()
+        self.frame_slobs_status.setStyleSheet("""
+            QFrame {
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                border-radius: 6px;
+            }
+        """)
+        lay_slobs_box = QHBoxLayout(self.frame_slobs_status)
+        lay_slobs_box.setContentsMargins(8, 5, 8, 5)
+        lay_slobs_box.setSpacing(8)
+
+        self.lbl_slobs_status = QLabel("Checking Streamlabs Desktop...")
+        self.lbl_slobs_status.setStyleSheet("font-size: 11px;")
+        self.lbl_slobs_status.setTextFormat(Qt.TextFormat.RichText)
+        lay_slobs_box.addWidget(self.lbl_slobs_status, 1)
+
+        self.btn_reconnect_slobs = QPushButton("🔄 Reconnect")
+        self.btn_reconnect_slobs.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_reconnect_slobs.clicked.connect(self._manual_reconnect_slobs)
+        lay_slobs_box.addWidget(self.btn_reconnect_slobs)
+        lay_conn.addWidget(self.frame_slobs_status)
 
         row_api = QHBoxLayout()
         row_api.addWidget(QLabel("Director API Key:"))
@@ -176,6 +291,12 @@ class DirectorTab(QWidget):
         self.lbl_scene_count.setStyleSheet("font-size: 11px; color: #a1a1aa;")
         sc_btn_row.addWidget(self.lbl_scene_count)
         sc_btn_row.addStretch()
+
+        self.btn_autodetect_scenes = QPushButton("📥 Auto-Detect Scenes")
+        self.btn_autodetect_scenes.setStyleSheet("font-size: 11px; padding: 2px 8px; font-weight: 600;")
+        self.btn_autodetect_scenes.setToolTip("Automatically import your live scenes from Streamlabs Desktop")
+        self.btn_autodetect_scenes.clicked.connect(self._auto_detect_scenes)
+        sc_btn_row.addWidget(self.btn_autodetect_scenes)
 
         self.btn_add_scene = QPushButton("➕ Add Scene")
         self.btn_add_scene.setStyleSheet("font-size: 11px; padding: 2px 8px;")
@@ -233,6 +354,12 @@ class DirectorTab(QWidget):
         au_btn_row.addWidget(self.lbl_audio_count)
         au_btn_row.addStretch()
 
+        self.btn_autodetect_audio = QPushButton("📥 Auto-Detect Audio")
+        self.btn_autodetect_audio.setStyleSheet("font-size: 11px; padding: 2px 8px; font-weight: 600;")
+        self.btn_autodetect_audio.setToolTip("Automatically import your active audio mixer sources from Streamlabs Desktop")
+        self.btn_autodetect_audio.clicked.connect(self._auto_detect_audio)
+        au_btn_row.addWidget(self.btn_autodetect_audio)
+
         self.btn_add_audio = QPushButton("➕ Add Source")
         self.btn_add_audio.setStyleSheet("font-size: 11px; padding: 2px 8px;")
         self.btn_add_audio.clicked.connect(self._add_audio)
@@ -261,19 +388,22 @@ class DirectorTab(QWidget):
         lay_fd.setSpacing(10)
 
         lay_fd.addWidget(QLabel("Slider 1:"))
-        self.edit_fader1 = QLineEdit("Mic")
-        self.edit_fader1.textChanged.connect(self._on_settings_changed)
-        lay_fd.addWidget(self.edit_fader1)
+        self.edit_fader1 = QComboBox()
+        self.edit_fader1.setEditable(True)
+        self.edit_fader1.currentTextChanged.connect(self._on_settings_changed)
+        lay_fd.addWidget(self.edit_fader1, 1)
 
         lay_fd.addWidget(QLabel("Slider 2:"))
-        self.edit_fader2 = QLineEdit("Game")
-        self.edit_fader2.textChanged.connect(self._on_settings_changed)
-        lay_fd.addWidget(self.edit_fader2)
+        self.edit_fader2 = QComboBox()
+        self.edit_fader2.setEditable(True)
+        self.edit_fader2.currentTextChanged.connect(self._on_settings_changed)
+        lay_fd.addWidget(self.edit_fader2, 1)
 
         lay_fd.addWidget(QLabel("Slider 3:"))
-        self.edit_fader3 = QLineEdit("Music")
-        self.edit_fader3.textChanged.connect(self._on_settings_changed)
-        lay_fd.addWidget(self.edit_fader3)
+        self.edit_fader3 = QComboBox()
+        self.edit_fader3.setEditable(True)
+        self.edit_fader3.currentTextChanged.connect(self._on_settings_changed)
+        lay_fd.addWidget(self.edit_fader3, 1)
         scroll_layout.addWidget(grp_faders)
 
         scroll.setWidget(scroll_content)
@@ -328,27 +458,155 @@ class DirectorTab(QWidget):
         self.lbl_audio_count.setText(f"Active Audio Toggles: ({count} / 6)")
         self.btn_add_audio.setEnabled(count < 6)
 
+    def _update_slobs_status_ui(self, *args):
+        if not hasattr(self, "lbl_slobs_status"):
+            return
+        if self.slobs_client and self.slobs_client.is_connected():
+            _, act_name = self.slobs_client.get_active_scene_info()
+            act_str = f" — Active: <b>{act_name}</b>" if act_name else ""
+            self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Streamlabs Desktop Connected</span>{act_str}")
+        else:
+            self.lbl_slobs_status.setText("<span style='color: #ef4444; font-weight: bold;'>🔴 Streamlabs Desktop Disconnected</span> <span style='color: #a1a1aa;'>(Launch Streamlabs Desktop to link)</span>")
+
+    def _manual_reconnect_slobs(self):
+        if self.slobs_client:
+            self.slobs_client.disconnect_client()
+            ok = self.slobs_client.connect_client()
+            self._update_slobs_status_ui()
+            if ok:
+                self._refresh_fader_combos()
+                QMessageBox.information(self, "Connected", "Successfully connected to Streamlabs Desktop!")
+            else:
+                QMessageBox.warning(self, "Connection Failed", "Could not connect to Streamlabs Desktop.\n\nPlease verify that Streamlabs Desktop is running on this PC.")
+
+    def _on_slobs_scenes_updated(self, scenes):
+        pass
+
+    def _on_slobs_audio_updated(self, sources):
+        self._refresh_fader_combos()
+
+    def _refresh_fader_combos(self):
+        sources = self.slobs_client.get_cached_audio_sources() if self.slobs_client else []
+        source_names = []
+        for s in sources:
+            n = s.get("name", "").strip()
+            if n and n not in source_names:
+                source_names.append(n)
+
+        for combo, default_val in [
+            (self.edit_fader1, "Mic"),
+            (self.edit_fader2, "Game"),
+            (self.edit_fader3, "Music")
+        ]:
+            if not hasattr(self, "edit_fader1"):
+                continue
+            cur = combo.currentText() or default_val
+            combo.blockSignals(True)
+            combo.clear()
+            for name in source_names:
+                combo.addItem(name)
+            combo.setCurrentText(cur)
+            combo.blockSignals(False)
+
+    def _auto_detect_scenes(self):
+        scenes = self.slobs_client.fetch_scenes()
+        if not scenes:
+            scenes = self.slobs_client.get_cached_scenes()
+        if not scenes:
+            QMessageBox.warning(self, "Streamlabs Not Connected", "Could not detect scenes from Streamlabs Desktop.\n\nPlease make sure Streamlabs Desktop is running.")
+            return
+
+        palette = ["#22c55e", "#0284c7", "#ea580c", "#a855f7", "#ef4444"]
+        self.scenes = []
+        for i, sc in enumerate(scenes[:5]):
+            self.scenes.append({
+                "name": sc.get("name", f"Scene {i+1}"),
+                "id": sc.get("id", ""),
+                "color": palette[i % len(palette)]
+            })
+        self._refresh_scene_list_ui()
+        self._on_settings_changed()
+        if self.panel_window and self.panel_window.isVisible():
+            fader_data = [
+                {"name": self.edit_fader1.currentText().strip() or "Audio 1", "volume": self.faders[0].get("volume", 80)},
+                {"name": self.edit_fader2.currentText().strip() or "Audio 2", "volume": self.faders[1].get("volume", 75)},
+                {"name": self.edit_fader3.currentText().strip() or "Audio 3", "volume": self.faders[2].get("volume", 60)},
+            ]
+            self.panel_window.load_configuration(self.scenes, self.audio_toggles, fader_data)
+        QMessageBox.information(self, "Scenes Detected", f"Successfully auto-detected {len(self.scenes)} scenes from Streamlabs Desktop!")
+
+    def _auto_detect_audio(self):
+        sources = self.slobs_client.fetch_audio_sources()
+        if not sources:
+            sources = self.slobs_client.get_cached_audio_sources()
+        if not sources:
+            QMessageBox.warning(self, "Streamlabs Not Connected", "Could not detect audio sources from Streamlabs Desktop.\n\nPlease make sure Streamlabs Desktop is running.")
+            return
+
+        priority_keywords = ["mic", "discord", "spotify", "music", "game", "desktop", "alert", "chat"]
+        def score_source(s):
+            name = (s.get("name") or "").lower()
+            for idx, kw in enumerate(priority_keywords):
+                if kw in name:
+                    return idx
+            return len(priority_keywords) + 1
+
+        unique_names = set()
+        cleaned_sources = []
+        for s in sources:
+            n = s.get("name", "").strip()
+            if n and n not in unique_names:
+                unique_names.add(n)
+                cleaned_sources.append(s)
+
+        cleaned_sources.sort(key=score_source)
+
+        self.audio_toggles = []
+        for s in cleaned_sources[:6]:
+            self.audio_toggles.append({
+                "name": s.get("name"),
+                "id": s.get("sourceId") or s.get("id", ""),
+                "muted": bool(s.get("muted", False))
+            })
+        self._refresh_audio_list_ui()
+        self._on_settings_changed()
+        self._refresh_fader_combos()
+        if self.panel_window and self.panel_window.isVisible():
+            fader_data = [
+                {"name": self.edit_fader1.currentText().strip() or "Audio 1", "volume": self.faders[0].get("volume", 80)},
+                {"name": self.edit_fader2.currentText().strip() or "Audio 2", "volume": self.faders[1].get("volume", 75)},
+                {"name": self.edit_fader3.currentText().strip() or "Audio 3", "volume": self.faders[2].get("volume", 60)},
+            ]
+            self.panel_window.load_configuration(self.scenes, self.audio_toggles, fader_data)
+        QMessageBox.information(self, "Audio Sources Detected", f"Successfully auto-detected {len(self.audio_toggles)} audio sources from Streamlabs Desktop!")
+
     def _add_scene(self):
         if len(self.scenes) >= 5:
             QMessageBox.information(self, "Limit Reached", "A maximum of 5 scenes can be configured on the panel.")
             return
-        dlg = SceneEditDialog(f"Scene {len(self.scenes)+1}", "#22c55e", self)
+        avail = self.slobs_client.get_cached_scenes() if self.slobs_client else []
+        dlg = SceneEditDialog(f"Scene {len(self.scenes)+1}", "#22c55e", available_scenes=avail, parent=self)
         if dlg.exec():
-            n, c = dlg.get_data()
-            self.scenes.append({"name": n, "color": c})
+            n, c, raw_id = dlg.get_data()
+            self.scenes.append({"name": n, "color": c, "id": raw_id})
             self._refresh_scene_list_ui()
             self._on_settings_changed()
+            if self.panel_window and self.panel_window.isVisible():
+                self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _edit_scene(self):
         row = self.list_scenes.currentRow()
         if 0 <= row < len(self.scenes):
             sc = self.scenes[row]
-            dlg = SceneEditDialog(sc["name"], sc["color"], self)
+            avail = self.slobs_client.get_cached_scenes() if self.slobs_client else []
+            dlg = SceneEditDialog(sc["name"], sc.get("color", "#22c55e"), available_scenes=avail, scene_id=sc.get("id"), parent=self)
             if dlg.exec():
-                n, c = dlg.get_data()
-                self.scenes[row] = {"name": n, "color": c}
+                n, c, raw_id = dlg.get_data()
+                self.scenes[row] = {"name": n, "color": c, "id": raw_id}
                 self._refresh_scene_list_ui()
                 self._on_settings_changed()
+                if self.panel_window and self.panel_window.isVisible():
+                    self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _remove_scene(self):
         row = self.list_scenes.currentRow()
@@ -356,27 +614,36 @@ class DirectorTab(QWidget):
             self.scenes.pop(row)
             self._refresh_scene_list_ui()
             self._on_settings_changed()
+            if self.panel_window and self.panel_window.isVisible():
+                self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _add_audio(self):
         if len(self.audio_toggles) >= 6:
             QMessageBox.information(self, "Limit Reached", "A maximum of 6 audio mute toggles can be configured.")
             return
-        name = f"Audio {len(self.audio_toggles)+1}"
-        self.audio_toggles.append({"name": name, "muted": False})
-        self._refresh_audio_list_ui()
-        self._on_settings_changed()
+        avail = self.slobs_client.get_cached_audio_sources() if self.slobs_client else []
+        dlg = AudioEditDialog(f"Audio {len(self.audio_toggles)+1}", available_sources=avail, parent=self)
+        if dlg.exec():
+            n, raw_id = dlg.get_data()
+            self.audio_toggles.append({"name": n, "id": raw_id, "muted": False})
+            self._refresh_audio_list_ui()
+            self._on_settings_changed()
+            if self.panel_window and self.panel_window.isVisible():
+                self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _edit_audio(self):
         row = self.list_audio.currentRow()
         if 0 <= row < len(self.audio_toggles):
-            cur = self.audio_toggles[row]["name"]
-            # Simple rename
-            from PyQt6.QtWidgets import QInputDialog
-            new_name, ok = QInputDialog.getText(self, "Edit Audio Source", "Source Name:", text=cur)
-            if ok and new_name.strip():
-                self.audio_toggles[row]["name"] = new_name.strip()
+            cur = self.audio_toggles[row]
+            avail = self.slobs_client.get_cached_audio_sources() if self.slobs_client else []
+            dlg = AudioEditDialog(cur["name"], available_sources=avail, source_id=cur.get("id"), parent=self)
+            if dlg.exec():
+                n, raw_id = dlg.get_data()
+                self.audio_toggles[row] = {"name": n, "id": raw_id, "muted": cur.get("muted", False)}
                 self._refresh_audio_list_ui()
                 self._on_settings_changed()
+                if self.panel_window and self.panel_window.isVisible():
+                    self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _remove_audio(self):
         row = self.list_audio.currentRow()
@@ -384,6 +651,8 @@ class DirectorTab(QWidget):
             self.audio_toggles.pop(row)
             self._refresh_audio_list_ui()
             self._on_settings_changed()
+            if self.panel_window and self.panel_window.isVisible():
+                self.panel_window.load_configuration(self.scenes, self.audio_toggles, self.faders)
 
     def _set_launch_button_state(self, is_open: bool):
         if is_open:
@@ -434,9 +703,9 @@ class DirectorTab(QWidget):
             self.panel_window.settings_requested.connect(self._open_settings_from_panel)
 
         fader_data = [
-            {"name": self.edit_fader1.text().strip() or "Audio 1", "volume": self.faders[0].get("volume", 80)},
-            {"name": self.edit_fader2.text().strip() or "Audio 2", "volume": self.faders[1].get("volume", 75)},
-            {"name": self.edit_fader3.text().strip() or "Audio 3", "volume": self.faders[2].get("volume", 60)},
+            {"name": self.edit_fader1.currentText().strip() or "Audio 1", "volume": self.faders[0].get("volume", 80)},
+            {"name": self.edit_fader2.currentText().strip() or "Audio 2", "volume": self.faders[1].get("volume", 75)},
+            {"name": self.edit_fader3.currentText().strip() or "Audio 3", "volume": self.faders[2].get("volume", 60)},
         ]
         self.panel_window.load_configuration(self.scenes, self.audio_toggles, fader_data)
         
@@ -550,9 +819,12 @@ class DirectorTab(QWidget):
         self.target_monitor_idx = self.combo_monitor.currentData() or 0
         if hasattr(self, "chk_app_mode"):
             self.app_mode = self.chk_app_mode.isChecked()
-        self.faders[0]["name"] = self.edit_fader1.text().strip()
-        self.faders[1]["name"] = self.edit_fader2.text().strip()
-        self.faders[2]["name"] = self.edit_fader3.text().strip()
+        if hasattr(self, "edit_fader1"):
+            self.faders[0]["name"] = self.edit_fader1.currentText().strip()
+        if hasattr(self, "edit_fader2"):
+            self.faders[1]["name"] = self.edit_fader2.currentText().strip()
+        if hasattr(self, "edit_fader3"):
+            self.faders[2]["name"] = self.edit_fader3.currentText().strip()
         self.save_to_settings()
 
     def export_settings(self) -> dict:
@@ -564,9 +836,9 @@ class DirectorTab(QWidget):
             "scenes": self.scenes,
             "audio_toggles": self.audio_toggles,
             "faders": [
-                {"name": self.edit_fader1.text().strip() or "Mic", "volume": self.faders[0].get("volume", 80)},
-                {"name": self.edit_fader2.text().strip() or "Game", "volume": self.faders[1].get("volume", 75)},
-                {"name": self.edit_fader3.text().strip() or "Music", "volume": self.faders[2].get("volume", 60)},
+                {"name": self.edit_fader1.currentText().strip() or "Mic", "volume": self.faders[0].get("volume", 80)},
+                {"name": self.edit_fader2.currentText().strip() or "Game", "volume": self.faders[1].get("volume", 75)},
+                {"name": self.edit_fader3.currentText().strip() or "Music", "volume": self.faders[2].get("volume", 60)},
             ]
         }
 
@@ -584,10 +856,10 @@ class DirectorTab(QWidget):
             self.scenes = d.get("scenes", self.scenes)
             self.audio_toggles = d.get("audio_toggles", self.audio_toggles)
             self.faders = d.get("faders", self.faders)
-            if len(self.faders) >= 3:
-                self.edit_fader1.setText(self.faders[0].get("name", "Mic"))
-                self.edit_fader2.setText(self.faders[1].get("name", "Game"))
-                self.edit_fader3.setText(self.faders[2].get("name", "Music"))
+            if len(self.faders) >= 3 and hasattr(self, "edit_fader1"):
+                self.edit_fader1.setCurrentText(self.faders[0].get("name", "Mic"))
+                self.edit_fader2.setCurrentText(self.faders[1].get("name", "Game"))
+                self.edit_fader3.setCurrentText(self.faders[2].get("name", "Music"))
 
         self.refresh_monitors_list()
         self._refresh_scene_list_ui()

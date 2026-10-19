@@ -6,12 +6,15 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QIcon
 
+from streamlabs_client import get_streamlabs_client
+
 class SceneCardButton(QPushButton):
     """Custom rectangular scene card with distinct colored border and active glow."""
-    def __init__(self, scene_id, name, color_hex="#22c55e", parent=None):
+    def __init__(self, scene_id, name, color_hex="#22c55e", raw_id=None, parent=None):
         super().__init__(parent)
         self.scene_id = scene_id
         self.scene_name = name
+        self.scene_raw_id = raw_id
         self.accent_color = color_hex
         self.is_active = False
         self.setCheckable(True)
@@ -25,9 +28,11 @@ class SceneCardButton(QPushButton):
         self.setChecked(active)
         self._update_style()
 
-    def update_data(self, name, color_hex):
+    def update_data(self, name, color_hex, raw_id=None):
         self.scene_name = name
         self.accent_color = color_hex
+        if raw_id:
+            self.scene_raw_id = raw_id
         self._update_style()
 
     def _update_style(self):
@@ -35,7 +40,6 @@ class SceneCardButton(QPushButton):
         border_width = "3px" if self.is_active else "2px"
         border_color = self.accent_color
         status_text = "● LIVE" if self.is_active else "READY"
-        status_color = self.accent_color if self.is_active else "#71717a"
         
         self.setStyleSheet(f"""
             QPushButton {{
@@ -46,14 +50,17 @@ class SceneCardButton(QPushButton):
                 padding: 4px;
                 text-align: center;
                 font-weight: bold;
-                font-size: 12px;
+                font-size: 11px;
             }}
             QPushButton:hover {{
                 background-color: #2b2b36;
                 border-color: #ffffff;
             }}
         """)
-        self.setText(f"{self.scene_name}\n\n[{status_text}]")
+        disp_name = self.scene_name
+        if len(disp_name) > 22:
+            disp_name = disp_name[:20] + "…"
+        self.setText(f"{disp_name}\n\n[{status_text}]")
 
 
 class AudioMuteButton(QPushButton):
@@ -68,7 +75,7 @@ class AudioMuteButton(QPushButton):
         self.setCheckable(True)
         self.setChecked(is_muted)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(68, 38)
+        self.setFixedSize(92, 40)
         self._update_style()
         self.clicked.connect(self._on_click)
 
@@ -81,6 +88,14 @@ class AudioMuteButton(QPushButton):
     def set_muted(self, muted: bool):
         self.is_muted = muted
         self.setChecked(muted)
+        self._update_style()
+
+    def set_muted_silently(self, muted: bool):
+        """Updates mute state visually without triggering toggled_mute signal."""
+        self.is_muted = muted
+        self.blockSignals(True)
+        self.setChecked(muted)
+        self.blockSignals(False)
         self._update_style()
 
     def _update_style(self):
@@ -102,15 +117,18 @@ class AudioMuteButton(QPushButton):
                 border: 1px solid {border};
                 border-radius: 5px;
                 font-weight: bold;
-                font-size: 10px;
-                padding: 2px;
+                font-size: 9px;
+                padding: 1px 3px;
             }}
             QPushButton:hover {{
                 background-color: {'#ef4444' if self.is_muted else '#3f3f46'};
                 border-color: #ffffff;
             }}
         """)
-        self.setText(f"{self.audio_name}\n[{status_text}]")
+        disp_name = self.audio_name
+        if len(disp_name) > 13:
+            disp_name = disp_name[:12] + "…"
+        self.setText(f"{disp_name}\n[{status_text}]")
 
 
 class VolumeFaderWidget(QWidget):
@@ -129,7 +147,9 @@ class VolumeFaderWidget(QWidget):
 
         self.lbl_name = QLabel(name)
         self.lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_name.setStyleSheet("font-size: 10px; font-weight: 600; color: #d4d4d8;")
+        self.lbl_name.setWordWrap(True)
+        self.lbl_name.setMaximumWidth(88)
+        self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #d4d4d8;")
         layout.addWidget(self.lbl_name)
 
         self.slider = QSlider(Qt.Orientation.Vertical)
@@ -173,6 +193,14 @@ class VolumeFaderWidget(QWidget):
     def set_label(self, name: str):
         self.fader_name = name
         self.lbl_name.setText(name)
+
+    def set_value_silently(self, val: int):
+        """Updates slider position visually without emitting value_changed signal."""
+        clamped = max(0, min(100, int(val)))
+        self.slider.blockSignals(True)
+        self.slider.setValue(clamped)
+        self.lbl_val.setText(f"{clamped}%")
+        self.slider.blockSignals(False)
 
     def _on_slider_moved(self, val):
         self.lbl_val.setText(f"{val}%")
@@ -230,6 +258,20 @@ class DirectorPanelWindow(QWidget):
         self._drag_pos = None
 
         self._build_ui()
+
+        # Connect to StreamlabsClient for live IPC control & event sync
+        self.slobs_client = get_streamlabs_client()
+        self.slobs_client.connected.connect(self._on_slobs_connected)
+        self.slobs_client.disconnected.connect(self._on_slobs_disconnected)
+        self.slobs_client.scene_switched.connect(self._on_slobs_scene_switched)
+        self.slobs_client.audio_muted_changed.connect(self._on_slobs_audio_muted_changed)
+        self.slobs_client.audio_volume_changed.connect(self._on_slobs_audio_volume_changed)
+
+        if self.slobs_client.is_connected():
+            self._on_slobs_connected()
+        else:
+            self._on_slobs_disconnected()
+            self.slobs_client.connect_client()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -400,10 +442,16 @@ class DirectorPanelWindow(QWidget):
         self.scene_buttons.clear()
 
         for i, sc in enumerate(scenes[:5]):
-            btn = SceneCardButton(i, sc.get("name", f"Scene {i+1}"), sc.get("color", "#22c55e"), self)
+            btn = SceneCardButton(
+                i,
+                sc.get("name", f"Scene {i+1}"),
+                sc.get("color", "#22c55e"),
+                raw_id=sc.get("id"),
+                parent=self
+            )
             if i == self.active_scene_index:
                 btn.set_active(True)
-            btn.clicked.connect(lambda chk, idx=i, n=btn.scene_name: self._on_scene_clicked(idx, n))
+            btn.clicked.connect(lambda chk, idx=i, b=btn: self._on_scene_clicked(idx, b.scene_name, b))
             self.lay_scenes_row.addWidget(btn)
             self.scene_buttons.append(btn)
 
@@ -417,7 +465,7 @@ class DirectorPanelWindow(QWidget):
             row = i // 3
             col = i % 3
             btn = AudioMuteButton(i, a.get("name", f"Audio {i+1}"), a.get("muted", False), self)
-            btn.toggled_mute.connect(lambda aid, m, n=btn.audio_name: self.audio_toggled.emit(aid, n, m))
+            btn.toggled_mute.connect(lambda aid, m, b=btn: self._on_audio_toggled(aid, b.audio_name, m))
             self.lay_audio_grid.addWidget(btn, row, col)
             self.audio_buttons.append(btn)
 
@@ -429,15 +477,82 @@ class DirectorPanelWindow(QWidget):
 
         for i, f in enumerate(faders[:3]):
             fader = VolumeFaderWidget(i, f.get("name", f"Audio {i+1}"), f.get("volume", 75), self)
-            fader.value_changed.connect(lambda fid, v, n=fader.fader_name: self.volume_adjusted.emit(fid, n, v))
+            fader.value_changed.connect(lambda fid, v, fw=fader: self._on_volume_adjusted(fid, fw.fader_name, v))
             self.lay_vol_row.addWidget(fader)
             self.volume_faders.append(fader)
 
-    def _on_scene_clicked(self, scene_id, name):
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            self._sync_with_slobs_state()
+
+    def _on_scene_clicked(self, scene_id, name, btn):
         self.active_scene_index = scene_id
-        for i, b in enumerate(self.scene_buttons):
-            b.set_active(i == scene_id)
+        for b in self.scene_buttons:
+            b.set_active(b == btn)
         self.scene_selected.emit(scene_id, name)
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            target = getattr(btn, "scene_raw_id", None) or name
+            self.slobs_client.make_scene_active(target)
+
+    def _on_audio_toggled(self, aid, name, is_muted):
+        self.audio_toggled.emit(aid, name, is_muted)
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            self.slobs_client.set_audio_muted(name, is_muted)
+
+    def _on_volume_adjusted(self, fid, name, val):
+        self.volume_adjusted.emit(fid, name, val)
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            self.slobs_client.set_audio_deflection(name, val / 100.0)
+
+    def _on_slobs_connected(self):
+        if hasattr(self, "lbl_status"):
+            self.lbl_status.setText("<span style='color: #22c55e;'>● Connected</span>")
+        self._sync_with_slobs_state()
+
+    def _on_slobs_disconnected(self):
+        if hasattr(self, "lbl_status"):
+            self.lbl_status.setText("<span style='color: #ef4444;'>● Disconnected</span>")
+
+    def _on_slobs_scene_switched(self, scene_id, scene_name):
+        target = scene_name.strip().lower()
+        for b in self.scene_buttons:
+            b_name = b.scene_name.strip().lower()
+            raw_id = getattr(b, "scene_raw_id", None)
+            if b_name == target or (raw_id and raw_id == scene_id):
+                b.set_active(True)
+            else:
+                b.set_active(False)
+
+    def _on_slobs_audio_muted_changed(self, source_name_or_id, is_muted):
+        target = source_name_or_id.strip().lower()
+        for b in self.audio_buttons:
+            b_name = b.audio_name.strip().lower()
+            if b_name == target or b_name in target or target in b_name:
+                b.set_muted_silently(is_muted)
+
+    def _on_slobs_audio_volume_changed(self, source_name_or_id, deflection):
+        target = source_name_or_id.strip().lower()
+        for f in self.volume_faders:
+            f_name = f.fader_name.strip().lower()
+            if f_name == target or f_name in target or target in f_name:
+                f.set_value_silently(int(round(deflection * 100)))
+
+    def _sync_with_slobs_state(self):
+        if not self.slobs_client or not self.slobs_client.is_connected():
+            return
+        # 1. Sync active scene
+        sc_id, sc_name = self.slobs_client.get_active_scene_info()
+        if sc_name:
+            self._on_slobs_scene_switched(sc_id or "", sc_name)
+
+        # 2. Sync audio buttons
+        for b in self.audio_buttons:
+            muted = self.slobs_client.get_source_muted_state(b.audio_name)
+            b.set_muted_silently(muted)
+
+        # 3. Sync volume faders
+        for f in self.volume_faders:
+            vol = self.slobs_client.get_source_volume_percent(f.fader_name)
+            f.set_value_silently(vol)
 
     def paintEvent(self, event):
         opt = QStyleOption()
