@@ -7,7 +7,7 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
 ## 🧭 Release Architecture & Branches
 
 - **`main` Branch**: Tracks stable production releases (currently **`v2.5.0`**).
-- **`develop` Branch**: Tracks active feature branches, alpha builds, and early access previews (currently **`v3.0.0-beta.2`**).
+- **`develop` Branch**: Tracks active feature branches, alpha builds, and early access previews (currently **`v3.0.0-beta.3`**).
 
 ---
 
