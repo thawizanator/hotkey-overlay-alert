@@ -1,15 +1,29 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
+datas = [
+    ('icon.ico', '.'),
+    ('icon.png', '.')
+] + collect_data_files('aiortc')
+
+hidden_imports = [
+    'PyQt6.QtGui',
+    'PyQt6.QtWebSockets',
+    'director_tab',
+    'director_panel',
+    'streamlabs_client',
+    'director_security',
+    'webrtc_p2p',
+    'cryptography',
+    'pylibsrtp',
+] + collect_submodules('aiortc') + collect_submodules('aioice')
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('icon.ico', '.'),
-        ('icon.png', '.')
-    ],
-    hiddenimports=['PyQt6.QtGui', 'PyQt6.QtWebSockets', 'director_tab', 'director_panel', 'streamlabs_client'],
+    datas=datas,
+    hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

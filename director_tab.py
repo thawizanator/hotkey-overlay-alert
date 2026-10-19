@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 import webbrowser
+from typing import Optional, List, Dict, Any
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
@@ -16,6 +17,8 @@ import theme_manager
 from debug_logger import log_debug
 
 from streamlabs_client import get_streamlabs_client
+from director_security import PasskeyManager, BouncerValidator
+from webrtc_p2p import WebRTCManager
 
 def obfuscate_str(data_str: str, key: int = 140) -> str:
     if not data_str:
@@ -198,11 +201,29 @@ class DirectorTab(QWidget):
             {"name": "Music", "volume": 60},
         ]
 
+        # P2P & Security settings
+        self.enable_wan_p2p = False
+        self.p2p_passkey_salt = ""
+        self.p2p_passkey_hash = ""
+        self.p2p_passkey_raw = ""
+        self.allowed_twitch_user = ""
+        self.p2p_target_channel = ""
+        self.p2p_client_passkey = ""
+        self.p2p_my_twitch_user = ""
+
+        # Runtime P2P host / client instances
+        self.host_webrtc: Optional[WebRTCManager] = None
+        self.client_webrtc: Optional[WebRTCManager] = None
+        self.bouncer: Optional[BouncerValidator] = None
+
         # Initialize Streamlabs client & wire signals
         self.slobs_client = get_streamlabs_client()
         self.slobs_client.connected.connect(self._update_slobs_status_ui)
         self.slobs_client.disconnected.connect(self._update_slobs_status_ui)
         self.slobs_client.scene_switched.connect(self._update_slobs_status_ui)
+        self.slobs_client.scene_switched.connect(self._broadcast_host_state_update)
+        self.slobs_client.audio_muted_changed.connect(self._broadcast_host_state_update)
+        self.slobs_client.audio_volume_changed.connect(self._broadcast_host_state_update)
         self.slobs_client.scenes_updated.connect(self._on_slobs_scenes_updated)
         self.slobs_client.audio_sources_updated.connect(self._on_slobs_audio_updated)
 
@@ -265,6 +286,7 @@ class DirectorTab(QWidget):
         self.combo_conn_mode = QComboBox()
         self.combo_conn_mode.addItem("🖥️ Local PC (Named Pipe)", "local")
         self.combo_conn_mode.addItem("🌐 Remote LAN PC (WebSocket)", "remote")
+        self.combo_conn_mode.addItem("☁️ Remote Director (P2P Internet)", "webrtc_client")
         self.combo_conn_mode.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.combo_conn_mode.setMinimumContentsLength(16)
         self.combo_conn_mode.currentIndexChanged.connect(self._on_conn_mode_changed)
@@ -320,6 +342,142 @@ class DirectorTab(QWidget):
         self.lbl_local_notice.setWordWrap(True)
         self.lbl_local_notice.setStyleSheet("font-size: 10px; color: #a1a1aa; padding-left: 2px;")
         lay_conn.addWidget(self.lbl_local_notice)
+
+        # ------------------ HOST P2P GATEWAY CARD ------------------
+        self.grp_host_p2p_widget = QFrame()
+        self.grp_host_p2p_widget.setStyleSheet("""
+            QFrame {
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                border-radius: 6px;
+            }
+        """)
+        lay_host_p2p = QVBoxLayout(self.grp_host_p2p_widget)
+        lay_host_p2p.setContentsMargins(8, 6, 8, 6)
+        lay_host_p2p.setSpacing(6)
+
+        self.chk_enable_wan_p2p = QCheckBox("🌐 Allow Remote Co-Host / Moderator (P2P Internet)")
+        self.chk_enable_wan_p2p.setStyleSheet("font-weight: 600; font-size: 11px; color: #38bdf8;")
+        self.chk_enable_wan_p2p.setToolTip("Enables direct encrypted peer-to-peer control over the Internet without port forwarding or sharing API tokens.")
+        self.chk_enable_wan_p2p.toggled.connect(self._on_host_p2p_toggled)
+        lay_host_p2p.addWidget(self.chk_enable_wan_p2p)
+
+        self.box_host_p2p_details = QWidget()
+        lay_host_details = QVBoxLayout(self.box_host_p2p_details)
+        lay_host_details.setContentsMargins(0, 0, 0, 0)
+        lay_host_details.setSpacing(5)
+
+        # Whitelist Row
+        row_host_wl = QHBoxLayout()
+        row_host_wl.setSpacing(6)
+        row_host_wl.addWidget(QLabel("Twitch Whitelist:"))
+        self.edit_allowed_twitch_user = QLineEdit()
+        self.edit_allowed_twitch_user.setPlaceholderText("e.g. @cool_mod (or blank for any with key)")
+        self.edit_allowed_twitch_user.textChanged.connect(self._on_settings_changed)
+        row_host_wl.addWidget(self.edit_allowed_twitch_user, 1)
+        lay_host_details.addLayout(row_host_wl)
+
+        # Passkey Row
+        row_host_pk = QHBoxLayout()
+        row_host_pk.setSpacing(4)
+        row_host_pk.addWidget(QLabel("Passkey:"))
+        self.edit_host_passkey = QLineEdit()
+        self.edit_host_passkey.setReadOnly(True)
+        self.edit_host_passkey.setStyleSheet("font-family: Consolas, monospace; font-weight: bold; letter-spacing: 1px; color: #22c55e;")
+        row_host_pk.addWidget(self.edit_host_passkey, 1)
+
+        self.btn_new_passkey = QPushButton("⚡ New")
+        self.btn_new_passkey.setToolTip("Generate a new pairing passkey")
+        self.btn_new_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_new_passkey.clicked.connect(self._generate_new_passkey)
+        row_host_pk.addWidget(self.btn_new_passkey)
+
+        self.btn_copy_passkey = QPushButton("📋 Copy")
+        self.btn_copy_passkey.setToolTip("Copy passkey to clipboard")
+        self.btn_copy_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_copy_passkey.clicked.connect(self._copy_passkey)
+        row_host_pk.addWidget(self.btn_copy_passkey)
+
+        self.btn_revoke_passkey = QPushButton("🚫 Revoke")
+        self.btn_revoke_passkey.setToolTip("Revoke passkey and disconnect any connected remote directors")
+        self.btn_revoke_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px; color: #ef4444;")
+        self.btn_revoke_passkey.clicked.connect(self._revoke_passkey)
+        row_host_pk.addWidget(self.btn_revoke_passkey)
+        lay_host_details.addLayout(row_host_pk)
+
+        # Host Status banner
+        self.lbl_host_p2p_status = QLabel("🟡 Gateway Offline")
+        self.lbl_host_p2p_status.setStyleSheet("font-size: 10px; color: #a1a1aa;")
+        lay_host_details.addWidget(self.lbl_host_p2p_status)
+
+        self.box_host_p2p_details.setVisible(False)
+        lay_host_p2p.addWidget(self.box_host_p2p_details)
+        lay_conn.addWidget(self.grp_host_p2p_widget)
+
+        # ------------------ CLIENT P2P CONNECTION CARD ------------------
+        self.grp_client_p2p_widget = QFrame()
+        self.grp_client_p2p_widget.setStyleSheet("""
+            QFrame {
+                background-color: #18181b;
+                border: 1px solid #0284c7;
+                border-radius: 6px;
+            }
+        """)
+        lay_client_p2p = QVBoxLayout(self.grp_client_p2p_widget)
+        lay_client_p2p.setContentsMargins(8, 6, 8, 6)
+        lay_client_p2p.setSpacing(6)
+
+        self.lbl_client_p2p_info = QLabel("💡 <i>Connect directly to the streamer's PC over encrypted P2P (WebRTC DTLS-SRTP). Zero token or router port forwarding required.</i>")
+        self.lbl_client_p2p_info.setWordWrap(True)
+        self.lbl_client_p2p_info.setStyleSheet("font-size: 10px; color: #93c5fd;")
+        lay_client_p2p.addWidget(self.lbl_client_p2p_info)
+
+        # Streamer's Twitch Channel
+        row_cli_ch = QHBoxLayout()
+        row_cli_ch.setSpacing(6)
+        row_cli_ch.addWidget(QLabel("Streamer Channel:"))
+        self.edit_client_channel = QLineEdit()
+        self.edit_client_channel.setPlaceholderText("e.g. thawizanator")
+        self.edit_client_channel.textChanged.connect(self._on_settings_changed)
+        row_cli_ch.addWidget(self.edit_client_channel, 1)
+        lay_client_p2p.addLayout(row_cli_ch)
+
+        # Client Passkey Row
+        row_cli_pk = QHBoxLayout()
+        row_cli_pk.setSpacing(6)
+        row_cli_pk.addWidget(QLabel("Director Passkey:"))
+        self.edit_client_passkey = QLineEdit()
+        self.edit_client_passkey.setPlaceholderText("e.g. DIR-8824-XK9P")
+        self.edit_client_passkey.setStyleSheet("font-family: Consolas, monospace; font-weight: bold;")
+        self.edit_client_passkey.textChanged.connect(self._on_settings_changed)
+        row_cli_pk.addWidget(self.edit_client_passkey, 1)
+        lay_client_p2p.addLayout(row_cli_pk)
+
+        # Client Twitch Username Row
+        row_cli_usr = QHBoxLayout()
+        row_cli_usr.setSpacing(6)
+        row_cli_usr.addWidget(QLabel("My Twitch User:"))
+        self.edit_client_my_user = QLineEdit()
+        self.edit_client_my_user.setPlaceholderText("e.g. @cool_mod (optional)")
+        self.edit_client_my_user.textChanged.connect(self._on_settings_changed)
+        row_cli_usr.addWidget(self.edit_client_my_user, 1)
+        lay_client_p2p.addLayout(row_cli_usr)
+
+        # Client Connect button & status row
+        row_cli_act = QHBoxLayout()
+        row_cli_act.setSpacing(6)
+        self.btn_client_p2p_connect = QPushButton("🔗 Connect P2P Session")
+        self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #0284c7; color: white;")
+        self.btn_client_p2p_connect.clicked.connect(self._toggle_client_p2p_session)
+        row_cli_act.addWidget(self.btn_client_p2p_connect)
+
+        self.lbl_client_p2p_status = QLabel("🔴 Disconnected")
+        self.lbl_client_p2p_status.setStyleSheet("font-size: 11px; color: #ef4444;")
+        row_cli_act.addWidget(self.lbl_client_p2p_status, 1)
+        lay_client_p2p.addLayout(row_cli_act)
+
+        self.grp_client_p2p_widget.setVisible(False)
+        lay_conn.addWidget(self.grp_client_p2p_widget)
 
         row_url = QHBoxLayout()
         row_url.addWidget(QLabel("Stream Live URL:"))
@@ -533,11 +691,23 @@ class DirectorTab(QWidget):
         self.btn_add_audio.setEnabled(count < 6)
 
     def _on_conn_mode_changed(self):
-        is_remote = (self.combo_conn_mode.currentData() == "remote")
-        self.row_remote_net_widget.setVisible(is_remote)
-        self.row_api_widget.setVisible(is_remote)
-        self.lbl_local_notice.setVisible(not is_remote)
-        self.conn_mode = "remote" if is_remote else "local"
+        mode = self.combo_conn_mode.currentData() if hasattr(self, "combo_conn_mode") else "local"
+        self.conn_mode = mode
+
+        is_remote_lan = (mode == "remote")
+        is_webrtc_client = (mode == "webrtc_client")
+        is_local = (mode == "local")
+
+        self.row_remote_net_widget.setVisible(is_remote_lan)
+        self.row_api_widget.setVisible(is_remote_lan)
+        self.lbl_local_notice.setVisible(is_local)
+        self.btn_autodetect.setVisible(not is_webrtc_client)
+
+        if hasattr(self, "grp_host_p2p_widget"):
+            self.grp_host_p2p_widget.setVisible(not is_webrtc_client)
+        if hasattr(self, "grp_client_p2p_widget"):
+            self.grp_client_p2p_widget.setVisible(is_webrtc_client)
+
         self._on_settings_changed()
 
     def _on_autodetect_clicked(self):
@@ -578,17 +748,31 @@ class DirectorTab(QWidget):
             if act_name and len(act_name) > 18:
                 act_name = act_name[:16] + "..."
             act_str = f" — Active: <b>{act_name}</b>" if act_name else ""
-            mode_tag = "Local Pipe" if self.slobs_client._mode == "local" else f"LAN {self.slobs_client._remote_host}:{self.slobs_client._remote_port}"
+            if self.slobs_client._mode == "local":
+                mode_tag = "Local Pipe"
+            elif self.slobs_client._mode == "remote":
+                mode_tag = f"LAN {self.slobs_client._remote_host}:{self.slobs_client._remote_port}"
+            else:
+                mode_tag = "Encrypted P2P WAN"
             self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Streamlabs Connected</span> <span style='color: #a1a1aa; font-size: 10px;'>({mode_tag})</span>{act_str}")
             self._refresh_fader_combos()
         else:
-            mode_str = "local PC" if getattr(self, "conn_mode", "local") == "local" else "remote LAN PC"
+            if getattr(self, "conn_mode", "local") == "local":
+                mode_str = "local PC"
+            elif self.conn_mode == "remote":
+                mode_str = "remote LAN PC"
+            else:
+                mode_str = "Streamer PC (via P2P)"
             self.lbl_slobs_status.setText(f"<span style='color: #ef4444; font-weight: bold;'>🔴 Streamlabs Disconnected</span> <span style='color: #a1a1aa;'>(Launch Streamlabs on {mode_str})</span>")
 
     def _manual_reconnect_slobs(self):
         if self.slobs_client:
-            self.slobs_client.disconnect_client()
             mode = self.combo_conn_mode.currentData() if hasattr(self, "combo_conn_mode") else "local"
+            if mode == "webrtc_client":
+                self._toggle_client_p2p_session(force_reconnect=True)
+                return
+
+            self.slobs_client.disconnect_client()
             host = self.edit_remote_host.text().strip() if hasattr(self, "edit_remote_host") else "127.0.0.1"
             port = self.edit_remote_port.text().strip() if hasattr(self, "edit_remote_port") else 59650
             token = self.edit_api_key.text().strip() if hasattr(self, "edit_api_key") else ""
@@ -850,6 +1034,11 @@ class DirectorTab(QWidget):
     def launch_director_panel(self):
         log_debug("DIRECTOR", "User clicked Launch Director Panel")
 
+        # In client P2P mode, ensure P2P session is active
+        if getattr(self, "conn_mode", "local") == "webrtc_client":
+            if not getattr(self, "client_webrtc", None) or not self.client_webrtc.isRunning():
+                self._toggle_client_p2p_session()
+
         # 1. Instantiate or show panel first so we know exact geometry above taskbar
         if not self.is_panel_open():
             if self.panel_window is not None:
@@ -1025,6 +1214,14 @@ class DirectorTab(QWidget):
             "remote_host": self.edit_remote_host.text().strip() if hasattr(self, "edit_remote_host") else "127.0.0.1",
             "remote_port": self.edit_remote_port.text().strip() if hasattr(self, "edit_remote_port") else "59650",
             "api_key_obf": obfuscate_str(self.edit_api_key.text()),
+            "enable_wan_p2p": self.chk_enable_wan_p2p.isChecked() if hasattr(self, "chk_enable_wan_p2p") else False,
+            "p2p_passkey_salt": self.p2p_passkey_salt,
+            "p2p_passkey_hash": self.p2p_passkey_hash,
+            "p2p_passkey_raw": self.p2p_passkey_raw,
+            "allowed_twitch_user": self.edit_allowed_twitch_user.text().strip() if hasattr(self, "edit_allowed_twitch_user") else "",
+            "p2p_target_channel": self.edit_client_channel.text().strip() if hasattr(self, "edit_client_channel") else "",
+            "p2p_client_passkey": self.edit_client_passkey.text().strip() if hasattr(self, "edit_client_passkey") else "",
+            "p2p_my_twitch_user": self.edit_client_my_user.text().strip() if hasattr(self, "edit_client_my_user") else "",
             "stream_url": self.edit_stream_url.text().strip(),
             "target_monitor": self.combo_monitor.currentData() or 0,
             "app_mode": self.chk_app_mode.isChecked() if hasattr(self, "chk_app_mode") else True,
@@ -1048,6 +1245,33 @@ class DirectorTab(QWidget):
             self.remote_host = d.get("remote_host", "127.0.0.1")
             self.remote_port = d.get("remote_port", "59650")
             self.api_key = obfuscate_str(d.get("api_key_obf", ""))
+
+            self.enable_wan_p2p = d.get("enable_wan_p2p", False)
+            self.p2p_passkey_salt = d.get("p2p_passkey_salt", "")
+            self.p2p_passkey_hash = d.get("p2p_passkey_hash", "")
+            self.p2p_passkey_raw = d.get("p2p_passkey_raw", "")
+            self.allowed_twitch_user = d.get("allowed_twitch_user", "")
+            self.p2p_target_channel = d.get("p2p_target_channel", "")
+            self.p2p_client_passkey = d.get("p2p_client_passkey", "")
+            self.p2p_my_twitch_user = d.get("p2p_my_twitch_user", "")
+
+            if hasattr(self, "chk_enable_wan_p2p"):
+                self.chk_enable_wan_p2p.blockSignals(True)
+                self.chk_enable_wan_p2p.setChecked(self.enable_wan_p2p)
+                self.chk_enable_wan_p2p.blockSignals(False)
+                if hasattr(self, "box_host_p2p_details"):
+                    self.box_host_p2p_details.setVisible(self.enable_wan_p2p)
+
+            if hasattr(self, "edit_host_passkey"):
+                self.edit_host_passkey.setText(self.p2p_passkey_raw)
+            if hasattr(self, "edit_allowed_twitch_user"):
+                self.edit_allowed_twitch_user.setText(self.allowed_twitch_user)
+            if hasattr(self, "edit_client_channel"):
+                self.edit_client_channel.setText(self.p2p_target_channel or self._get_streamer_channel())
+            if hasattr(self, "edit_client_passkey"):
+                self.edit_client_passkey.setText(self.p2p_client_passkey)
+            if hasattr(self, "edit_client_my_user"):
+                self.edit_client_my_user.setText(self.p2p_my_twitch_user)
 
             if hasattr(self, "combo_conn_mode"):
                 idx = self.combo_conn_mode.findData(self.conn_mode)
@@ -1089,6 +1313,10 @@ class DirectorTab(QWidget):
                         combo.insertItem(0, fname)
                     combo.setCurrentText(fname)
 
+            # Auto-start host P2P if previously enabled and on local/remote host
+            if self.enable_wan_p2p and self.conn_mode != "webrtc_client":
+                self._start_host_p2p()
+
         self.refresh_monitors_list()
         self._refresh_scene_list_ui()
         self._refresh_audio_list_ui()
@@ -1098,10 +1326,255 @@ class DirectorTab(QWidget):
             self.main_win.overlay.director_settings = self.export_settings()
             self.main_win.overlay.save_settings()
 
+    def _get_streamer_channel(self) -> str:
+        url = self.edit_stream_url.text().strip() if hasattr(self, "edit_stream_url") else ""
+        if "twitch.tv/" in url:
+            parts = url.split("twitch.tv/")
+            ch = parts[-1].split("/")[0].split("?")[0].strip()
+            if ch:
+                return ch
+        return "thawizanator"
+
+    def _copy_passkey(self):
+        pk = self.edit_host_passkey.text().strip() if hasattr(self, "edit_host_passkey") else ""
+        if pk:
+            QApplication.clipboard().setText(pk)
+            QMessageBox.information(
+                self,
+                "Passkey Copied",
+                f"Pairing Passkey copied to clipboard:\n\n{pk}\n\n"
+                f"Send this passkey and your Twitch channel name ({self._get_streamer_channel()}) to your remote director."
+            )
+
+    def _revoke_passkey(self):
+        res = QMessageBox.question(
+            self,
+            "Revoke Passkey",
+            "Are you sure you want to revoke the current pairing passkey?\n\n"
+            "Any currently connected remote directors will be disconnected immediately.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if res == QMessageBox.StandardButton.Yes:
+            self._stop_host_p2p()
+            self._generate_new_passkey()
+            if hasattr(self, "chk_enable_wan_p2p") and self.chk_enable_wan_p2p.isChecked():
+                self._start_host_p2p()
+
+    def _generate_new_passkey(self):
+        raw_pk, salt, hash_val = PasskeyManager.generate_passkey()
+        self.p2p_passkey_raw = raw_pk
+        self.p2p_passkey_salt = salt
+        self.p2p_passkey_hash = hash_val
+        if hasattr(self, "edit_host_passkey"):
+            self.edit_host_passkey.setText(raw_pk)
+        self._on_settings_changed()
+
+    def _on_host_p2p_toggled(self, checked: bool):
+        if hasattr(self, "box_host_p2p_details"):
+            self.box_host_p2p_details.setVisible(checked)
+        self.enable_wan_p2p = checked
+        self._on_settings_changed()
+        if checked:
+            if not self.p2p_passkey_raw:
+                self._generate_new_passkey()
+            self._start_host_p2p()
+        else:
+            self._stop_host_p2p()
+
+    def _start_host_p2p(self):
+        self._stop_host_p2p()
+        ch = self._get_streamer_channel()
+        pk = self.p2p_passkey_raw
+        if not pk:
+            return
+
+        allowed_user = self.edit_allowed_twitch_user.text().strip() if hasattr(self, "edit_allowed_twitch_user") else ""
+        self.bouncer = BouncerValidator(allowed_twitch_user=allowed_user)
+        self.bouncer.set_whitelists(self.scenes, self.audio_toggles, self.faders)
+
+        self.host_webrtc = WebRTCManager(role="host", channel_name=ch, passkey=pk, parent=self)
+        self.host_webrtc.connection_status_changed.connect(self._on_host_p2p_status_changed)
+        self.host_webrtc.command_received.connect(self._on_host_p2p_command_received)
+        self.host_webrtc.peer_authenticated.connect(self._on_host_p2p_peer_authenticated)
+        self.host_webrtc.peer_disconnected.connect(self._on_host_p2p_peer_disconnected)
+        self.host_webrtc.start()
+        if hasattr(self, "lbl_host_p2p_status"):
+            self.lbl_host_p2p_status.setText("<span style='color: #38bdf8;'>🟡 Listening for remote director...</span>")
+
+    def _stop_host_p2p(self):
+        if self.host_webrtc:
+            try:
+                self.host_webrtc.stop_session()
+            except Exception:
+                pass
+            self.host_webrtc = None
+        if hasattr(self, "lbl_host_p2p_status"):
+            self.lbl_host_p2p_status.setText("<span style='color: #a1a1aa;'>🟡 Gateway Offline</span>")
+
+    def _on_host_p2p_status_changed(self, status_tag: str, msg: str):
+        if hasattr(self, "lbl_host_p2p_status"):
+            if status_tag == "connected":
+                self.lbl_host_p2p_status.setText(f"<span style='color: #22c55e;'>{msg}</span>")
+            elif status_tag == "signaling":
+                self.lbl_host_p2p_status.setText(f"<span style='color: #38bdf8;'>{msg}</span>")
+            else:
+                self.lbl_host_p2p_status.setText(f"<span style='color: #ef4444;'>{msg}</span>")
+
+    def _on_host_p2p_command_received(self, client_id: str, payload: dict):
+        action = payload.get("action")
+        if action == "HANDSHAKE":
+            provided_key = payload.get("passkey", "")
+            twitch_user = payload.get("twitch_user", "")
+            # Verify passkey
+            if not PasskeyManager.verify_passkey(provided_key, self.p2p_passkey_salt, self.p2p_passkey_hash):
+                log_debug("HOST_BOUNCER", f"Handshake rejected: invalid passkey from {client_id}")
+                if self.host_webrtc:
+                    self.host_webrtc.reject_peer_handshake(client_id, "Invalid or expired Passkey")
+                return
+
+            # Verify Twitch identity
+            is_ok, reason = self.bouncer.verify_identity(twitch_user) if self.bouncer else (True, "OK")
+            if not is_ok:
+                log_debug("HOST_BOUNCER", f"Handshake rejected: {reason} for client {client_id}")
+                if self.host_webrtc:
+                    self.host_webrtc.reject_peer_handshake(client_id, reason)
+                return
+
+            # Approved! Assemble current state and send approve
+            log_debug("HOST_BOUNCER", f"Handshake APPROVED for @{twitch_user or 'anonymous'} ({client_id})")
+            _, active_name = self.slobs_client.get_active_scene_info()
+            state = {
+                "active_scene": active_name or "",
+                "scenes": self.scenes,
+                "audio_sources": self.slobs_client.get_cached_audio_sources()
+            }
+            if self.host_webrtc:
+                self.host_webrtc.approve_peer_handshake(client_id, twitch_user, state)
+            return
+
+        # Normal commands: validate through bouncer
+        if not self.bouncer:
+            return
+        is_valid, reason, sanitized = self.bouncer.validate_command(client_id, payload)
+        if not is_valid:
+            log_debug("HOST_BOUNCER", f"Command rejected: {reason} from {client_id}")
+            return
+
+        cmd_act = sanitized.get("action")
+        target = sanitized.get("target")
+        if cmd_act == "SWITCH_SCENE":
+            log_debug("HOST_BOUNCER", f"Executing validated SWITCH_SCENE -> '{target}'")
+            self.slobs_client.make_scene_active(target)
+        elif cmd_act == "TOGGLE_MUTE":
+            log_debug("HOST_BOUNCER", f"Executing validated TOGGLE_MUTE -> '{target}' ({sanitized.get('muted')})")
+            self.slobs_client.set_audio_muted(target, sanitized.get("muted", True))
+        elif cmd_act == "SET_VOLUME":
+            log_debug("HOST_BOUNCER", f"Executing validated SET_VOLUME -> '{target}' ({sanitized.get('volume')})")
+            self.slobs_client.set_audio_deflection(target, sanitized.get("volume", 0.75))
+
+    def _on_host_p2p_peer_authenticated(self, client_id: str, twitch_user: str):
+        user_str = f"@{twitch_user}" if twitch_user else "anonymous"
+        log_debug("HOST_BOUNCER", f"Remote Director authenticated: {user_str} ({client_id})")
+        if hasattr(self, "lbl_host_p2p_status"):
+            self.lbl_host_p2p_status.setText(f"<span style='color: #22c55e;'>🟢 1 Remote Director Connected ({user_str})</span>")
+
+    def _on_host_p2p_peer_disconnected(self, client_id: str):
+        log_debug("HOST_BOUNCER", f"Remote Director disconnected: {client_id}")
+        if hasattr(self, "lbl_host_p2p_status"):
+            if self.host_webrtc and self.host_webrtc._peers:
+                count = len(self.host_webrtc._peers)
+                self.lbl_host_p2p_status.setText(f"<span style='color: #22c55e;'>🟢 {count} Remote Director(s) Connected</span>")
+            else:
+                self.lbl_host_p2p_status.setText("<span style='color: #38bdf8;'>🟡 Listening for remote director...</span>")
+
+    def _broadcast_host_state_update(self, *args):
+        if self.host_webrtc and self.host_webrtc.isRunning():
+            _, active_name = self.slobs_client.get_active_scene_info()
+            state = {
+                "active_scene": active_name or "",
+                "scenes": self.scenes,
+                "audio_sources": self.slobs_client.get_cached_audio_sources()
+            }
+            self.host_webrtc.broadcast_state(state)
+
+    def _toggle_client_p2p_session(self, force_reconnect: bool = False):
+        if self.client_webrtc and self.client_webrtc.isRunning() and not force_reconnect:
+            self.client_webrtc.stop_session()
+            self.client_webrtc = None
+            self.slobs_client.disconnect_client()
+            if hasattr(self, "btn_client_p2p_connect"):
+                self.btn_client_p2p_connect.setText("🔗 Connect P2P Session")
+                self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #0284c7; color: white;")
+            if hasattr(self, "lbl_client_p2p_status"):
+                self.lbl_client_p2p_status.setText("🔴 Disconnected")
+            return
+
+        if self.client_webrtc:
+            self.client_webrtc.stop_session()
+            self.client_webrtc = None
+
+        ch = self.edit_client_channel.text().strip() if hasattr(self, "edit_client_channel") else ""
+        pk = self.edit_client_passkey.text().strip() if hasattr(self, "edit_client_passkey") else ""
+        user = self.edit_client_my_user.text().strip() if hasattr(self, "edit_client_my_user") else ""
+
+        if not ch or not pk:
+            QMessageBox.warning(
+                self,
+                "Missing P2P Credentials",
+                "Please enter both the Streamer's Twitch Channel and the Pairing Passkey provided by the streamer."
+            )
+            return
+
+        if hasattr(self, "btn_client_p2p_connect"):
+            self.btn_client_p2p_connect.setText("⏹️ Disconnect P2P")
+            self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #ef4444; color: white;")
+        if hasattr(self, "lbl_client_p2p_status"):
+            self.lbl_client_p2p_status.setText("<span style='color: #38bdf8;'>🟡 Initializing P2P connection...</span>")
+
+        self.client_webrtc = WebRTCManager(role="client", channel_name=ch, passkey=pk, twitch_user=user, parent=self)
+        self.client_webrtc.connection_status_changed.connect(self._on_client_p2p_status_changed)
+        self.client_webrtc.state_received.connect(self._on_client_p2p_state_received)
+        self.slobs_client.configure_connection(mode="webrtc_client")
+        self.slobs_client.set_webrtc_client(self.client_webrtc)
+        self.client_webrtc.start()
+
+    def _on_client_p2p_status_changed(self, status_tag: str, msg: str):
+        if hasattr(self, "lbl_client_p2p_status"):
+            if status_tag == "connected":
+                self.lbl_client_p2p_status.setText(f"<span style='color: #22c55e;'>{msg}</span>")
+            elif status_tag == "signaling":
+                self.lbl_client_p2p_status.setText(f"<span style='color: #38bdf8;'>{msg}</span>")
+            else:
+                self.lbl_client_p2p_status.setText(f"<span style='color: #ef4444;'>{msg}</span>")
+                if hasattr(self, "btn_client_p2p_connect"):
+                    self.btn_client_p2p_connect.setText("🔗 Connect P2P Session")
+                    self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #0284c7; color: white;")
+
+    def _on_client_p2p_state_received(self, state: dict):
+        scenes = state.get("scenes", [])
+        if scenes:
+            self.scenes = scenes
+            self._refresh_scene_list_ui()
+        self._refresh_fader_combos()
+
+    def closeEvent(self, event):
+        self._stop_host_p2p()
+        if self.client_webrtc:
+            self.client_webrtc.stop_session()
+            self.client_webrtc = None
+        super().closeEvent(event)
+
     def refresh_theme_labels(self, effective):
         is_dark = (effective == "dark")
         sub_fg = "#a1a1aa" if is_dark else "#71717a"
+        card_bg = "#18181b" if is_dark else "#f4f4f5"
+        card_border = "#27272a" if is_dark else "#e4e4e7"
         if hasattr(self, "lbl_scene_count"):
             self.lbl_scene_count.setStyleSheet(f"font-size: 11px; color: {sub_fg};")
         if hasattr(self, "lbl_audio_count"):
             self.lbl_audio_count.setStyleSheet(f"font-size: 11px; color: {sub_fg};")
+        if hasattr(self, "grp_host_p2p_widget"):
+            self.grp_host_p2p_widget.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {card_border}; border-radius: 6px; }}")
+        if hasattr(self, "grp_client_p2p_widget"):
+            self.grp_client_p2p_widget.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid #0284c7; border-radius: 6px; }}")

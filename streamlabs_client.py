@@ -65,7 +65,12 @@ class StreamlabsClient(QObject):
 
     def configure_connection(self, mode: str = "local", host: str = "127.0.0.1", port: int = 59650, token: str = ""):
         """Configures transport mode and target parameters."""
-        new_mode = "remote" if mode == "remote" else "local"
+        if mode == "webrtc_client":
+            new_mode = "webrtc_client"
+        elif mode == "remote":
+            new_mode = "remote"
+        else:
+            new_mode = "local"
         new_host = host.strip() or "127.0.0.1"
         try:
             new_port = int(port)
@@ -85,10 +90,42 @@ class StreamlabsClient(QObject):
         self._remote_port = new_port
         self._remote_token = new_token
 
-        if changed and self._is_connected:
+        if changed and self._is_connected and self._mode != "webrtc_client":
             log_debug("SLOBS", f"Connection settings changed, reconnecting in {self._mode} mode...")
             self.disconnect_client()
             self.connect_client()
+
+    def set_webrtc_client(self, webrtc_mgr):
+        """Attaches a WebRTCManager client instance for remote P2P mode."""
+        self._webrtc_mgr = webrtc_mgr
+        if webrtc_mgr:
+            webrtc_mgr.state_received.connect(self._on_webrtc_state_received)
+            webrtc_mgr.connection_status_changed.connect(self._on_webrtc_status_changed)
+
+    def _on_webrtc_state_received(self, state: dict):
+        active_scene = state.get("active_scene")
+        if active_scene:
+            self._active_scene_name = active_scene
+            self.scene_switched.emit("", active_scene)
+
+        sources = state.get("audio_sources", [])
+        if sources:
+            self._audio_cache = sources
+            for s in sources:
+                name = s.get("name", "")
+                if "muted" in s:
+                    self.audio_muted_changed.emit(name, s["muted"])
+                fader = s.get("fader")
+                if isinstance(fader, dict) and "deflection" in fader:
+                    self.audio_volume_changed.emit(name, float(fader["deflection"]))
+
+    def _on_webrtc_status_changed(self, status_tag: str, msg: str):
+        if status_tag == "connected":
+            self._is_connected = True
+            self.connected.emit()
+        elif status_tag == "disconnected":
+            self._is_connected = False
+            self.disconnected.emit()
 
     def get_connection_config(self) -> dict:
         return {
@@ -115,7 +152,11 @@ class StreamlabsClient(QObject):
         if self._is_connected:
             return True
 
-        if self._mode == "remote":
+        if self._mode == "webrtc_client":
+            if getattr(self, "_webrtc_mgr", None) and not self._webrtc_mgr.isRunning():
+                self._webrtc_mgr.start()
+            return True
+        elif self._mode == "remote":
             return self._connect_websocket()
         return self._connect_named_pipe()
 
@@ -127,7 +168,10 @@ class StreamlabsClient(QObject):
         log_debug("SLOBS", f"Disconnecting from Streamlabs Desktop ({self._mode} mode)...")
         self._running = False
         self._is_connected = False
-        if self._mode == "remote":
+        if self._mode == "webrtc_client":
+            if getattr(self, "_webrtc_mgr", None):
+                self._webrtc_mgr.stop_session()
+        elif self._mode == "remote":
             self._cleanup_ws()
         else:
             self._cleanup_pipes()
@@ -488,6 +532,8 @@ class StreamlabsClient(QObject):
 
     def _check_watchdog(self):
         """Watchdog checks if connection is alive; if not, attempts reconnect."""
+        if self._mode == "webrtc_client":
+            return
         if not self._is_connected:
             self.connect_client()
         else:
@@ -595,6 +641,19 @@ class StreamlabsClient(QObject):
         if not scene_id_or_name:
             return False
 
+        if self._mode == "webrtc_client":
+            if getattr(self, "_webrtc_mgr", None):
+                name = scene_id_or_name
+                for sc in self._scenes_cache:
+                    if sc.get("id") == scene_id_or_name:
+                        name = sc.get("name")
+                        break
+                self._webrtc_mgr.send_command("SWITCH_SCENE", target=name)
+                self._active_scene_name = name
+                self.scene_switched.emit(scene_id_or_name, name)
+                return True
+            return False
+
         target_id = scene_id_or_name
         # If it's a name, resolve to ID
         for sc in self._scenes_cache:
@@ -643,6 +702,13 @@ class StreamlabsClient(QObject):
 
     def set_audio_muted(self, target_name_or_id: str, muted: bool) -> bool:
         """Sets mute state for a given audio source name or ID."""
+        if self._mode == "webrtc_client":
+            if getattr(self, "_webrtc_mgr", None):
+                self._webrtc_mgr.send_command("TOGGLE_MUTE", target=target_name_or_id, value=bool(muted))
+                self.audio_muted_changed.emit(target_name_or_id, bool(muted))
+                return True
+            return False
+
         res_id = self._resolve_audio_resource_id(target_name_or_id)
         if not res_id:
             log_debug("SLOBS", f"Could not find audio source matching '{target_name_or_id}'")
@@ -665,6 +731,14 @@ class StreamlabsClient(QObject):
         """
         Sets volume deflection (0.0 to 1.0) for a given audio source.
         """
+        if self._mode == "webrtc_client":
+            if getattr(self, "_webrtc_mgr", None):
+                val = max(0.0, min(1.0, float(deflection)))
+                self._webrtc_mgr.send_command("SET_VOLUME", target=target_name_or_id, value=val)
+                self.audio_volume_changed.emit(target_name_or_id, val)
+                return True
+            return False
+
         res_id = self._resolve_audio_resource_id(target_name_or_id)
         if not res_id:
             log_debug("SLOBS", f"Could not find audio source matching '{target_name_or_id}'")
