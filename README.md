@@ -59,6 +59,18 @@ A lightweight, high-performance Windows system tray utility created to prevent s
 
 ---
 
+## 🗺️ Project Roadmap
+
+Track upcoming milestones, completed phases, and design plans in **[ROADMAP.md](ROADMAP.md)**:
+- **Phase 1 (Completed)**: Modern Left Sidebar Navigation Shell (`v3.0.0-alpha`)
+- **Phase 2 (Completed)**: Chronos Timers Engine & OBS Text Sync (`v3.0.0-beta.1`)
+- **Phase 3 (Completed)**: Rotating Text & Trivia Cycler Engine (`v3.0.0-beta.2`)
+- **Phase 4 (Next)**: Unified Hotkey Center & Native Gamepad / Controller Support (`v3.0.0-beta.3`)
+- **Phase 5**: Stream Director & OBS WebSocket Integration
+- **Phase 6**: Mobile & Local Web Deck Companion
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
