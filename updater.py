@@ -11,22 +11,38 @@ CURRENT_VERSION = "3.0.0-beta.2"
 BUILD_COMMIT = "2e474d3"
 BUILD_DATE = "2026-10-18"
 
+_cached_build_commit = None
+
 def get_build_commit():
     """Returns short git commit hash, checking live git first with fallback to baked BUILD_COMMIT."""
+    global _cached_build_commit
+    if _cached_build_commit is not None:
+        return _cached_build_commit
+
+    if getattr(sys, "frozen", False):
+        _cached_build_commit = BUILD_COMMIT
+        return _cached_build_commit
+
     try:
         cur_dir = os.path.dirname(os.path.abspath(__file__))
+        flags = 0
+        if sys.platform == "win32":
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         res = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
             cwd=cur_dir,
             capture_output=True,
             text=True,
-            timeout=2
+            timeout=2,
+            creationflags=flags
         )
         if res.returncode == 0 and res.stdout.strip():
-            return res.stdout.strip()
+            _cached_build_commit = res.stdout.strip()
+            return _cached_build_commit
     except Exception:
         pass
-    return BUILD_COMMIT
+    _cached_build_commit = BUILD_COMMIT
+    return _cached_build_commit
 
 def get_full_version_string():
     """Returns formatted version string with commit, e.g. 'v3.0.0-beta.2 (207ecc5)'."""
