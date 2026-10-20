@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.5.1"
+CURRENT_VERSION = "2.5.2"
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -66,7 +66,7 @@ class UpdateCheckWorker(QThread):
     def run(self):
         try:
             if self.channel == "beta":
-                api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=10"
+                api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=50"
                 req = urllib.request.Request(api_url, headers={"User-Agent": "HotKeyOverlayAlert"})
                 with urllib.request.urlopen(req, timeout=10) as res:
                     releases = json.loads(res.read().decode("utf-8"))

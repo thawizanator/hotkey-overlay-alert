@@ -1012,6 +1012,8 @@ class SystemTab(QWidget):
         val = self.combo_channel.currentData()
         self.main_win.overlay.update_channel = val
         self.main_win.overlay.save_settings()
+        chan_title = "Beta" if val == "beta" else "Stable"
+        self.lbl_update_status.setText(f"<span style='color: #a1a1aa;'>Checking {chan_title} channel releases...</span>")
         self.check_updates_silently()
 
     def open_bug_report_dialog(self):
@@ -1078,8 +1080,9 @@ class SystemTab(QWidget):
 
     def check_updates_clicked(self):
         self.btn_check_update.setEnabled(False)
-        self.lbl_update_status.setText("<span style='color: #a1a1aa;'>Checking GitHub releases...</span>")
         chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        chan_title = "Beta" if chan == "beta" else "Stable"
+        self.lbl_update_status.setText(f"<span style='color: #a1a1aa;'>Checking {chan_title} channel releases...</span>")
         self.check_worker = UpdateCheckWorker(CURRENT_VERSION, channel=chan)
         self.check_worker.update_available.connect(self.on_update_found_interactive)
         self.check_worker.up_to_date.connect(self.on_up_to_date_interactive)
@@ -1097,7 +1100,9 @@ class SystemTab(QWidget):
             self.btn_download_update.setEnabled(True)
 
     def on_up_to_date(self, current_ver):
-        self.lbl_update_status.setText(f"<span style='color: #43b581; font-weight: bold;'>✔️ Up to date (v{current_ver})</span>")
+        chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        chan_label = "Beta" if chan == "beta" else "Stable"
+        self.lbl_update_status.setText(f"<span style='color: #43b581; font-weight: bold;'>✔️ Up to date ({chan_label} – v{current_ver})</span>")
         self.btn_download_update.setVisible(False)
         self.btn_download_update.setEnabled(False)
 
@@ -1109,27 +1114,61 @@ class SystemTab(QWidget):
     def on_update_found_interactive(self, latest_tag, release_url, download_url, notes):
         self.btn_check_update.setEnabled(True)
         self.on_update_found(latest_tag, release_url, download_url, notes)
-        res = QMessageBox.question(
-            self,
-            "Update Available",
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Update Available")
+        msg.setWindowIcon(get_app_icon())
+        theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
+        msg.setText(
             f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
             f"Current version: <b>v{CURRENT_VERSION}</b><br>"
             f"Latest version: <b>{latest_tag}</b><br><br>"
-            f"Would you like to download and install this update now?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            f"Would you like to download and install this update now?"
         )
-        if res == QMessageBox.StandardButton.Yes and download_url:
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        btn_yes = msg.addButton("Download Now", QMessageBox.ButtonRole.AcceptRole)
+        btn_no = msg.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_yes)
+        msg.exec()
+        if msg.clickedButton() == btn_yes and download_url:
             self.download_update_clicked()
 
     def on_up_to_date_interactive(self, current_ver):
         self.btn_check_update.setEnabled(True)
         self.on_up_to_date(current_ver)
-        QMessageBox.information(self, "Up to Date", f"HotKey Overlay Alert is up to date (version {current_ver}).")
+        chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Up to Date")
+        msg.setWindowIcon(get_app_icon())
+        theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
+        if chan == "beta":
+            msg.setText(
+                f"<b>Beta / Early Access Channel</b><br><br>"
+                f"Installed Version: <b>v{current_ver}</b><br><br>"
+                f"You are currently opted into the <b>Beta channel</b>. "
+                f"No newer beta pre-releases are currently published on GitHub.<br><br>"
+                f"When a new preview or beta build is published, you will be notified automatically!"
+            )
+        else:
+            msg.setText(
+                f"<b>Stable Channel</b><br><br>"
+                f"HotKey Overlay Alert is up to date (version <b>v{current_ver}</b>).<br><br>"
+                f"You are running the latest stable release."
+            )
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
 
     def on_check_error_interactive(self, err_str):
         self.btn_check_update.setEnabled(True)
         self.on_check_error(err_str)
-        QMessageBox.warning(self, "Update Check Error", f"Unable to check for updates:\n\n{err_str}")
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Update Check Notice")
+        msg.setWindowIcon(get_app_icon())
+        theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
+        msg.setText(f"<b>Unable to check for updates:</b><br><br>{err_str}")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
 
     def download_update_clicked(self):
         if not self.latest_download_url:
