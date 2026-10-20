@@ -1,4 +1,4 @@
-﻿{
+{
   "monitor_index": 0,
   "thickness": 10,
   "color": "#ff0000",
@@ -6,9 +6,9 @@
   "is_flashing": true,
   "flash_speed_name": "Squirrel",
   "activation_hotkey": "ctrl+add",
-  "primary_hotkey_enabled": true,
+  "primary_hotkey_enabled": false,
   "start_on_boot": false,
-  "streamer_mode": true,
+  "streamer_mode": false,
   "debug_mode": false,
   "check_updates_on_startup": true,
   "auto_update_enabled": false,

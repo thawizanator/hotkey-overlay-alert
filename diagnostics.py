@@ -42,12 +42,12 @@ def get_system_info(overlay_app=None) -> dict:
         screen_info.append("Unable to detect display geometry")
 
     theme_pref = "system"
-    streamer_mode = True
+    streamer_mode = False
     update_chan = "stable"
     dpi_mode = "system"
     if overlay_app:
         theme_pref = getattr(overlay_app, "theme_preference", "system")
-        streamer_mode = getattr(overlay_app, "streamer_mode", True)
+        streamer_mode = getattr(overlay_app, "streamer_mode", False)
         update_chan = getattr(overlay_app, "update_channel", "stable")
         dpi_mode = getattr(overlay_app, "dpi_mode", "system")
 

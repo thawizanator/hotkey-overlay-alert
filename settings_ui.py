@@ -269,7 +269,7 @@ class MainTab(QWidget):
 
         self.chk_streamer = QCheckBox("Streamer Mode (In-Game Transparent HUD Overlays)")
         self.chk_streamer.setStyleSheet("font-weight: bold; font-size: 13px;")
-        self.chk_streamer.setChecked(getattr(self.main_win.overlay, "streamer_mode", True))
+        self.chk_streamer.setChecked(getattr(self.main_win.overlay, "streamer_mode", False))
         self.chk_streamer.toggled.connect(self.on_streamer_toggled)
         lay_mode.addWidget(self.chk_streamer)
 
@@ -286,7 +286,7 @@ class MainTab(QWidget):
 
         self.chk_enable_primary_hk = QCheckBox("Enable Primary Monitor Highlight Hotkey")
         self.chk_enable_primary_hk.setStyleSheet("font-weight: bold;")
-        self.chk_enable_primary_hk.setChecked(getattr(self.main_win.overlay, "primary_hotkey_enabled", True))
+        self.chk_enable_primary_hk.setChecked(getattr(self.main_win.overlay, "primary_hotkey_enabled", False))
         self.chk_enable_primary_hk.toggled.connect(self.on_enable_primary_hk_toggled)
         lay_hk.addWidget(self.chk_enable_primary_hk)
 
@@ -1509,7 +1509,7 @@ class SettingsWindow(QWidget):
 
         # Initialize Stream Director (Phase 4)
         self.tab_director = DirectorTab(self)
-        self.tab_director.set_streamer_mode(getattr(self.overlay, "streamer_mode", True))
+        self.tab_director.set_streamer_mode(getattr(self.overlay, "streamer_mode", False))
         self.stacked_pages.addWidget(self.tab_director)          # 7
 
         content_layout.addWidget(self.stacked_pages)
@@ -1773,23 +1773,17 @@ def get_resource_path(relative_path):
 ICON_PATH = get_resource_path("icon.ico")
 
 def get_app_icon():
-    icon = QIcon()
     ico_path = get_resource_path("icon.ico")
-    png_path = get_resource_path("icon.png")
-
     if os.path.exists(ico_path):
-        icon.addFile(ico_path)
+        ic = QIcon(ico_path)
+        if not ic.isNull() and ic.availableSizes():
+            return ic
+
+    png_path = get_resource_path("icon.png")
     if os.path.exists(png_path):
-        icon.addFile(png_path)
-
-    if not icon.isNull() and icon.availableSizes():
-        return icon
-
-    for p in [ico_path, png_path]:
-        if os.path.exists(p):
-            ic = QIcon(p)
-            if not ic.isNull():
-                return ic
+        ic = QIcon(png_path)
+        if not ic.isNull():
+            return ic
 
     # High-resolution procedural fallback (purple alert reticle)
     pixmap = QPixmap(64, 64)

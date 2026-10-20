@@ -229,7 +229,7 @@ class DirectorTab(QWidget):
 
         # Granular permissions & streamer mode
         self.user_permissions: Dict[str, dict] = {}
-        self.is_streamer_mode = True
+        self.is_streamer_mode = False
         self.perm_scene_checkboxes: Dict[str, QCheckBox] = {}
         self.perm_mute_checkboxes: Dict[str, QCheckBox] = {}
         self.perm_vol_checkboxes: Dict[str, QCheckBox] = {}

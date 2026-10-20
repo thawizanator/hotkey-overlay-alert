@@ -114,10 +114,19 @@ def get_theme_palette(theme: str) -> QPalette:
     return pal
 
 LIGHT_STYLESHEET = """
-    /* Light Theme */
-    QWidget#SettingsWindow, QDialog#SettingsWindow, QDialog {
+    QWidget#SettingsWindow, QDialog#SettingsWindow, QDialog, QMessageBox {
         background-color: #f4f4f6;
         color: #18181b;
+    }
+    QMessageBox QLabel {
+        color: #18181b;
+        font-size: 13px;
+    }
+    QMessageBox QPushButton {
+        min-width: 70px;
+        min-height: 24px;
+        padding: 4px 14px;
+        font-weight: 600;
     }
     QWidget {
         color: #18181b;
@@ -360,10 +369,19 @@ LIGHT_STYLESHEET = """
 """
 
 DARK_STYLESHEET = """
-    /* Dark Theme */
-    QWidget#SettingsWindow, QDialog#SettingsWindow, QDialog {
+    QWidget#SettingsWindow, QDialog#SettingsWindow, QDialog, QMessageBox {
         background-color: #121214;
         color: #efeff1;
+    }
+    QMessageBox QLabel {
+        color: #efeff1;
+        font-size: 13px;
+    }
+    QMessageBox QPushButton {
+        min-width: 70px;
+        min-height: 24px;
+        padding: 4px 14px;
+        font-weight: 600;
     }
     QWidget {
         color: #efeff1;

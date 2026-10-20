@@ -511,7 +511,7 @@ class RedBorderOverlay(QMainWindow):
                 pass
 
         if self.is_first_run:
-            QTimer.singleShot(200, self.show_welcome_message)
+            QTimer.singleShot(800, self.show_welcome_message)
 
         if getattr(self, "check_updates_on_startup", True):
             QTimer.singleShot(4000, self.run_startup_update_check)
@@ -533,9 +533,9 @@ class RedBorderOverlay(QMainWindow):
         self.is_flashing = False
         self.flash_speed_name = "Squirrel"
         self.activation_hotkey = "ctrl+add"
-        self.primary_hotkey_enabled = True
+        self.primary_hotkey_enabled = False
         self.start_on_boot = False
-        self.streamer_mode = True
+        self.streamer_mode = False
         self.debug_mode = False
         self.check_updates_on_startup = True
         self.auto_update_enabled = False
@@ -569,9 +569,9 @@ class RedBorderOverlay(QMainWindow):
                     self.is_flashing = d.get("is_flashing", False)
                     self.flash_speed_name = d.get("flash_speed_name", "Squirrel")
                     self.activation_hotkey = normalize_hotkey(d.get("activation_hotkey", "ctrl+add"))
-                    self.primary_hotkey_enabled = d.get("primary_hotkey_enabled", True)
+                    self.primary_hotkey_enabled = d.get("primary_hotkey_enabled", False)
                     self.start_on_boot = d.get("start_on_boot", False)
-                    self.streamer_mode = d.get("streamer_mode", True)
+                    self.streamer_mode = d.get("streamer_mode", False)
                     self.debug_mode = d.get("debug_mode", False)
                     self.check_updates_on_startup = d.get("check_updates_on_startup", True)
                     self.auto_update_enabled = d.get("auto_update_enabled", False)
@@ -699,6 +699,7 @@ class RedBorderOverlay(QMainWindow):
             msg_box = QMessageBox()
             msg_box.setWindowTitle("Application Update Available")
             msg_box.setWindowIcon(get_app_icon())
+            theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
             msg_box.setText(
                 f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
                 f"Installed Version: <b>{get_full_version_string()}</b><br>"
@@ -731,6 +732,7 @@ class RedBorderOverlay(QMainWindow):
         msg_box = QMessageBox()
         msg_box.setWindowTitle("Update Ready to Install")
         msg_box.setWindowIcon(get_app_icon())
+        theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
         msg_box.setText(
             f"<b>Update {tag} has been downloaded automatically!</b><br><br>"
             f"The application needs to restart to apply the new version.<br><br>"
@@ -881,6 +883,7 @@ class RedBorderOverlay(QMainWindow):
             title = "Twitch Action Complete" if is_success else "Twitch Action Notice"
             msg_box = QMessageBox(icon, title, message)
             msg_box.setWindowIcon(get_app_icon())
+            theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
             msg_box.setText(f"<b>{title}</b><br><br>{message}")
             msg_box.setTextFormat(Qt.TextFormat.RichText)
             msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
@@ -894,15 +897,28 @@ class RedBorderOverlay(QMainWindow):
         msg = QMessageBox()
         msg.setWindowTitle("HotKey Overlay Alert Loaded")
         msg.setWindowIcon(get_app_icon())
+        pref = getattr(self, "theme_preference", "system")
+        effective = theme_manager.apply_theme_to_window(msg, pref)
+
+        text_color = "#efeff1" if effective == "dark" else "#18181b"
+        accent_color = "#a78bfa" if effective == "dark" else "#7c3aed"
+        sec_color = theme_manager.get_secondary_text_color(effective)
+
         formatted_hk = format_hotkey_display(self.activation_hotkey)
+        hk_status = f"<b style='color: {accent_color};'>{formatted_hk}</b>"
+        if not self.primary_hotkey_enabled:
+            hk_status += f" <span style='color: {sec_color}; font-size: 11px;'>(Currently Disabled in Settings)</span>"
+
         msg.setText(
-            "<b>Thanks for using the Hotkey Overlay Alert!</b><br><br>"
+            f"<div style='color: {text_color}; font-family: Segoe UI, -apple-system, sans-serif; font-size: 13px; line-height: 1.5;'>"
+            f"<b style='font-size: 15px; color: {accent_color};'>Thanks for using HotKey Overlay Alert!</b><br><br>"
             "The program is now active and running quietly in your background. You can "
             "find it anytime down in your taskbar's hidden system tray drawer (click the little "
             "<b>^</b> arrow near your system clock).<br><br>"
-            "Right-clicking the **wizanator icon** will allow you to access the setup menu, change "
+            "Right-clicking the <b>wizanator icon</b> will allow you to access the setup menu, change "
             "your active monitor layout, or adjust animation parameters.<br><br>"
-            f"Activation Hotkey: <b>{formatted_hk}</b>"
+            f"Activation Hotkey: {hk_status}"
+            "</div>"
         )
         msg.setTextFormat(Qt.TextFormat.RichText)
         msg.exec()
@@ -918,7 +934,9 @@ class RedBorderOverlay(QMainWindow):
     def init_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(get_app_icon())
+        self.tray_icon.setToolTip("HotKey Overlay Alert")
         self.tray_menu = QMenu()
+        theme_manager.apply_theme_to_window(self.tray_menu, getattr(self, "theme_preference", "system"))
         self.settings_action = QAction("Settings", self)
         self.settings_action.triggered.connect(self.open_settings)
         self.tray_menu.addAction(self.settings_action)
@@ -926,7 +944,12 @@ class RedBorderOverlay(QMainWindow):
         self.exit_action.triggered.connect(self.close_application)
         self.tray_menu.addAction(self.exit_action)
         self.tray_icon.setContextMenu(self.tray_menu)
+        self.tray_icon.activated.connect(self.on_tray_activated)
         self.tray_icon.show()
+
+    def on_tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self.open_settings()
 
     def update_monitor_geometry(self, idx):
         screens = QApplication.screens()
