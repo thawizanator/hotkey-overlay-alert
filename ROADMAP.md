@@ -79,6 +79,14 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
 - Lightweight local and remote web dashboard accessible from phones, tablets, or secondary browsers.
 - Touch buttons to trigger monitor alerts, timers, trivia cycling, and Stream Director commands without needing external hardware like an Elgato Stream Deck.
 
+### Phase 8: Optimization & Debloat Architecture (`v4.0.0`)
+- **Binary Slimming & Codec Debloating**:
+  - Exclude heavy, unused FFmpeg video codec DLLs from PyInstaller bundle (`libx265.dll` [12 MB], `libSvtAv1Enc.dll` [7.3 MB], `libvpx.dll`, etc.) since P2P WebRTC Director only requires RTCDataChannel JSON messaging.
+  - Exclude unused Qt6 components (`opengl32sw.dll` [19.7 MB], `Qt6Pdf.dll` [4.4 MB]) to shave ~25 MB off the standalone executable size.
+- **Dual-Distribution Packaging**:
+  - **Portable Standalone Executable**: `HotKeyOverlayAlert-Portable.exe` for streamers who prefer zero-installation portability.
+  - **Lightweight Windows Installer**: `HotKeyOverlayAlert-Setup.exe` (via Inno Setup with LZMA2 compression) for instant boot without `%TEMP%` extraction, Start Menu integration, desktop shortcuts, and a download size under 30 MB.
+
 ---
 
 ## 💡 Future Ideas & Research Backlog
