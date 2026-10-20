@@ -3,12 +3,14 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 datas = [
     ('icon.ico', '.'),
-    ('icon.png', '.')
+    ('icon.png', '.'),
+    ('splash-image.png', '.')
 ] + collect_data_files('aiortc')
 
 hidden_imports = [
     'PyQt6.QtGui',
     'PyQt6.QtWebSockets',
+    'splash_screen',
     'director_tab',
     'director_panel',
     'streamlabs_client',

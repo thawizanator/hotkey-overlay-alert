@@ -19,7 +19,9 @@ from debug_logger import log_debug
 
 from streamlabs_client import get_streamlabs_client
 from director_security import PasskeyManager, BouncerValidator
-from webrtc_p2p import WebRTCManager
+from typing import TYPE_CHECKING, Optional, Dict, Any
+if TYPE_CHECKING:
+    from webrtc_p2p import WebRTCManager
 
 def obfuscate_str(data_str: str, key: int = 140) -> str:
     if not data_str:
@@ -1865,6 +1867,12 @@ class DirectorTab(QWidget):
         )
         self.bouncer.set_whitelists(self.scenes, self.audio_toggles, self.faders)
 
+        try:
+            from webrtc_p2p import WebRTCManager
+        except Exception as e:
+            QMessageBox.critical(self, "WebRTC Error", f"Failed to load WebRTC P2P module:\n{e}")
+            return
+
         self.host_webrtc = WebRTCManager(role="host", channel_name=ch, passkey=pk, parent=self)
         self.host_webrtc.connection_status_changed.connect(self._on_host_p2p_status_changed)
         self.host_webrtc.command_received.connect(self._on_host_p2p_command_received)
@@ -2007,6 +2015,12 @@ class DirectorTab(QWidget):
             self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #ef4444; color: white;")
         if hasattr(self, "lbl_client_p2p_status"):
             self.lbl_client_p2p_status.setText("<span style='color: #38bdf8;'>🟡 Initializing P2P connection...</span>")
+
+        try:
+            from webrtc_p2p import WebRTCManager
+        except Exception as e:
+            QMessageBox.critical(self, "WebRTC Error", f"Failed to load WebRTC P2P module:\n{e}")
+            return
 
         self.client_webrtc = WebRTCManager(role="client", channel_name=ch, passkey=pk, twitch_user=user, parent=self)
         self.client_webrtc.connection_status_changed.connect(self._on_client_p2p_status_changed)

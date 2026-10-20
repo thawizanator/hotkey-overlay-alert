@@ -467,13 +467,17 @@ class IdentificationOverlay(QMainWindow):
         QTimer.singleShot(3000, self.close)
 
 class RedBorderOverlay(QMainWindow):
-    def __init__(self, app):
+    def __init__(self, app, splash=None):
         super().__init__()
         self.app = app
         self.app_dir = APP_DIR
+        self.splash = splash
         
         # Check first run status before loading settings or writing files
         self.is_first_run = not os.path.exists(CONFIG_FILE)
+
+        if self.splash:
+            self.splash.set_status("Loading configuration...", 25)
         
         self.chronos_engine = ChronosEngine(self)
         self.cycler_engine = CyclerEngine(self)
@@ -481,6 +485,9 @@ class RedBorderOverlay(QMainWindow):
         self.is_visible = False
         self.id_windows = []
         self.current_toast = None
+
+        if self.splash:
+            self.splash.set_status("Detecting display monitors...", 50)
         
         self.update_monitor_geometry(self.target_monitor_index)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool | Qt.WindowType.WindowTransparentForInput)
@@ -498,6 +505,10 @@ class RedBorderOverlay(QMainWindow):
         self.flash_timer = QTimer(self)
         self.flash_timer.timeout.connect(self.process_flash_step)
         self.flash_direction = -1
+
+        if self.splash:
+            self.splash.set_status("Initializing system tray & hub...", 75)
+
         self.init_system_tray()
         self.settings_window = SettingsWindow(self)
         theme_manager.apply_theme_to_window(self.settings_window, getattr(self, "theme_preference", "system"))
@@ -510,14 +521,20 @@ class RedBorderOverlay(QMainWindow):
             except Exception:
                 pass
 
-        if self.is_first_run:
-            QTimer.singleShot(800, self.show_welcome_message)
-
-        if getattr(self, "check_updates_on_startup", True):
-            QTimer.singleShot(4000, self.run_startup_update_check)
-
         if getattr(self, "start_on_boot", False):
             set_autostart_registry(True)
+
+        if self.splash:
+            self.splash.finish_loading(callback=self._on_splash_done)
+        else:
+            self._on_splash_done()
+
+    def _on_splash_done(self):
+        if self.is_first_run:
+            self.show_welcome_message()
+
+        if getattr(self, "check_updates_on_startup", True):
+            QTimer.singleShot(2500, self.run_startup_update_check)
 
     def on_system_theme_changed(self):
         pref = getattr(self, "theme_preference", "system")
@@ -1061,6 +1078,15 @@ if __name__ == '__main__':
         msg.setText("Application is already running! Check hidden system tray icons.")
         msg.exec()
         sys.exit(0)
+
+    # Initialize and display loading splash screen immediately
+    from splash_screen import LoadingSplashScreen, get_resource_path
+    splash_img = get_resource_path("splash-image.png")
+    splash = LoadingSplashScreen(splash_img, min_duration_sec=5.0)
+    splash.show()
+    splash.set_status("Starting up...", 10)
+    app.processEvents()
+
     app.setQuitOnLastWindowClosed(False)
-    overlay = RedBorderOverlay(app)
+    overlay = RedBorderOverlay(app, splash=splash)
     sys.exit(app.exec())
