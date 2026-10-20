@@ -54,7 +54,7 @@ from PyQt6.QtCore import Qt, QObject, pyqtSignal, QTimer
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QSystemTrayIcon, QMenu, 
                              QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QMessageBox, QDialog, QPushButton)
-from PyQt6.QtGui import QPainter, QPen, QColor, QIcon, QAction, QPixmap
+from PyQt6.QtGui import QPainter, QPen, QColor, QIcon, QAction, QPixmap, QCursor
 
 from twitch_worker import TwitchCommandWorker
 from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_hotkey_display, ICON_PATH, get_app_icon
@@ -921,8 +921,12 @@ class RedBorderOverlay(QMainWindow):
             "</div>"
         )
         msg.setTextFormat(Qt.TextFormat.RichText)
-        msg.exec()
-        self.save_settings()
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        self.welcome_dialog = msg
+        msg.finished.connect(lambda res: self.save_settings())
+        msg.show()
+        msg.raise_()
+        msg.activateWindow()
 
     def update_flash_speed(self, name):
         self.flash_speed_name = name
@@ -937,10 +941,10 @@ class RedBorderOverlay(QMainWindow):
         self.tray_icon.setToolTip("HotKey Overlay Alert")
         self.tray_menu = QMenu()
         theme_manager.apply_theme_to_window(self.tray_menu, getattr(self, "theme_preference", "system"))
-        self.settings_action = QAction("Settings", self)
+        self.settings_action = QAction("Settings", self.tray_menu)
         self.settings_action.triggered.connect(self.open_settings)
         self.tray_menu.addAction(self.settings_action)
-        self.exit_action = QAction("Exit", self)
+        self.exit_action = QAction("Exit", self.tray_menu)
         self.exit_action.triggered.connect(self.close_application)
         self.tray_menu.addAction(self.exit_action)
         self.tray_icon.setContextMenu(self.tray_menu)
@@ -950,6 +954,8 @@ class RedBorderOverlay(QMainWindow):
     def on_tray_activated(self, reason):
         if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
             self.open_settings()
+        elif reason == QSystemTrayIcon.ActivationReason.Context:
+            self.tray_menu.popup(QCursor.pos())
 
     def update_monitor_geometry(self, idx):
         screens = QApplication.screens()
