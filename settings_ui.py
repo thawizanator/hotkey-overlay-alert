@@ -339,6 +339,8 @@ class MainTab(QWidget):
     def on_streamer_toggled(self, checked):
         if hasattr(self.main_win.overlay, "set_streamer_mode"):
             self.main_win.overlay.set_streamer_mode(checked)
+        if hasattr(self.main_win, "tab_director") and self.main_win.tab_director:
+            self.main_win.tab_director.set_streamer_mode(checked)
 
     def on_enable_primary_hk_toggled(self, checked):
         if hasattr(self.main_win.overlay, "set_primary_hotkey_enabled"):
@@ -1507,6 +1509,7 @@ class SettingsWindow(QWidget):
 
         # Initialize Stream Director (Phase 4)
         self.tab_director = DirectorTab(self)
+        self.tab_director.set_streamer_mode(getattr(self.overlay, "streamer_mode", True))
         self.stacked_pages.addWidget(self.tab_director)          # 7
 
         content_layout.addWidget(self.stacked_pages)

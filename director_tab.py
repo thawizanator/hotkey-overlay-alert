@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import subprocess
 import webbrowser
 from typing import Optional, List, Dict, Any
@@ -8,7 +9,7 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QGroupBox, QListWidget, QListWidgetItem,
     QMessageBox, QDialog, QInputDialog, QColorDialog, QFormLayout, QScrollArea, QFrame,
-    QCheckBox
+    QCheckBox, QTabWidget, QTabBar
 )
 from PyQt6.QtGui import QColor, QIcon
 
@@ -24,6 +25,16 @@ def obfuscate_str(data_str: str, key: int = 140) -> str:
     if not data_str:
         return ""
     return "".join(chr(ord(c) ^ key) for c in data_str)
+
+def get_permissions_file_path() -> str:
+    appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
+    app_folder = os.path.join(appdata_root, "ThaWizanator_Overlay")
+    if not os.path.exists(app_folder):
+        try:
+            os.makedirs(app_folder, exist_ok=True)
+        except Exception:
+            pass
+    return os.path.join(app_folder, "director_permissions.json")
 
 class NoScrollComboBox(QComboBox):
     """Dropdown QComboBox that ignores mouse wheel when closed to prevent accidental scrolling."""
@@ -167,7 +178,7 @@ class AudioEditDialog(QDialog):
 
 class DirectorTab(QWidget):
     """Stream Director Settings Configuration Tab with Master Launch Button."""
-    def __init__(self, main_win):
+    def __init__(self, main_win=None):
         super().__init__()
         self.main_win = main_win
         self.panel_window = None
@@ -216,6 +227,14 @@ class DirectorTab(QWidget):
         self.client_webrtc: Optional[WebRTCManager] = None
         self.bouncer: Optional[BouncerValidator] = None
 
+        # Granular permissions & streamer mode
+        self.user_permissions: Dict[str, dict] = {}
+        self.is_streamer_mode = True
+        self.perm_scene_checkboxes: Dict[str, QCheckBox] = {}
+        self.perm_mute_checkboxes: Dict[str, QCheckBox] = {}
+        self.perm_vol_checkboxes: Dict[str, QCheckBox] = {}
+        self._updating_perm_ui = False
+
         # Initialize Streamlabs client & wire signals
         self.slobs_client = get_streamlabs_client()
         self.slobs_client.connected.connect(self._update_slobs_status_ui)
@@ -238,21 +257,31 @@ class DirectorTab(QWidget):
 
     def _build_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 8, 10, 8)
+        main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(6)
 
-        # Scroll area for compact height
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(4, 4, 4, 4)
-        scroll_layout.setSpacing(8)
+        self.tabs_director = QTabWidget()
+        self.tabs_director.setObjectName("directorTabs")
 
-        # ------------------ GROUP 1: REMOTE AUTH & MONITOR ------------------
-        grp_conn = QGroupBox("Streamlabs Connection & Target Display")
+        # ==============================================================================
+        # TAB 1: 🖥️ Connection & Display
+        # ==============================================================================
+        tab_conn = QWidget()
+        lay_tab_conn = QVBoxLayout(tab_conn)
+        lay_tab_conn.setContentsMargins(4, 4, 4, 4)
+        lay_tab_conn.setSpacing(6)
+
+        scroll_conn = QScrollArea()
+        scroll_conn.setWidgetResizable(True)
+        scroll_conn.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_conn.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_conn_content = QWidget()
+        lay_conn_content = QVBoxLayout(scroll_conn_content)
+        lay_conn_content.setContentsMargins(2, 2, 2, 2)
+        lay_conn_content.setSpacing(8)
+
+        # ------------------ GROUP 1: CONNECTION & DISPLAY ------------------
+        grp_conn = QGroupBox("Streamlabs Connection && Target Display")
         lay_conn = QVBoxLayout(grp_conn)
         lay_conn.setSpacing(6)
 
@@ -343,77 +372,6 @@ class DirectorTab(QWidget):
         self.lbl_local_notice.setStyleSheet("font-size: 10px; color: #a1a1aa; padding-left: 2px;")
         lay_conn.addWidget(self.lbl_local_notice)
 
-        # ------------------ HOST P2P GATEWAY CARD ------------------
-        self.grp_host_p2p_widget = QFrame()
-        self.grp_host_p2p_widget.setStyleSheet("""
-            QFrame {
-                background-color: #18181b;
-                border: 1px solid #27272a;
-                border-radius: 6px;
-            }
-        """)
-        lay_host_p2p = QVBoxLayout(self.grp_host_p2p_widget)
-        lay_host_p2p.setContentsMargins(8, 6, 8, 6)
-        lay_host_p2p.setSpacing(6)
-
-        self.chk_enable_wan_p2p = QCheckBox("🌐 Allow Remote Co-Host / Moderator (P2P Internet)")
-        self.chk_enable_wan_p2p.setStyleSheet("font-weight: 600; font-size: 11px; color: #38bdf8;")
-        self.chk_enable_wan_p2p.setToolTip("Enables direct encrypted peer-to-peer control over the Internet without port forwarding or sharing API tokens.")
-        self.chk_enable_wan_p2p.toggled.connect(self._on_host_p2p_toggled)
-        lay_host_p2p.addWidget(self.chk_enable_wan_p2p)
-
-        self.box_host_p2p_details = QWidget()
-        lay_host_details = QVBoxLayout(self.box_host_p2p_details)
-        lay_host_details.setContentsMargins(0, 0, 0, 0)
-        lay_host_details.setSpacing(5)
-
-        # Whitelist Row
-        row_host_wl = QHBoxLayout()
-        row_host_wl.setSpacing(6)
-        row_host_wl.addWidget(QLabel("Twitch Whitelist:"))
-        self.edit_allowed_twitch_user = QLineEdit()
-        self.edit_allowed_twitch_user.setPlaceholderText("e.g. @cool_mod (or blank for any with key)")
-        self.edit_allowed_twitch_user.textChanged.connect(self._on_settings_changed)
-        row_host_wl.addWidget(self.edit_allowed_twitch_user, 1)
-        lay_host_details.addLayout(row_host_wl)
-
-        # Passkey Row
-        row_host_pk = QHBoxLayout()
-        row_host_pk.setSpacing(4)
-        row_host_pk.addWidget(QLabel("Passkey:"))
-        self.edit_host_passkey = QLineEdit()
-        self.edit_host_passkey.setReadOnly(True)
-        self.edit_host_passkey.setStyleSheet("font-family: Consolas, monospace; font-weight: bold; letter-spacing: 1px; color: #22c55e;")
-        row_host_pk.addWidget(self.edit_host_passkey, 1)
-
-        self.btn_new_passkey = QPushButton("⚡ New")
-        self.btn_new_passkey.setToolTip("Generate a new pairing passkey")
-        self.btn_new_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px;")
-        self.btn_new_passkey.clicked.connect(self._generate_new_passkey)
-        row_host_pk.addWidget(self.btn_new_passkey)
-
-        self.btn_copy_passkey = QPushButton("📋 Copy")
-        self.btn_copy_passkey.setToolTip("Copy passkey to clipboard")
-        self.btn_copy_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px;")
-        self.btn_copy_passkey.clicked.connect(self._copy_passkey)
-        row_host_pk.addWidget(self.btn_copy_passkey)
-
-        self.btn_revoke_passkey = QPushButton("🚫 Revoke")
-        self.btn_revoke_passkey.setToolTip("Revoke passkey and disconnect any connected remote directors")
-        self.btn_revoke_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px; color: #ef4444;")
-        self.btn_revoke_passkey.clicked.connect(self._revoke_passkey)
-        row_host_pk.addWidget(self.btn_revoke_passkey)
-        lay_host_details.addLayout(row_host_pk)
-
-        # Host Status banner
-        self.lbl_host_p2p_status = QLabel("🟡 Gateway Offline")
-        self.lbl_host_p2p_status.setStyleSheet("font-size: 10px; color: #a1a1aa;")
-        lay_host_details.addWidget(self.lbl_host_p2p_status)
-
-        self.box_host_p2p_details.setVisible(False)
-        lay_host_p2p.addWidget(self.box_host_p2p_details)
-        lay_conn.addWidget(self.grp_host_p2p_widget)
-
         # ------------------ CLIENT P2P CONNECTION CARD ------------------
         self.grp_client_p2p_widget = QFrame()
         self.grp_client_p2p_widget.setStyleSheet("""
@@ -502,7 +460,28 @@ class DirectorTab(QWidget):
         self.chk_app_mode.toggled.connect(self._on_settings_changed)
         lay_conn.addWidget(self.chk_app_mode)
 
-        scroll_layout.addWidget(grp_conn)
+        lay_conn_content.addWidget(grp_conn)
+        lay_conn_content.addStretch()
+        scroll_conn.setWidget(scroll_conn_content)
+        lay_tab_conn.addWidget(scroll_conn)
+        self.tabs_director.addTab(tab_conn, "🖥️ Connection && Display")
+
+        # ==============================================================================
+        # TAB 2: 🎛️ Toggles
+        # ==============================================================================
+        tab_toggles = QWidget()
+        lay_tab_toggles = QVBoxLayout(tab_toggles)
+        lay_tab_toggles.setContentsMargins(4, 4, 4, 4)
+        lay_tab_toggles.setSpacing(6)
+
+        scroll_toggles = QScrollArea()
+        scroll_toggles.setWidgetResizable(True)
+        scroll_toggles.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_toggles.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_toggles_content = QWidget()
+        lay_toggles_content = QVBoxLayout(scroll_toggles_content)
+        lay_toggles_content.setContentsMargins(2, 2, 2, 2)
+        lay_toggles_content.setSpacing(8)
 
         # ------------------ GROUP 2: SCENE TOGGLES (MAX 5) ------------------
         grp_scenes = QGroupBox("Scene Toggles (Limit: 5)")
@@ -565,7 +544,7 @@ class DirectorTab(QWidget):
         self.list_scenes.setFixedHeight(102)
         self.list_scenes.setStyleSheet(slim_list_qss)
         lay_sc.addWidget(self.list_scenes)
-        scroll_layout.addWidget(grp_scenes)
+        lay_toggles_content.addWidget(grp_scenes)
 
         # ------------------ GROUP 3: AUDIO MUTE TOGGLES ------------------
         grp_audio = QGroupBox("Audio Mute / Unmute Toggles (Up to 6)")
@@ -605,7 +584,7 @@ class DirectorTab(QWidget):
         self.list_audio.setFixedHeight(120)
         self.list_audio.setStyleSheet(slim_list_qss)
         lay_au.addWidget(self.list_audio)
-        scroll_layout.addWidget(grp_audio)
+        lay_toggles_content.addWidget(grp_audio)
 
         # ------------------ GROUP 4: VOLUME FADERS (3 SLIDERS) ------------------
         grp_faders = QGroupBox("Volume Sliders (3 Channels)")
@@ -634,10 +613,163 @@ class DirectorTab(QWidget):
 
         lay_fd.setColumnStretch(1, 1)
         lay_fd.setColumnStretch(3, 1)
-        scroll_layout.addWidget(grp_faders)
+        lay_toggles_content.addWidget(grp_faders)
 
-        scroll.setWidget(scroll_content)
-        main_layout.addWidget(scroll, 1)
+        lay_toggles_content.addStretch()
+        scroll_toggles.setWidget(scroll_toggles_content)
+        lay_tab_toggles.addWidget(scroll_toggles)
+        self.tabs_director.addTab(tab_toggles, "🎛️ Toggles")
+
+        # ==============================================================================
+        # TAB 3: 🌐 Remote (Visible ONLY when Streamer Mode is enabled)
+        # ==============================================================================
+        tab_remote = QWidget()
+        lay_tab_remote = QVBoxLayout(tab_remote)
+        lay_tab_remote.setContentsMargins(4, 4, 4, 4)
+        lay_tab_remote.setSpacing(6)
+
+        scroll_remote = QScrollArea()
+        scroll_remote.setWidgetResizable(True)
+        scroll_remote.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_remote.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_remote_content = QWidget()
+        lay_remote_content = QVBoxLayout(scroll_remote_content)
+        lay_remote_content.setContentsMargins(2, 2, 2, 2)
+        lay_remote_content.setSpacing(8)
+
+        # ------------------ GATEWAY SETTINGS CARD ------------------
+        self.grp_gateway = QFrame()
+        self.grp_gateway.setStyleSheet("""
+            QFrame {
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                border-radius: 6px;
+            }
+        """)
+        self.grp_host_p2p_widget = self.grp_gateway  # Compatibility alias
+        lay_gateway = QVBoxLayout(self.grp_gateway)
+        lay_gateway.setContentsMargins(8, 6, 8, 6)
+        lay_gateway.setSpacing(6)
+
+        self.chk_enable_wan_p2p = QCheckBox("🌐 Allow Remote Co-Host / Moderator (P2P Internet)")
+        self.chk_enable_wan_p2p.setStyleSheet("font-weight: 600; font-size: 11px; color: #38bdf8;")
+        self.chk_enable_wan_p2p.setToolTip("Enables direct encrypted peer-to-peer control over the Internet without port forwarding or sharing API tokens.")
+        self.chk_enable_wan_p2p.toggled.connect(self._on_host_p2p_toggled)
+        lay_gateway.addWidget(self.chk_enable_wan_p2p)
+
+        self.box_host_p2p_details = QWidget()
+        lay_host_details = QVBoxLayout(self.box_host_p2p_details)
+        lay_host_details.setContentsMargins(0, 0, 0, 0)
+        lay_host_details.setSpacing(5)
+
+        # Passkey Row
+        row_host_pk = QHBoxLayout()
+        row_host_pk.setSpacing(4)
+        row_host_pk.addWidget(QLabel("Passkey:"))
+        self.edit_host_passkey = QLineEdit()
+        self.edit_host_passkey.setReadOnly(True)
+        self.edit_host_passkey.setStyleSheet("font-family: Consolas, monospace; font-weight: bold; letter-spacing: 1px; color: #22c55e;")
+        row_host_pk.addWidget(self.edit_host_passkey, 1)
+
+        self.btn_new_passkey = QPushButton("⚡ New")
+        self.btn_new_passkey.setToolTip("Generate a new pairing passkey")
+        self.btn_new_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_new_passkey.clicked.connect(self._generate_new_passkey)
+        row_host_pk.addWidget(self.btn_new_passkey)
+
+        self.btn_copy_passkey = QPushButton("📋 Copy")
+        self.btn_copy_passkey.setToolTip("Copy passkey to clipboard")
+        self.btn_copy_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px;")
+        self.btn_copy_passkey.clicked.connect(self._copy_passkey)
+        row_host_pk.addWidget(self.btn_copy_passkey)
+
+        self.btn_revoke_passkey = QPushButton("🚫 Revoke")
+        self.btn_revoke_passkey.setToolTip("Revoke passkey and disconnect any connected remote directors")
+        self.btn_revoke_passkey.setStyleSheet("font-size: 11px; padding: 2px 6px; color: #ef4444;")
+        self.btn_revoke_passkey.clicked.connect(self._revoke_passkey)
+        row_host_pk.addWidget(self.btn_revoke_passkey)
+        lay_host_details.addLayout(row_host_pk)
+
+        # Host Status banner
+        self.lbl_host_p2p_status = QLabel("🟡 Gateway Offline")
+        self.lbl_host_p2p_status.setStyleSheet("font-size: 10px; color: #a1a1aa;")
+        lay_host_details.addWidget(self.lbl_host_p2p_status)
+
+        self.box_host_p2p_details.setVisible(False)
+        lay_gateway.addWidget(self.box_host_p2p_details)
+        lay_remote_content.addWidget(self.grp_gateway)
+
+        # Compatibility hidden input for edit_allowed_twitch_user
+        self.edit_allowed_twitch_user = QLineEdit()
+        self.edit_allowed_twitch_user.setVisible(False)
+
+        # ------------------ PERMISSIONS MATRIX GROUP ------------------
+        self.grp_permissions = QGroupBox("Co-Host Whitelist && Windows-Style Permissions Matrix")
+        lay_perm = QVBoxLayout(self.grp_permissions)
+        lay_perm.setSpacing(6)
+
+        lbl_perm_hint = QLabel(
+            "💡 <i>Assign granular Windows-style access rights to verified Twitch co-hosts. "
+            "Select a co-host to view or customize their specific permissions.</i>"
+        )
+        lbl_perm_hint.setWordWrap(True)
+        lbl_perm_hint.setStyleSheet("font-size: 10px; color: #a1a1aa;")
+        lay_perm.addWidget(lbl_perm_hint)
+
+        # User selection row:
+        row_user = QHBoxLayout()
+        row_user.setSpacing(6)
+        row_user.addWidget(QLabel("Co-Host / Moderator:"))
+        self.combo_cohosts = QComboBox()
+        self.combo_cohosts.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_cohosts.setMinimumContentsLength(14)
+        self.combo_cohosts.currentIndexChanged.connect(self._on_selected_cohost_changed)
+        row_user.addWidget(self.combo_cohosts, 1)
+
+        self.btn_add_cohost = QPushButton("➕ Add User")
+        self.btn_add_cohost.setStyleSheet("font-size: 11px; padding: 2px 6px; font-weight: 600;")
+        self.btn_add_cohost.clicked.connect(self._on_add_cohost_clicked)
+        row_user.addWidget(self.btn_add_cohost)
+
+        self.btn_remove_cohost = QPushButton("🗑️ Remove")
+        self.btn_remove_cohost.setStyleSheet("font-size: 11px; padding: 2px 6px; color: #ef4444;")
+        self.btn_remove_cohost.clicked.connect(self._on_remove_cohost_clicked)
+        row_user.addWidget(self.btn_remove_cohost)
+        lay_perm.addLayout(row_user)
+
+        # Master full control checkbox
+        self.chk_perm_full = QCheckBox("Grant Full Control (Allow all scenes && audio channels)")
+        self.chk_perm_full.setStyleSheet("font-weight: 700; font-size: 12px; color: #22c55e; margin-top: 2px;")
+        self.chk_perm_full.toggled.connect(self._on_full_control_toggled)
+        lay_perm.addWidget(self.chk_perm_full)
+
+        # Vertical scroll container for granular matrix items
+        self.scroll_matrix = QScrollArea()
+        self.scroll_matrix.setWidgetResizable(True)
+        self.scroll_matrix.setFixedHeight(175)
+        self.scroll_matrix.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_matrix.setStyleSheet("""
+            QScrollArea {
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                border-radius: 6px;
+            }
+        """)
+        self.matrix_content = QWidget()
+        self.lay_matrix_items = QVBoxLayout(self.matrix_content)
+        self.lay_matrix_items.setContentsMargins(8, 6, 8, 6)
+        self.lay_matrix_items.setSpacing(4)
+        self.scroll_matrix.setWidget(self.matrix_content)
+        lay_perm.addWidget(self.scroll_matrix)
+
+        lay_remote_content.addWidget(self.grp_permissions)
+        lay_remote_content.addStretch()
+
+        scroll_remote.setWidget(scroll_remote_content)
+        lay_tab_remote.addWidget(scroll_remote)
+        self.tabs_director.addTab(tab_remote, "🌐 Remote")
+
+        main_layout.addWidget(self.tabs_director, 1)
 
         # ------------------ MASTER LAUNCH / CLOSE BUTTON ------------------
         self.btn_launch_panel = QPushButton("🚀 Launch Director Panel")
@@ -679,6 +811,8 @@ class DirectorTab(QWidget):
         count = len(self.scenes)
         self.lbl_scene_count.setText(f"Scenes: ({count} / 5)")
         self.btn_add_scene.setEnabled(count < 5)
+        if hasattr(self, "lay_matrix_items"):
+            self._refresh_permissions_matrix_items()
 
     def _refresh_audio_list_ui(self):
         self.list_audio.clear()
@@ -689,6 +823,318 @@ class DirectorTab(QWidget):
         count = len(self.audio_toggles)
         self.lbl_audio_count.setText(f"Audio Toggles: ({count} / 6)")
         self.btn_add_audio.setEnabled(count < 6)
+        if hasattr(self, "lay_matrix_items"):
+            self._refresh_permissions_matrix_items()
+
+    def set_streamer_mode(self, enabled: bool):
+        self.is_streamer_mode = bool(enabled)
+        if hasattr(self, "tabs_director") and self.tabs_director:
+            visible = self.is_streamer_mode and getattr(self, "conn_mode", "local") != "webrtc_client"
+            self.tabs_director.setTabVisible(2, visible)
+            if not visible and self.tabs_director.currentIndex() == 2:
+                self.tabs_director.setCurrentIndex(0)
+
+    def _sync_permissions_file(self):
+        try:
+            app_path = get_permissions_file_path()
+            with open(app_path, "w", encoding="utf-8") as f:
+                json.dump(self.user_permissions, f, indent=4)
+        except Exception as e:
+            log_debug("DIRECTOR", f"Could not sync APPDATA director_permissions.json: {e}")
+        try:
+            local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "director_permissions.json")
+            with open(local_path, "w", encoding="utf-8") as f:
+                json.dump(self.user_permissions, f, indent=4)
+        except Exception:
+            pass
+
+    def _load_permissions_file(self) -> dict:
+        for path in [
+            get_permissions_file_path(),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "director_permissions.json")
+        ]:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, dict):
+                            return data
+                except Exception as e:
+                    log_debug("DIRECTOR", f"Error reading permissions file {path}: {e}")
+        return {}
+
+    def _refresh_cohosts_combo(self):
+        if not hasattr(self, "combo_cohosts"):
+            return
+        cur_text = self.combo_cohosts.currentText()
+        self.combo_cohosts.blockSignals(True)
+        self.combo_cohosts.clear()
+        users = sorted(self.user_permissions.keys())
+        if users:
+            for u in users:
+                self.combo_cohosts.addItem(f"@{u}", u)
+            if cur_text and self.combo_cohosts.findText(cur_text) >= 0:
+                self.combo_cohosts.setCurrentText(cur_text)
+            else:
+                self.combo_cohosts.setCurrentIndex(0)
+        else:
+            self.combo_cohosts.addItem("(No Co-Hosts Added)", "")
+        self.combo_cohosts.blockSignals(False)
+        self._load_selected_cohost_permissions()
+
+    def _get_current_selected_cohost(self) -> str:
+        if not hasattr(self, "combo_cohosts"):
+            return ""
+        data = self.combo_cohosts.currentData()
+        if data:
+            return str(data).strip().lower().lstrip("@")
+        txt = self.combo_cohosts.currentText().strip().lower().lstrip("@")
+        if txt and not txt.startswith("("):
+            return txt
+        return ""
+
+    def _on_selected_cohost_changed(self):
+        user = self._get_current_selected_cohost()
+        if hasattr(self, "edit_allowed_twitch_user"):
+            self.edit_allowed_twitch_user.setText(user)
+        self._load_selected_cohost_permissions()
+
+    def _on_add_cohost_clicked(self):
+        text, ok = QInputDialog.getText(
+            self,
+            "Add Authorized Co-Host",
+            "Enter Twitch username of the moderator / co-host (without @):"
+        )
+        if ok and text.strip():
+            clean_user = text.strip().lower().lstrip("@")
+            if not clean_user:
+                return
+            if clean_user in self.user_permissions:
+                QMessageBox.information(self, "Already Exists", f"Co-host @{clean_user} is already in the permissions list.")
+                idx = self.combo_cohosts.findText(f"@{clean_user}")
+                if idx >= 0:
+                    self.combo_cohosts.setCurrentIndex(idx)
+                return
+
+            # Default profile grants Full Control and all current scenes/audio
+            self.user_permissions[clean_user] = {
+                "full_control": True,
+                "allowed_scenes": [s.get("name", "") for s in self.scenes if s.get("name")],
+                "allowed_audio_mutes": [a.get("name", "") for a in self.audio_toggles if a.get("name")],
+                "allowed_audio_volume": [chk_name for chk_name in getattr(self, "perm_vol_checkboxes", {}).keys()]
+            }
+            self._refresh_cohosts_combo()
+            idx = self.combo_cohosts.findText(f"@{clean_user}")
+            if idx >= 0:
+                self.combo_cohosts.setCurrentIndex(idx)
+            self._sync_permissions_file()
+            if self.bouncer:
+                self.bouncer.set_user_permissions(self.user_permissions)
+            self._on_settings_changed()
+
+    def _on_remove_cohost_clicked(self):
+        user = self._get_current_selected_cohost()
+        if not user or user not in self.user_permissions:
+            return
+        res = QMessageBox.question(
+            self,
+            "Remove Co-Host",
+            f"Are you sure you want to remove @{user} from the co-host permissions whitelist?\n\n"
+            "They will immediately lose remote control access to your stream.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if res == QMessageBox.StandardButton.Yes:
+            self.user_permissions.pop(user, None)
+            self._refresh_cohosts_combo()
+            self._sync_permissions_file()
+            if self.bouncer:
+                self.bouncer.set_user_permissions(self.user_permissions)
+            self._on_settings_changed()
+
+    def _refresh_permissions_matrix_items(self):
+        if not hasattr(self, "lay_matrix_items"):
+            return
+
+        while self.lay_matrix_items.count() > 0:
+            item = self.lay_matrix_items.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        self.perm_scene_checkboxes.clear()
+        self.perm_mute_checkboxes.clear()
+        self.perm_vol_checkboxes.clear()
+
+        # 1. SCENE SWITCHING PERMISSIONS
+        lbl_sec_scenes = QLabel("🎬 Scene Switching Permissions")
+        lbl_sec_scenes.setStyleSheet("color: #a855f7; font-weight: bold; font-size: 11px; padding-top: 2px;")
+        self.lay_matrix_items.addWidget(lbl_sec_scenes)
+
+        if not self.scenes:
+            lbl_empty_sc = QLabel("   <i>No scenes configured</i>")
+            lbl_empty_sc.setStyleSheet("color: #71717a; font-size: 10px;")
+            self.lay_matrix_items.addWidget(lbl_empty_sc)
+        else:
+            for s in self.scenes:
+                s_name = s.get("name", "Untitled Scene")
+                chk = QCheckBox(f"Allow switching to: {s_name}")
+                chk.setStyleSheet("margin-left: 14px; font-size: 11px;")
+                chk.toggled.connect(self._on_granular_perm_changed)
+                self.lay_matrix_items.addWidget(chk)
+                self.perm_scene_checkboxes[s_name] = chk
+
+        # 2. AUDIO MUTE PERMISSIONS
+        lbl_sec_mutes = QLabel("🔇 Audio Mute Permissions")
+        lbl_sec_mutes.setStyleSheet("color: #0284c7; font-weight: bold; font-size: 11px; padding-top: 6px;")
+        self.lay_matrix_items.addWidget(lbl_sec_mutes)
+
+        if not self.audio_toggles:
+            lbl_empty_au = QLabel("   <i>No audio toggles configured</i>")
+            lbl_empty_au.setStyleSheet("color: #71717a; font-size: 10px;")
+            self.lay_matrix_items.addWidget(lbl_empty_au)
+        else:
+            for a in self.audio_toggles:
+                a_name = a.get("name", "Audio Source")
+                chk = QCheckBox(f"Allow muting: {a_name}")
+                chk.setStyleSheet("margin-left: 14px; font-size: 11px;")
+                chk.toggled.connect(self._on_granular_perm_changed)
+                self.lay_matrix_items.addWidget(chk)
+                self.perm_mute_checkboxes[a_name] = chk
+
+        # 3. VOLUME SLIDER PERMISSIONS
+        lbl_sec_vol = QLabel("🎚️ Volume Slider Permissions")
+        lbl_sec_vol.setStyleSheet("color: #22c55e; font-weight: bold; font-size: 11px; padding-top: 6px;")
+        self.lay_matrix_items.addWidget(lbl_sec_vol)
+
+        fader_names = []
+        if hasattr(self, "edit_fader1") and self.edit_fader1:
+            for idx, combo in enumerate([self.edit_fader1, self.edit_fader2, self.edit_fader3]):
+                name = combo.currentText().strip()
+                if not name or name == "➕ Custom Source Name...":
+                    name = self.faders[idx].get("name", f"Slider {idx+1}") if idx < len(self.faders) else f"Slider {idx+1}"
+                fader_names.append((idx + 1, name))
+        else:
+            for idx, f in enumerate(self.faders):
+                fader_names.append((idx + 1, f.get("name", f"Slider {idx+1}")))
+
+        for s_idx, f_name in fader_names:
+            chk = QCheckBox(f"Allow slider {s_idx}: {f_name}")
+            chk.setStyleSheet("margin-left: 14px; font-size: 11px;")
+            chk.toggled.connect(self._on_granular_perm_changed)
+            self.lay_matrix_items.addWidget(chk)
+            self.perm_vol_checkboxes[f_name] = chk
+
+        self.lay_matrix_items.addStretch()
+        self._load_selected_cohost_permissions()
+
+    def _load_selected_cohost_permissions(self):
+        user = self._get_current_selected_cohost()
+        has_user = bool(user and user in self.user_permissions)
+
+        if hasattr(self, "chk_perm_full"):
+            self.chk_perm_full.setEnabled(has_user)
+        if hasattr(self, "btn_remove_cohost"):
+            self.btn_remove_cohost.setEnabled(has_user)
+
+        if not has_user:
+            self._updating_perm_ui = True
+            if hasattr(self, "chk_perm_full"):
+                self.chk_perm_full.setChecked(False)
+            for chk in self.perm_scene_checkboxes.values():
+                chk.setChecked(False)
+                chk.setEnabled(False)
+            for chk in self.perm_mute_checkboxes.values():
+                chk.setChecked(False)
+                chk.setEnabled(False)
+            for chk in self.perm_vol_checkboxes.values():
+                chk.setChecked(False)
+                chk.setEnabled(False)
+            self._updating_perm_ui = False
+            return
+
+        perm = self.user_permissions.get(user, {})
+        is_full = perm.get("full_control", True)
+        allowed_scenes = perm.get("allowed_scenes", [])
+        allowed_mutes = perm.get("allowed_audio_mutes", [])
+        allowed_vols = perm.get("allowed_audio_volume", [])
+
+        self._updating_perm_ui = True
+        if hasattr(self, "chk_perm_full"):
+            self.chk_perm_full.setChecked(is_full)
+
+        for s_name, chk in self.perm_scene_checkboxes.items():
+            chk.setChecked(is_full or (s_name in allowed_scenes))
+            chk.setEnabled(not is_full)
+            chk.setStyleSheet(
+                "margin-left: 14px; font-size: 11px; color: #a1a1aa;" if is_full
+                else "margin-left: 14px; font-size: 11px; color: #efeff1;"
+            )
+
+        for a_name, chk in self.perm_mute_checkboxes.items():
+            chk.setChecked(is_full or (a_name in allowed_mutes))
+            chk.setEnabled(not is_full)
+            chk.setStyleSheet(
+                "margin-left: 14px; font-size: 11px; color: #a1a1aa;" if is_full
+                else "margin-left: 14px; font-size: 11px; color: #efeff1;"
+            )
+
+        for f_name, chk in self.perm_vol_checkboxes.items():
+            chk.setChecked(is_full or (f_name in allowed_vols))
+            chk.setEnabled(not is_full)
+            chk.setStyleSheet(
+                "margin-left: 14px; font-size: 11px; color: #a1a1aa;" if is_full
+                else "margin-left: 14px; font-size: 11px; color: #efeff1;"
+            )
+
+        self._updating_perm_ui = False
+
+    def _on_full_control_toggled(self, checked: bool):
+        if self._updating_perm_ui:
+            return
+        user = self._get_current_selected_cohost()
+        if not user or user not in self.user_permissions:
+            return
+
+        self.user_permissions[user]["full_control"] = checked
+        if not checked:
+            self.user_permissions[user]["allowed_scenes"] = [
+                s for s, chk in self.perm_scene_checkboxes.items() if chk.isChecked()
+            ]
+            self.user_permissions[user]["allowed_audio_mutes"] = [
+                a for a, chk in self.perm_mute_checkboxes.items() if chk.isChecked()
+            ]
+            self.user_permissions[user]["allowed_audio_volume"] = [
+                v for v, chk in self.perm_vol_checkboxes.items() if chk.isChecked()
+            ]
+
+        self._load_selected_cohost_permissions()
+        self._sync_permissions_file()
+        if self.bouncer:
+            self.bouncer.set_user_permissions(self.user_permissions)
+        self._on_settings_changed()
+
+    def _on_granular_perm_changed(self):
+        if self._updating_perm_ui:
+            return
+        user = self._get_current_selected_cohost()
+        if not user or user not in self.user_permissions:
+            return
+
+        self.user_permissions[user]["allowed_scenes"] = [
+            s for s, chk in self.perm_scene_checkboxes.items() if chk.isChecked()
+        ]
+        self.user_permissions[user]["allowed_audio_mutes"] = [
+            a for a, chk in self.perm_mute_checkboxes.items() if chk.isChecked()
+        ]
+        self.user_permissions[user]["allowed_audio_volume"] = [
+            v for v, chk in self.perm_vol_checkboxes.items() if chk.isChecked()
+        ]
+
+        self._sync_permissions_file()
+        if self.bouncer:
+            self.bouncer.set_user_permissions(self.user_permissions)
+        self._on_settings_changed()
 
     def _on_conn_mode_changed(self):
         mode = self.combo_conn_mode.currentData() if hasattr(self, "combo_conn_mode") else "local"
@@ -708,6 +1154,7 @@ class DirectorTab(QWidget):
         if hasattr(self, "grp_client_p2p_widget"):
             self.grp_client_p2p_widget.setVisible(is_webrtc_client)
 
+        self.set_streamer_mode(self.is_streamer_mode)
         self._on_settings_changed()
 
     def _on_autodetect_clicked(self):
@@ -1218,7 +1665,8 @@ class DirectorTab(QWidget):
             "p2p_passkey_salt": self.p2p_passkey_salt,
             "p2p_passkey_hash": self.p2p_passkey_hash,
             "p2p_passkey_raw": self.p2p_passkey_raw,
-            "allowed_twitch_user": self.edit_allowed_twitch_user.text().strip() if hasattr(self, "edit_allowed_twitch_user") else "",
+            "user_permissions": self.user_permissions,
+            "allowed_twitch_user": self._get_current_selected_cohost() or (self.edit_allowed_twitch_user.text().strip() if hasattr(self, "edit_allowed_twitch_user") else ""),
             "p2p_target_channel": self.edit_client_channel.text().strip() if hasattr(self, "edit_client_channel") else "",
             "p2p_client_passkey": self.edit_client_passkey.text().strip() if hasattr(self, "edit_client_passkey") else "",
             "p2p_my_twitch_user": self.edit_client_my_user.text().strip() if hasattr(self, "edit_client_my_user") else "",
@@ -1254,6 +1702,25 @@ class DirectorTab(QWidget):
             self.p2p_target_channel = d.get("p2p_target_channel", "")
             self.p2p_client_passkey = d.get("p2p_client_passkey", "")
             self.p2p_my_twitch_user = d.get("p2p_my_twitch_user", "")
+
+            # Load user permissions and sync
+            self.user_permissions = d.get("user_permissions")
+            if not self.user_permissions:
+                self.user_permissions = self._load_permissions_file()
+
+            # Migrate legacy allowed_twitch_user if user_permissions is empty
+            if self.allowed_twitch_user and not self.user_permissions:
+                clean_legacy = self.allowed_twitch_user.lower().strip().lstrip("@")
+                if clean_legacy:
+                    self.user_permissions[clean_legacy] = {
+                        "full_control": True,
+                        "allowed_scenes": [s.get("name", "") for s in self.scenes if s.get("name")],
+                        "allowed_audio_mutes": [a.get("name", "") for a in self.audio_toggles if a.get("name")],
+                        "allowed_audio_volume": [f.get("name", "") for f in self.faders if f.get("name")]
+                    }
+
+            if self.user_permissions:
+                self._sync_permissions_file()
 
             if hasattr(self, "chk_enable_wan_p2p"):
                 self.chk_enable_wan_p2p.blockSignals(True)
@@ -1320,6 +1787,8 @@ class DirectorTab(QWidget):
         self.refresh_monitors_list()
         self._refresh_scene_list_ui()
         self._refresh_audio_list_ui()
+        self._refresh_cohosts_combo()
+        self._refresh_permissions_matrix_items()
 
     def save_to_settings(self):
         if hasattr(self.main_win, "overlay") and self.main_win.overlay:
@@ -1389,8 +1858,11 @@ class DirectorTab(QWidget):
         if not pk:
             return
 
-        allowed_user = self.edit_allowed_twitch_user.text().strip() if hasattr(self, "edit_allowed_twitch_user") else ""
-        self.bouncer = BouncerValidator(allowed_twitch_user=allowed_user)
+        allowed_user = self._get_current_selected_cohost() or (self.edit_allowed_twitch_user.text().strip() if hasattr(self, "edit_allowed_twitch_user") else "")
+        self.bouncer = BouncerValidator(
+            allowed_twitch_user=allowed_user,
+            user_permissions=self.user_permissions
+        )
         self.bouncer.set_whitelists(self.scenes, self.audio_toggles, self.faders)
 
         self.host_webrtc = WebRTCManager(role="host", channel_name=ch, passkey=pk, parent=self)
@@ -1443,6 +1915,8 @@ class DirectorTab(QWidget):
 
             # Approved! Assemble current state and send approve
             log_debug("HOST_BOUNCER", f"Handshake APPROVED for @{twitch_user or 'anonymous'} ({client_id})")
+            if self.bouncer:
+                self.bouncer.register_peer(client_id, twitch_user)
             _, active_name = self.slobs_client.get_active_scene_info()
             state = {
                 "active_scene": active_name or "",
@@ -1481,6 +1955,8 @@ class DirectorTab(QWidget):
 
     def _on_host_p2p_peer_disconnected(self, client_id: str):
         log_debug("HOST_BOUNCER", f"Remote Director disconnected: {client_id}")
+        if self.bouncer:
+            self.bouncer.unregister_peer(client_id)
         if hasattr(self, "lbl_host_p2p_status"):
             if self.host_webrtc and self.host_webrtc._peers:
                 count = len(self.host_webrtc._peers)
@@ -1578,3 +2054,7 @@ class DirectorTab(QWidget):
             self.grp_host_p2p_widget.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid {card_border}; border-radius: 6px; }}")
         if hasattr(self, "grp_client_p2p_widget"):
             self.grp_client_p2p_widget.setStyleSheet(f"QFrame {{ background-color: {card_bg}; border: 1px solid #0284c7; border-radius: 6px; }}")
+        if hasattr(self, "grp_permissions"):
+            self.grp_permissions.setStyleSheet(f"QGroupBox {{ border: 1px solid {card_border}; border-radius: 6px; margin-top: 10px; }}")
+        if hasattr(self, "scroll_matrix"):
+            self.scroll_matrix.setStyleSheet(f"QScrollArea {{ background-color: {card_bg}; border: 1px solid {card_border}; border-radius: 6px; }}")

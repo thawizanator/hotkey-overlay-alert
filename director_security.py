@@ -47,13 +47,33 @@ class BouncerValidator:
     The Bouncer: strictly validates and scopes all incoming remote director commands.
     Ensures remote users can ONLY interact with pre-approved scenes and audio channels,
     and blocks unauthorized or malformed requests.
+    Supports granular Windows-style per-user permission profiles.
     """
-    def __init__(self, allowed_twitch_user: str = "", rate_limit_per_sec: int = 10):
+    def __init__(self, allowed_twitch_user: str = "", rate_limit_per_sec: int = 10, user_permissions: Optional[Dict[str, dict]] = None):
         self.allowed_twitch_user = allowed_twitch_user.lower().strip()
         self.rate_limit_per_sec = rate_limit_per_sec
         self._peer_request_times: Dict[str, List[float]] = {}
         self.active_scenes_whitelist: List[str] = []
         self.active_audio_whitelist: List[str] = []
+        self.user_permissions: Dict[str, dict] = user_permissions or {}
+        self._peer_usernames: Dict[str, str] = {}
+
+    def register_peer(self, peer_id: str, twitch_username: str):
+        """Associates a connected peer with their verified Twitch username."""
+        clean_user = (twitch_username or "").lower().strip().lstrip("@")
+        self._peer_usernames[peer_id] = clean_user
+
+    def unregister_peer(self, peer_id: str):
+        """Removes a peer association upon disconnect."""
+        self._peer_usernames.pop(peer_id, None)
+
+    def set_user_permissions(self, permissions_dict: Dict[str, dict]):
+        """Updates the dictionary of user-specific granular permissions."""
+        self.user_permissions = permissions_dict or {}
+
+    def get_user_permissions(self, twitch_username: str) -> Optional[dict]:
+        clean_user = (twitch_username or "").lower().strip().lstrip("@")
+        return self.user_permissions.get(clean_user)
 
     def set_whitelists(self, scenes: List[dict], audio_toggles: List[dict], faders: Optional[List[dict]] = None):
         """Updates the list of approved scene names and audio names."""
@@ -73,9 +93,18 @@ class BouncerValidator:
     def verify_identity(self, twitch_username: str, twitch_user_id: Optional[str] = None) -> Tuple[bool, str]:
         """
         Checks if the connecting remote user's Twitch identity is authorized.
-        If allowed_twitch_user is empty or '*', any user with a valid passkey is accepted.
+        If user_permissions is defined with specific users, checks if the user is in the list.
+        Otherwise falls back to allowed_twitch_user.
         """
         clean_user = (twitch_username or "").lower().strip().lstrip("@")
+        if self.user_permissions:
+            if clean_user in self.user_permissions:
+                return True, f"Twitch co-host verified: @{clean_user}"
+            expected = self.allowed_twitch_user.lstrip("@")
+            if expected and expected != "*" and clean_user == expected:
+                return True, f"Twitch co-host verified: @{clean_user}"
+            return False, f"Twitch user @{clean_user} is not in the authorized co-host list"
+
         if not self.allowed_twitch_user or self.allowed_twitch_user == "*":
             return True, f"Open access with valid passkey (User: @{clean_user or 'anonymous'})"
 
@@ -98,7 +127,8 @@ class BouncerValidator:
 
     def validate_command(self, peer_id: str, payload: dict) -> Tuple[bool, str, Optional[dict]]:
         """
-        Strictly sanitizes and validates an incoming command against allowed schema and whitelists.
+        Strictly sanitizes and validates an incoming command against allowed schema,
+        global whitelists, and per-user granular permissions.
         Returns: (is_valid, reason, sanitized_command)
         """
         if not isinstance(payload, dict):
@@ -128,29 +158,55 @@ class BouncerValidator:
         clean_target = target.strip()
         lower_target = clean_target.lower()
 
-        # Validate SWITCH_SCENE against configured scenes whitelist
+        # Check granular per-user permissions
+        username = self._peer_usernames.get(peer_id, "")
+        user_perm = self.user_permissions.get(username, {}) if username else {}
+        full_control = user_perm.get("full_control", False) if user_perm else (not self.user_permissions)
+
+        # 1. Validate SWITCH_SCENE
         if action == "SWITCH_SCENE":
             if lower_target not in self.active_scenes_whitelist:
                 log_debug("BOUNCER", f"Rejected scene switch to non-whitelisted scene: '{clean_target}'")
                 return False, f"Scene '{clean_target}' is not in the approved scenes list", None
+
+            if not full_control:
+                allowed_scenes = [s.lower() for s in user_perm.get("allowed_scenes", [])]
+                if lower_target not in allowed_scenes:
+                    log_debug("BOUNCER", f"Permission denied: @{username} is not permitted to switch scene '{clean_target}'")
+                    return False, f"Permission denied: user @{username} cannot switch to scene '{clean_target}'", None
+
             return True, "Valid", {"action": action, "target": clean_target}
 
-        # Validate TOGGLE_MUTE against configured audio whitelist
+        # 2. Validate TOGGLE_MUTE
         elif action == "TOGGLE_MUTE":
             if lower_target not in self.active_audio_whitelist:
                 log_debug("BOUNCER", f"Rejected mute toggle for non-whitelisted audio: '{clean_target}'")
                 return False, f"Audio source '{clean_target}' is not in the approved audio list", None
+
+            if not full_control:
+                allowed_mutes = [m.lower() for m in user_perm.get("allowed_audio_mutes", [])]
+                if lower_target not in allowed_mutes:
+                    log_debug("BOUNCER", f"Permission denied: @{username} is not permitted to mute '{clean_target}'")
+                    return False, f"Permission denied: user @{username} cannot mute/unmute '{clean_target}'", None
+
             mute_state = payload.get("muted")
             sanitized = {"action": action, "target": clean_target}
             if mute_state is not None:
                 sanitized["muted"] = bool(mute_state)
             return True, "Valid", sanitized
 
-        # Validate SET_VOLUME against configured audio whitelist and clamp range 0.0 - 1.0
+        # 3. Validate SET_VOLUME
         elif action == "SET_VOLUME":
             if lower_target not in self.active_audio_whitelist:
                 log_debug("BOUNCER", f"Rejected volume change for non-whitelisted audio: '{clean_target}'")
                 return False, f"Audio source '{clean_target}' is not in the approved audio list", None
+
+            if not full_control:
+                allowed_vols = [v.lower() for v in user_perm.get("allowed_audio_volume", [])]
+                if lower_target not in allowed_vols:
+                    log_debug("BOUNCER", f"Permission denied: @{username} is not permitted to adjust volume for '{clean_target}'")
+                    return False, f"Permission denied: user @{username} cannot adjust volume for '{clean_target}'", None
+
             try:
                 volume = float(payload.get("volume", 1.0))
                 volume = max(0.0, min(1.0, volume))  # Clamp strictly to 0.0 - 1.0
