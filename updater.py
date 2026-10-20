@@ -109,7 +109,7 @@ class UpdateCheckWorker(QThread):
     def run(self):
         try:
             if self.channel == "beta":
-                api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=10"
+                api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=50"
                 req = urllib.request.Request(api_url, headers={"User-Agent": "HotKeyOverlayAlert"})
                 with urllib.request.urlopen(req, timeout=10) as res:
                     releases = json.loads(res.read().decode("utf-8"))

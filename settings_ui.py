@@ -1190,16 +1190,22 @@ class SystemTab(QWidget):
     def on_update_found_interactive(self, latest_tag, release_url, download_url, notes):
         self.btn_check_update.setEnabled(True)
         self.on_update_found(latest_tag, release_url, download_url, notes)
-        res = QMessageBox.question(
-            self,
-            "Update Available",
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Update Available")
+        msg.setWindowIcon(get_app_icon())
+        theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
+        msg.setText(
             f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
             f"Current version: <b>{get_full_version_string()}</b><br>"
             f"Latest version: <b>{latest_tag}</b><br><br>"
-            f"Would you like to download and install this update now?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            f"Would you like to download and install this update now?"
         )
-        if res == QMessageBox.StandardButton.Yes and download_url:
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        btn_yes = msg.addButton("Download Now", QMessageBox.ButtonRole.AcceptRole)
+        btn_no = msg.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_yes)
+        msg.exec()
+        if msg.clickedButton() == btn_yes and download_url:
             self.download_update_clicked()
 
     def on_up_to_date_interactive(self, current_ver):
@@ -1207,19 +1213,31 @@ class SystemTab(QWidget):
         self.on_up_to_date(current_ver)
         chan = getattr(self.main_win.overlay, "update_channel", "stable")
         chan_title = "Beta / Early Access" if chan == "beta" else "Stable"
-        QMessageBox.information(
-            self,
-            "Update Check Complete",
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Update Check Complete")
+        msg.setWindowIcon(get_app_icon())
+        theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
+        msg.setText(
             f"<b>HotKey Overlay Alert is up to date!</b><br><br>"
             f"• <b>Active Channel:</b> {chan_title}<br>"
             f"• <b>Installed Version:</b> {get_full_version_string()}<br><br>"
             f"<i>Successfully connected to GitHub releases. There are currently no newer releases available on the {chan_title.lower()} channel.</i>"
         )
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
 
     def on_check_error_interactive(self, err_str):
         self.btn_check_update.setEnabled(True)
         self.on_check_error(err_str)
-        QMessageBox.warning(self, "Update Check Error", f"Unable to check for updates:\n\n{err_str}")
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Update Check Error")
+        msg.setWindowIcon(get_app_icon())
+        theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
+        msg.setText(f"<b>Unable to check for updates:</b><br><br>{err_str}")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
 
     def download_update_clicked(self):
         if not self.latest_download_url:
