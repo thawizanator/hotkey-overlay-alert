@@ -23,8 +23,8 @@ VSVersionInfo(
             StringStruct('LegalCopyright', 'Copyright (c) 2026 ThaWizanator. All rights reserved.'),
             StringStruct('OriginalFilename', 'HotKeyOverlayAlert.exe'),
             StringStruct('ProductName', 'HotKey Overlay Alert'),
-            StringStruct('ProductVersion', '3.0.0-beta.3'),
-            StringStruct('SpecialBuild', 'Release v3.0.0-beta.3')
+            StringStruct('ProductVersion', '3.0.0-beta.3 (fde4689)'),
+            StringStruct('SpecialBuild', 'Commit fde4689')
           ]
         )
       ]
