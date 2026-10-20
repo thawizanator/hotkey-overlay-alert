@@ -6,7 +6,7 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
 
 ## 🧭 Release Architecture & Branches
 
-- **`main` Branch**: Tracks stable production releases (currently **`v2.5.0`**).
+- **`main` Branch**: Tracks stable production releases (currently **`v2.5.2`**).
 - **`develop` Branch**: Tracks active feature branches, alpha builds, and early access previews (currently **`v3.0.0-beta.3`**).
 
 ---
@@ -36,27 +36,28 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
 - Integrated Git commit hash (`get_build_commit()`) across sidebar footer, window titles, Updates tab, and diagnostic bug report templates.
 - *Status Note*: Core DPI mode toggle and build commit tracking are functional; minor cross-monitor spanning refinements placed on the backburner to prioritize Phase 4.
 
+### Phase 4.1: OBS Studio & Streamlabs Desktop WebSocket Gateway — *Completed*
+- **WebSocket Integration**: Direct low-latency connection to local OBS Studio and Streamlabs Desktop via OBS WebSocket protocol (`ws://localhost:4455`).
+- **Scene & Source Control**: Instantly switch scenes, toggle display/browser sources, mute/unmute audio tracks, and trigger transitions.
+- **LAN & Multi-PC Verification**: Verified operational across local PCs connected to the same LAN.
+
 ---
 
-## 🚀 Next Milestone: Phase 4 — Stream Director & Secure Remote OBS Integration (`v3.0.0-beta.3`)
+## 🚀 Active Milestones: Phase 4.2 — Stream Director & Secure Remote OBS Integration (`v3.0.0-beta.3`)
 
 > [!IMPORTANT]
 > **Remote Producer & Director Vision**: Allow the streamer, trusted co-hosts, or remote channel directors to trigger actions and switch scenes in **OBS Studio** and **Streamlabs Desktop** from anywhere over the internet, while enforcing strict per-user authentication so only authorized users can connect.
 
-### 4.1 🎬 OBS Studio & Streamlabs Desktop WebSocket Gateway
-- **WebSocket v5 Integration**: Direct low-latency connection to local OBS Studio and Streamlabs Desktop via OBS WebSocket protocol (`ws://localhost:4455`).
-- **Scene & Source Control**: Instantly switch scenes, toggle display/browser sources, mute/unmute audio tracks, and trigger transitions.
-- **Multi-Action Macros**: Chain actions into one-click triggers (e.g., *One command triggers monitor alert + starts Chronos 5-minute break timer + switches OBS to "Be Right Back" scene + posts Twitch chat announcement*).
-
-### 4.2 🔒 Secure Remote Access Control ("Connect from Anywhere")
-- **Strict User Whitelist & Authentication**:
-  - Only specific, explicitly approved users can connect remotely.
-  - **Per-User Access Keys / Tokens**: The streamer generates unique, revocable access tokens for individual directors/producers.
-  - **Twitch Identity Verification**: Option to authenticate remote users via their Twitch account, verifying they are an approved Twitch User ID, Moderator, or Channel Editor.
-  - **Permission Scoping**: Restrict what remote users can do (e.g., permit switching between pre-approved scenes, but restrict stopping stream or modifying settings).
-- **Remote "From Anywhere" Connectivity**:
-  - Secure encrypted gateway/tunnel allowing authorized remote directors to connect from any external network or mobile device without requiring hazardous router port forwarding or exposing private home IP addresses.
-- **Audit & Connection Logging**: Live visual log showing who connected, their IP/device, and every action triggered, with instant one-click ban/disconnect in Settings.
+### 4.2 🔒 Secure Remote Access Control ("Connect from Anywhere") — *Built, Awaiting Testing*
+- **Architecture Implemented**:
+  - **P2P WebRTC Data Channels + Signaling Bouncer Proxy**: Direct peer-to-peer encrypted data channel between streamer and remote director without exposing private IP addresses.
+  - **Twitch Identity Whitelist & Pairing Passkey**: Handshake combining Twitch username verification with AES-encrypted pairing keys.
+  - **3-Tab Layout & Conditional Visibility**: Dedicated tabs for *Scenes & Controls*, *Audio Mixer*, and *Remote Co-Host* (automatically shown/hidden based on Streamer Mode).
+  - **Granular Windows-Style User Permissions Matrix**: Element-by-element permission checklist per remote director (allowed scenes, mute controls, volume adjustments, or full control).
+- **Status & Testing Delay**:
+  - Feature implementation is fully built and integrated in `v3.0.0-beta.3`.
+  - Testing was temporarily delayed due to host/tester environment issues (hidden drawer tray context menu and contrast display bugs), which were successfully resolved and backported in stable releases **v2.5.1** and **v2.5.2**.
+  - Ready for live peer-to-peer remote testing.
 
 ---
 
