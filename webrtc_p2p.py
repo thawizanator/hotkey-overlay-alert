@@ -263,6 +263,36 @@ class WebRTCManager(QThread):
         else:
             log_debug("WEBRTC", f"Ignored command from unauthenticated client: {client_id}")
 
+    def _send_on_channel(self, channel, payload: dict):
+        """Thread-safe dispatch of JSON payload over an RTCDataChannel onto the asyncio loop."""
+        if not channel:
+            return
+        try:
+            msg = json.dumps(payload)
+        except Exception as e:
+            log_debug("WEBRTC", f"JSON serialization error in _send_on_channel: {e}")
+            return
+
+        def _do_send():
+            try:
+                channel.send(msg)
+            except Exception as e:
+                log_debug("WEBRTC", f"DataChannel send error: {e}")
+
+        if self._loop and self._loop.is_running():
+            try:
+                current_loop = None
+                try:
+                    current_loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    pass
+                if current_loop is self._loop:
+                    _do_send()
+                else:
+                    self._loop.call_soon_threadsafe(_do_send)
+            except Exception as e:
+                log_debug("WEBRTC", f"Error dispatching send to loop: {e}")
+
     def approve_peer_handshake(self, client_id: str, twitch_user: str, initial_state: dict):
         """Called by Host UI when Bouncer approves the client's handshake."""
         if client_id in self._peers:
@@ -270,14 +300,12 @@ class WebRTCManager(QThread):
             self._peers[client_id]["user"] = twitch_user
             ch = self._peers[client_id].get("channel")
             if ch:
-                try:
-                    ch.send(json.dumps({
-                        "type": "HANDSHAKE_OK",
-                        "user": twitch_user,
-                        "state": initial_state
-                    }))
-                except Exception as e:
-                    log_debug("WEBRTC", f"Failed to send HANDSHAKE_OK: {e}")
+                self._send_on_channel(ch, {
+                    "type": "HANDSHAKE_OK",
+                    "user": twitch_user,
+                    "state": initial_state
+                })
+                log_debug("WEBRTC", f"Dispatched HANDSHAKE_OK to client {client_id}")
             self.peer_authenticated.emit(client_id, twitch_user)
 
     def reject_peer_handshake(self, client_id: str, reason: str):
@@ -285,25 +313,23 @@ class WebRTCManager(QThread):
         if client_id in self._peers:
             ch = self._peers[client_id].get("channel")
             if ch:
-                try:
-                    ch.send(json.dumps({
-                        "type": "HANDSHAKE_FAIL",
-                        "reason": reason
-                    }))
-                    ch.close()
-                except Exception:
-                    pass
+                self._send_on_channel(ch, {
+                    "type": "HANDSHAKE_FAIL",
+                    "reason": reason
+                })
+                if self._loop and self._loop.is_running():
+                    try:
+                        self._loop.call_soon_threadsafe(ch.close)
+                    except Exception:
+                        pass
             self.disconnect_peer(client_id)
 
     def broadcast_state(self, state: dict):
         """Broadcasts scene & mixer state update to all authenticated connected remote directors."""
-        msg = json.dumps({"type": "STATE_UPDATE", "state": state})
+        payload = {"type": "STATE_UPDATE", "state": state}
         for client_id, info in list(self._peers.items()):
             if info.get("auth", False) and info.get("channel"):
-                try:
-                    info["channel"].send(msg)
-                except Exception as e:
-                    log_debug("WEBRTC", f"Broadcast to {client_id} failed: {e}")
+                self._send_on_channel(info["channel"], payload)
 
     def disconnect_peer(self, client_id: str):
         """Terminates connection to a specific peer."""
@@ -444,7 +470,4 @@ class WebRTCManager(QThread):
             elif action == "TOGGLE_MUTE":
                 payload["muted"] = value
 
-        try:
-            self._client_channel.send(json.dumps(payload))
-        except Exception as e:
-            log_debug("WEBRTC", f"Failed to send command {action}: {e}")
+        self._send_on_channel(self._client_channel, payload)

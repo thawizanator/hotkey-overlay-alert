@@ -1956,7 +1956,8 @@ class DirectorTab(QWidget):
             self.slobs_client.set_audio_deflection(target, sanitized.get("volume", 0.75))
 
     def _on_host_p2p_peer_authenticated(self, client_id: str, twitch_user: str):
-        user_str = f"@{twitch_user}" if twitch_user else "anonymous"
+        clean_user = (twitch_user or "").strip().lstrip("@")
+        user_str = f"@{clean_user}" if clean_user else "anonymous"
         log_debug("HOST_BOUNCER", f"Remote Director authenticated: {user_str} ({client_id})")
         if hasattr(self, "lbl_host_p2p_status"):
             self.lbl_host_p2p_status.setText(f"<span style='color: #22c55e;'>🟢 1 Remote Director Connected ({user_str})</span>")
@@ -2000,7 +2001,7 @@ class DirectorTab(QWidget):
 
         ch = self.edit_client_channel.text().strip() if hasattr(self, "edit_client_channel") else ""
         pk = self.edit_client_passkey.text().strip() if hasattr(self, "edit_client_passkey") else ""
-        user = self.edit_client_my_user.text().strip() if hasattr(self, "edit_client_my_user") else ""
+        user = self.edit_client_my_user.text().strip().lstrip("@") if hasattr(self, "edit_client_my_user") else ""
 
         if not ch or not pk:
             QMessageBox.warning(
@@ -2033,8 +2034,14 @@ class DirectorTab(QWidget):
         if hasattr(self, "lbl_client_p2p_status"):
             if status_tag == "connected":
                 self.lbl_client_p2p_status.setText(f"<span style='color: #22c55e;'>{msg}</span>")
+                if hasattr(self, "btn_client_p2p_connect"):
+                    self.btn_client_p2p_connect.setText("⏹️ Disconnect P2P")
+                    self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #ef4444; color: white;")
             elif status_tag == "signaling":
                 self.lbl_client_p2p_status.setText(f"<span style='color: #38bdf8;'>{msg}</span>")
+                if hasattr(self, "btn_client_p2p_connect"):
+                    self.btn_client_p2p_connect.setText("⏹️ Disconnect P2P")
+                    self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #f59e0b; color: white;")
             else:
                 self.lbl_client_p2p_status.setText(f"<span style='color: #ef4444;'>{msg}</span>")
                 if hasattr(self, "btn_client_p2p_connect"):
@@ -2047,6 +2054,7 @@ class DirectorTab(QWidget):
             self.scenes = scenes
             self._refresh_scene_list_ui()
         self._refresh_fader_combos()
+        self._update_slobs_status_ui()
 
     def closeEvent(self, event):
         self._stop_host_p2p()
