@@ -175,6 +175,13 @@ class WebRTCManager(QThread):
                     log_debug("WEBRTC", f"Host received OFFER from client: {sender}")
                     await self._handle_client_offer(sender, msg.get("sdp"))
 
+                # Periodic dead-peer sweep (peers inactive for >15s)
+                now = time.time()
+                for cid, pinfo in list(self._peers.items()):
+                    if pinfo.get("auth", False) and (now - pinfo.get("last_seen", now) > 15.0):
+                        log_debug("WEBRTC", f"Host detected peer timeout: {cid} inactive >15s")
+                        self.disconnect_peer(cid)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -184,7 +191,13 @@ class WebRTCManager(QThread):
     async def _handle_client_offer(self, client_id: str, sdp_dict: dict):
         config = RTCConfiguration(iceServers=[RTCIceServer(urls=STUN_SERVERS)])
         pc = RTCPeerConnection(configuration=config)
-        self._peers[client_id] = {"pc": pc, "channel": None, "user": "", "auth": False}
+        self._peers[client_id] = {
+            "pc": pc,
+            "channel": None,
+            "user": "",
+            "auth": False,
+            "last_seen": time.time()
+        }
 
         @pc.on("datachannel")
         def on_datachannel(channel):
@@ -236,6 +249,8 @@ class WebRTCManager(QThread):
 
     def _handle_incoming_host_message(self, client_id: str, channel, payload: dict):
         mtype = payload.get("type", "")
+        if client_id in self._peers:
+            self._peers[client_id]["last_seen"] = time.time()
 
         # 1. Handshake Phase
         if mtype == "HANDSHAKE":
@@ -251,10 +266,10 @@ class WebRTCManager(QThread):
 
         # 2. Ping-Pong Keepalive
         if mtype == "PING":
-            try:
-                channel.send(json.dumps({"type": "PONG", "time": time.time()}))
-            except Exception:
-                pass
+            self._send_on_channel(channel, {
+                "type": "PONG",
+                "timestamp": payload.get("timestamp", time.time())
+            })
             return
 
         # 3. Director Command
@@ -399,6 +414,16 @@ class WebRTCManager(QThread):
                 if state:
                     self.state_received.emit(state)
 
+            elif mtype == "PONG":
+                self._last_pong = time.time()
+                sent_ts = payload.get("timestamp")
+                if sent_ts:
+                    try:
+                        rtt_ms = max(1, int((time.time() - float(sent_ts)) * 1000))
+                        self.connection_status_changed.emit("connected", f"🟢 Connected to {self.channel_name} (Encrypted P2P • {rtt_ms}ms)")
+                    except Exception:
+                        pass
+
         @pc.on("iceconnectionstatechange")
         def on_ice():
             log_debug("WEBRTC", f"Client ICE State: {pc.iceConnectionState}")
@@ -453,9 +478,22 @@ class WebRTCManager(QThread):
         answer = RTCSessionDescription(sdp=ans_sdp["sdp"], type=ans_sdp["type"])
         await pc.setRemoteDescription(answer)
 
-        # Keep client running while connected
+        # Keep client running while connected with 5-second heartbeat
+        self._last_pong = time.time()
         while self._running:
-            await asyncio.sleep(1)
+            await asyncio.sleep(5)
+            if not self._running:
+                break
+            if self._client_channel and handshake_done.is_set():
+                self._send_on_channel(self._client_channel, {
+                    "type": "PING",
+                    "timestamp": time.time()
+                })
+                if time.time() - self._last_pong > 15.0:
+                    log_debug("WEBRTC", "Client heartbeat timeout: streamer unreachable for >15s")
+                    self.connection_status_changed.emit("disconnected", "🔴 Connection Lost (Streamer unreachable)")
+                    self.stop_session()
+                    break
 
     def send_command(self, action: str, target: str = "", value: Any = None):
         """Called by Client UI to send a sanitized command over the P2P DataChannel."""
