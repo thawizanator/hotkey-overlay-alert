@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QIcon, QGuiApplication
 
-from updater import CURRENT_VERSION, GITHUB_REPO, get_full_version_string, get_build_commit
+from updater import CURRENT_VERSION, GITHUB_REPO, get_full_version_string, get_build_commit, get_clickable_version_html
 from diagnostics import get_system_info, bundle_logs, APP_DIR
 import theme_manager
 
@@ -107,7 +107,10 @@ class BugReportDialog(QDialog):
         main_layout.setContentsMargins(14, 14, 14, 14)
 
         # Header
-        lbl_title = QLabel(f"<b>🐞 Submit a Bug Report</b> <span style='font-size: 11px; color: {sec_color}; font-weight: normal;'>({get_full_version_string()})</span>")
+        v_link = get_clickable_version_html(color=sec_color, underline=True)
+        lbl_title = QLabel(f"<b>🐞 Submit a Bug Report</b> <span style='font-size: 11px; color: {sec_color}; font-weight: normal;'>({v_link})</span>")
+        lbl_title.setTextFormat(Qt.TextFormat.RichText)
+        lbl_title.setOpenExternalLinks(True)
         lbl_title.setStyleSheet("font-size: 15px;")
         main_layout.addWidget(lbl_title)
 

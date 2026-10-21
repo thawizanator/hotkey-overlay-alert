@@ -54,6 +54,22 @@ def get_full_version_string():
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
+def get_commit_url():
+    """Returns direct GitHub URL to the current build commit."""
+    commit = get_build_commit()
+    if commit:
+        return f"https://github.com/{GITHUB_REPO}/commit/{commit}"
+    return f"https://github.com/{GITHUB_REPO}"
+
+def get_clickable_version_html(color="#a1a1aa", underline=True):
+    """Returns HTML link to the exact GitHub commit for this build."""
+    commit = get_build_commit()
+    style = f"color: {color};" + (" text-decoration: underline;" if underline else " text-decoration: none;")
+    if commit:
+        url = get_commit_url()
+        return f"<a href='{url}' style='{style}' title='View commit {commit} on GitHub'>v{CURRENT_VERSION} ({commit})</a>"
+    return f"<span style='color: {color};'>v{CURRENT_VERSION}</span>"
+
 import re
 
 def parse_version(v_str):

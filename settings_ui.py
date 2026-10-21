@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from updater import (UpdateCheckWorker, DownloadWorker, apply_update_and_restart, 
                      CURRENT_VERSION, BUILD_COMMIT, get_build_commit, get_full_version_string,
+                     get_clickable_version_html, get_commit_url,
                      is_newer_version, GITHUB_REPO)
 from debug_logger import log_debug, get_crash_log_path, get_debug_log_path
 import theme_manager
@@ -1220,7 +1221,7 @@ class SystemTab(QWidget):
         msg.setText(
             f"<b>HotKey Overlay Alert is up to date!</b><br><br>"
             f"• <b>Active Channel:</b> {chan_title}<br>"
-            f"• <b>Installed Version:</b> {get_full_version_string()}<br><br>"
+            f"• <b>Installed Version:</b> {get_clickable_version_html()}<br><br>"
             f"<i>Successfully connected to GitHub releases. There are currently no newer releases available on the {chan_title.lower()} channel.</i>"
         )
         msg.setTextFormat(Qt.TextFormat.RichText)
@@ -1447,6 +1448,9 @@ class SettingsWindow(QWidget):
         self.lbl_channel_badge.setStyleSheet("font-size: 11px; font-weight: bold; padding-left: 4px;")
         self.lbl_v = QLabel()
         self.lbl_v.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_v.setOpenExternalLinks(True)
+        self.lbl_v.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.lbl_v.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl_v.setStyleSheet("font-size: 10px; padding-left: 4px;")
         sidebar_layout.addWidget(self.lbl_channel_badge)
         sidebar_layout.addWidget(self.lbl_v)
@@ -1616,7 +1620,8 @@ class SettingsWindow(QWidget):
         sec = theme_manager.get_secondary_text_color(effective)
         chan = getattr(self.overlay, "update_channel", "stable")
 
-        self.lbl_v.setText(f"<span style='color: {tert};'>{get_full_version_string()} • ThaWizanator</span>")
+        v_link = get_clickable_version_html(color=tert, underline=False)
+        self.lbl_v.setText(f"{v_link} <span style='color: {tert};'>• ThaWizanator</span>")
         if chan == "beta":
             self.lbl_channel_badge.setText("<span style='color: #eab308; font-size: 11px;'>● Beta Channel</span>")
         else:
