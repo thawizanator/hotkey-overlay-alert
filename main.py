@@ -560,7 +560,8 @@ class RedBorderOverlay(QMainWindow):
         self.theme_preference = "system"
         self.sidebar_collapsed = False
         self.dpi_mode = "system"
-        self.twitch_channel = "thawizanator"
+        self.twitch_channel = ""
+        self.twitch_login = ""
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
         self.twitch_redirect_uri = "http://localhost:17563"
         self.twitch_user_id = ""
@@ -597,6 +598,8 @@ class RedBorderOverlay(QMainWindow):
                     self.sidebar_collapsed = d.get("sidebar_collapsed", False)
                     self.dpi_mode = d.get("dpi_mode", "system")
                     set_debug_mode(self.debug_mode)
+                    self.twitch_channel = d.get("twitch_channel", "")
+                    self.twitch_login = d.get("twitch_login", "")
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
                     if loaded_client_id and loaded_client_id != "testclientid":
                         self.twitch_client_id = loaded_client_id
@@ -607,6 +610,8 @@ class RedBorderOverlay(QMainWindow):
                     self.twitch_display_name = d.get("twitch_display_name", "")
                     self.twitch_token = obfuscate(d.get("twitch_token_obf", ""))
                     self.twitch_macros = d.get("twitch_macros", [])
+                    if not self.twitch_channel and (self.twitch_login or self.twitch_display_name):
+                        self.twitch_channel = self.twitch_login or self.twitch_display_name
                     for m in self.twitch_macros:
                         if isinstance(m, dict):
                             if "hotkey" in m:
@@ -648,6 +653,7 @@ class RedBorderOverlay(QMainWindow):
             "sidebar_collapsed": getattr(self, "sidebar_collapsed", False),
             "dpi_mode": getattr(self, "dpi_mode", "system"),
             "twitch_channel": self.twitch_channel,
+            "twitch_login": getattr(self, "twitch_login", ""),
             "twitch_client_id": self.twitch_client_id,
             "twitch_redirect_uri": self.twitch_redirect_uri,
             "twitch_user_id": self.twitch_user_id,

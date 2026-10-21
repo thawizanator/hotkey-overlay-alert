@@ -4,7 +4,7 @@ import json
 import subprocess
 import webbrowser
 from typing import Optional, List, Dict, Any
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QGroupBox, QListWidget, QListWidgetItem,
@@ -248,8 +248,10 @@ class DirectorTab(QWidget):
         self.slobs_client.scenes_updated.connect(self._on_slobs_scenes_updated)
         self.slobs_client.audio_sources_updated.connect(self._on_slobs_audio_updated)
 
+        self._is_loading = True
         self._build_ui()
         self.load_from_settings()
+        self._is_loading = False
 
         # Initial Streamlabs check
         if not self.slobs_client.is_connected():
@@ -774,13 +776,39 @@ class DirectorTab(QWidget):
         main_layout.addWidget(self.tabs_director, 1)
 
         # ------------------ MASTER LAUNCH / CLOSE BUTTON ------------------
+        launch_bar = QHBoxLayout()
+        launch_bar.setSpacing(8)
+
         self.btn_launch_panel = QPushButton("🚀 Launch Director Panel")
         self.btn_launch_panel.setObjectName("btnLaunchDirector")
         self.btn_launch_panel.setFixedHeight(36)
         self.btn_launch_panel.setCursor(Qt.CursorShape.PointingHandCursor)
         self._set_launch_button_state(is_open=False)
         self.btn_launch_panel.clicked.connect(self.toggle_director_panel)
-        main_layout.addWidget(self.btn_launch_panel)
+        launch_bar.addWidget(self.btn_launch_panel, 3)
+
+        self.btn_push_sync = QPushButton("📡 Push Sync to Directors")
+        self.btn_push_sync.setFixedHeight(36)
+        self.btn_push_sync.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_push_sync.setToolTip("Immediately broadcast current scenes, audio toggles, and volume layout to all connected Remote Directors")
+        self.btn_push_sync.setStyleSheet("""
+            QPushButton {
+                background-color: #0284c7;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 11px;
+                border: 1px solid #0369a1;
+                border-radius: 6px;
+                padding: 0 10px;
+            }
+            QPushButton:hover {
+                background-color: #0369a1;
+            }
+        """)
+        self.btn_push_sync.clicked.connect(self.push_sync_to_directors)
+        launch_bar.addWidget(self.btn_push_sync, 2)
+
+        main_layout.addLayout(launch_bar)
 
         self._on_conn_mode_changed()
 
@@ -1109,12 +1137,25 @@ class DirectorTab(QWidget):
             self.user_permissions[user]["allowed_audio_volume"] = [
                 v for v, chk in self.perm_vol_checkboxes.items() if chk.isChecked()
             ]
+        else:
+            self._updating_perm_ui = True
+            for chk in self.perm_scene_checkboxes.values():
+                chk.setChecked(True)
+            for chk in self.perm_mute_checkboxes.values():
+                chk.setChecked(True)
+            for chk in self.perm_vol_checkboxes.values():
+                chk.setChecked(True)
+            self._updating_perm_ui = False
+            self.user_permissions[user]["allowed_scenes"] = list(self.perm_scene_checkboxes.keys())
+            self.user_permissions[user]["allowed_audio_mutes"] = list(self.perm_mute_checkboxes.keys())
+            self.user_permissions[user]["allowed_audio_volume"] = list(self.perm_vol_checkboxes.keys())
 
         self._load_selected_cohost_permissions()
         self._sync_permissions_file()
         if self.bouncer:
             self.bouncer.set_user_permissions(self.user_permissions)
         self._on_settings_changed()
+        self._broadcast_host_state_update()
 
     def _on_granular_perm_changed(self):
         if self._updating_perm_ui:
@@ -1123,20 +1164,36 @@ class DirectorTab(QWidget):
         if not user or user not in self.user_permissions:
             return
 
-        self.user_permissions[user]["allowed_scenes"] = [
-            s for s, chk in self.perm_scene_checkboxes.items() if chk.isChecked()
-        ]
-        self.user_permissions[user]["allowed_audio_mutes"] = [
-            a for a, chk in self.perm_mute_checkboxes.items() if chk.isChecked()
-        ]
-        self.user_permissions[user]["allowed_audio_volume"] = [
-            v for v, chk in self.perm_vol_checkboxes.items() if chk.isChecked()
-        ]
+        allowed_sc = [s for s, chk in self.perm_scene_checkboxes.items() if chk.isChecked()]
+        allowed_mu = [a for a, chk in self.perm_mute_checkboxes.items() if chk.isChecked()]
+        allowed_vo = [v for v, chk in self.perm_vol_checkboxes.items() if chk.isChecked()]
+
+        self.user_permissions[user]["allowed_scenes"] = allowed_sc
+        self.user_permissions[user]["allowed_audio_mutes"] = allowed_mu
+        self.user_permissions[user]["allowed_audio_volume"] = allowed_vo
+
+        all_scenes_checked = (len(allowed_sc) == len(self.perm_scene_checkboxes)) if self.perm_scene_checkboxes else True
+        all_mutes_checked = (len(allowed_mu) == len(self.perm_mute_checkboxes)) if self.perm_mute_checkboxes else True
+        all_vols_checked = (len(allowed_vo) == len(self.perm_vol_checkboxes)) if self.perm_vol_checkboxes else True
+
+        if not (all_scenes_checked and all_mutes_checked and all_vols_checked):
+            self.user_permissions[user]["full_control"] = False
+            self._updating_perm_ui = True
+            if hasattr(self, "chk_perm_full"):
+                self.chk_perm_full.setChecked(False)
+            self._updating_perm_ui = False
+        else:
+            self.user_permissions[user]["full_control"] = True
+            self._updating_perm_ui = True
+            if hasattr(self, "chk_perm_full"):
+                self.chk_perm_full.setChecked(True)
+            self._updating_perm_ui = False
 
         self._sync_permissions_file()
         if self.bouncer:
             self.bouncer.set_user_permissions(self.user_permissions)
         self._on_settings_changed()
+        self._broadcast_host_state_update()
 
     def _on_conn_mode_changed(self):
         mode = self.combo_conn_mode.currentData() if hasattr(self, "combo_conn_mode") else "local"
@@ -1156,7 +1213,25 @@ class DirectorTab(QWidget):
         if hasattr(self, "grp_client_p2p_widget"):
             self.grp_client_p2p_widget.setVisible(is_webrtc_client)
 
+        # Update button labels and tooltips based on mode
+        if hasattr(self, "btn_reconnect_slobs"):
+            if is_webrtc_client:
+                self.btn_reconnect_slobs.setText("🔗 Connect P2P")
+                self.btn_reconnect_slobs.setToolTip("Connect or reconnect P2P session to the streamer")
+            else:
+                self.btn_reconnect_slobs.setText("🔄 Reconnect")
+                self.btn_reconnect_slobs.setToolTip("Reconnect to Streamlabs Desktop")
+
+        if hasattr(self, "btn_push_sync"):
+            if is_webrtc_client:
+                self.btn_push_sync.setText("🔄 Sync with Streamer")
+                self.btn_push_sync.setToolTip("Pull latest scenes, audio toggles, and volume layout from the streamer")
+            else:
+                self.btn_push_sync.setText("📡 Push Sync to Directors")
+                self.btn_push_sync.setToolTip("Immediately broadcast current scenes, audio toggles, and volume layout to all connected Remote Directors")
+
         self.set_streamer_mode(self.is_streamer_mode)
+        self._update_slobs_status_ui()
         self._on_settings_changed()
 
     def _on_autodetect_clicked(self):
@@ -1192,6 +1267,20 @@ class DirectorTab(QWidget):
     def _update_slobs_status_ui(self, *args):
         if not hasattr(self, "lbl_slobs_status"):
             return
+
+        is_client = getattr(self, "conn_mode", "local") == "webrtc_client"
+        if is_client:
+            is_connected = (self.slobs_client and self.slobs_client.is_connected()) or (getattr(self, "client_webrtc", None) and getattr(self.client_webrtc, "is_connected", False))
+            if is_connected:
+                act_name = getattr(self.slobs_client, "_active_scene_name", "")
+                if act_name and len(act_name) > 18:
+                    act_name = act_name[:16] + "..."
+                act_str = f" — Active: <b>{act_name}</b>" if act_name else ""
+                self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Linked to Streamer via P2P (SLOBS Remote)</span>{act_str}")
+            else:
+                self.lbl_slobs_status.setText("<span style='color: #ef4444; font-weight: bold;'>🔴 P2P Disconnected</span> <span style='color: #a1a1aa;'>— Click 'Connect P2P' below to link with Streamer</span>")
+            return
+
         if self.slobs_client and self.slobs_client.is_connected():
             _, act_name = self.slobs_client.get_active_scene_info()
             if act_name and len(act_name) > 18:
@@ -1264,14 +1353,15 @@ class DirectorTab(QWidget):
         if not source_names:
             source_names = ["Mic", "Game", "Music", "Discord", "Desktop", "Alerts"]
 
-        for combo, default_val in [
+        for i, (combo, default_val) in enumerate([
             (self.edit_fader1, "Mic"),
             (self.edit_fader2, "Game"),
             (self.edit_fader3, "Music")
-        ]:
+        ]):
             if not hasattr(self, "edit_fader1"):
                 continue
-            cur = combo.currentText() or default_val
+            fader_target = self.faders[i].get("name") if (hasattr(self, "faders") and i < len(self.faders)) else None
+            cur = fader_target or combo.currentText() or default_val
             combo.blockSignals(True)
             combo.clear()
             items = list(source_names)
@@ -1499,13 +1589,10 @@ class DirectorTab(QWidget):
             self.panel_window = DirectorPanelWindow()
             self.panel_window.panel_closed.connect(self._on_panel_closed)
             self.panel_window.settings_requested.connect(self._open_settings_from_panel)
+            self.panel_window.resync_requested.connect(self._on_panel_resync_requested)
 
-        fader_data = [
-            {"name": self.edit_fader1.currentText().strip() or "Audio 1", "volume": self.faders[0].get("volume", 80)},
-            {"name": self.edit_fader2.currentText().strip() or "Audio 2", "volume": self.faders[1].get("volume", 75)},
-            {"name": self.edit_fader3.currentText().strip() or "Audio 3", "volume": self.faders[2].get("volume", 60)},
-        ]
-        self.panel_window.load_configuration(self.scenes, self.audio_toggles, fader_data)
+        fader_data = self._get_fader_data()
+        self.panel_window.load_configuration(self.scenes, self._get_live_audio_toggles(), fader_data)
         
         target_mon = self.combo_monitor.currentData()
         if target_mon is None:
@@ -1533,7 +1620,6 @@ class DirectorTab(QWidget):
             self.main_win.hide()
 
         # Re-assert topmost after browser completes launch (multi-stage)
-        from PyQt6.QtCore import QTimer
         QTimer.singleShot(200, self.panel_window.force_topmost)
         QTimer.singleShot(500, self.panel_window.force_topmost)
         QTimer.singleShot(1000, self.panel_window.force_topmost)
@@ -1620,6 +1706,8 @@ class DirectorTab(QWidget):
         self.panel_window = None
 
     def _on_settings_changed(self):
+        if getattr(self, "_is_loading", False):
+            return
         if hasattr(self, "combo_conn_mode"):
             self.conn_mode = self.combo_conn_mode.currentData() or "local"
         if hasattr(self, "edit_remote_host"):
@@ -1685,114 +1773,124 @@ class DirectorTab(QWidget):
         }
 
     def load_from_settings(self, settings_override: Optional[dict] = None):
-        if settings_override is not None:
-            d = settings_override
-        else:
-            overlay = getattr(self.main_win, "overlay", None) if self.main_win else None
-            d = getattr(overlay, "director_settings", {}) if overlay else {}
-        if d:
-            self.conn_mode = d.get("conn_mode", "local")
-            self.remote_host = d.get("remote_host", "127.0.0.1")
-            self.remote_port = d.get("remote_port", "59650")
-            self.api_key = obfuscate_str(d.get("api_key_obf", ""))
+        self._is_loading = True
+        try:
+            if settings_override is not None:
+                d = settings_override
+            else:
+                overlay = getattr(self.main_win, "overlay", None) if self.main_win else None
+                d = getattr(overlay, "director_settings", {}) if overlay else {}
+            if d:
+                self.conn_mode = d.get("conn_mode", "local")
+                self.remote_host = d.get("remote_host", "127.0.0.1")
+                self.remote_port = d.get("remote_port", "59650")
+                self.api_key = obfuscate_str(d.get("api_key_obf", ""))
 
-            self.enable_wan_p2p = d.get("enable_wan_p2p", False)
-            self.p2p_passkey_salt = d.get("p2p_passkey_salt", "")
-            self.p2p_passkey_hash = d.get("p2p_passkey_hash", "")
-            self.p2p_passkey_raw = d.get("p2p_passkey_raw", "")
-            self.allowed_twitch_user = d.get("allowed_twitch_user", "")
-            self.p2p_target_channel = d.get("p2p_target_channel", "")
-            self.p2p_client_passkey = d.get("p2p_client_passkey", "")
-            self.p2p_my_twitch_user = d.get("p2p_my_twitch_user", "")
+                self.enable_wan_p2p = d.get("enable_wan_p2p", False)
+                self.p2p_passkey_salt = d.get("p2p_passkey_salt", "")
+                self.p2p_passkey_hash = d.get("p2p_passkey_hash", "")
+                self.p2p_passkey_raw = d.get("p2p_passkey_raw", "")
+                self.allowed_twitch_user = d.get("allowed_twitch_user", "")
+                self.p2p_target_channel = d.get("p2p_target_channel", "")
+                self.p2p_client_passkey = d.get("p2p_client_passkey", "")
+                self.p2p_my_twitch_user = d.get("p2p_my_twitch_user", "")
 
-            # Load user permissions and sync
-            self.user_permissions = d.get("user_permissions")
-            if not self.user_permissions:
-                self.user_permissions = self._load_permissions_file()
+                # Load user permissions and sync
+                self.user_permissions = d.get("user_permissions")
+                if not self.user_permissions:
+                    self.user_permissions = self._load_permissions_file()
 
-            # Migrate legacy allowed_twitch_user if user_permissions is empty
-            if self.allowed_twitch_user and not self.user_permissions:
-                clean_legacy = self.allowed_twitch_user.lower().strip().lstrip("@")
-                if clean_legacy:
-                    self.user_permissions[clean_legacy] = {
-                        "full_control": True,
-                        "allowed_scenes": [s.get("name", "") for s in self.scenes if s.get("name")],
-                        "allowed_audio_mutes": [a.get("name", "") for a in self.audio_toggles if a.get("name")],
-                        "allowed_audio_volume": [f.get("name", "") for f in self.faders if f.get("name")]
-                    }
+                # Migrate legacy allowed_twitch_user if user_permissions is empty
+                if self.allowed_twitch_user and not self.user_permissions:
+                    clean_legacy = self.allowed_twitch_user.lower().strip().lstrip("@")
+                    if clean_legacy:
+                        self.user_permissions[clean_legacy] = {
+                            "full_control": True,
+                            "allowed_scenes": [s.get("name", "") for s in self.scenes if s.get("name")],
+                            "allowed_audio_mutes": [a.get("name", "") for a in self.audio_toggles if a.get("name")],
+                            "allowed_audio_volume": [f.get("name", "") for f in self.faders if f.get("name")]
+                        }
 
-            if self.user_permissions:
-                self._sync_permissions_file()
+                if self.user_permissions:
+                    self._sync_permissions_file()
 
-            if hasattr(self, "chk_enable_wan_p2p"):
-                self.chk_enable_wan_p2p.blockSignals(True)
-                self.chk_enable_wan_p2p.setChecked(self.enable_wan_p2p)
-                self.chk_enable_wan_p2p.blockSignals(False)
-                if hasattr(self, "box_host_p2p_details"):
-                    self.box_host_p2p_details.setVisible(self.enable_wan_p2p)
+                if hasattr(self, "chk_enable_wan_p2p"):
+                    self.chk_enable_wan_p2p.blockSignals(True)
+                    self.chk_enable_wan_p2p.setChecked(self.enable_wan_p2p)
+                    self.chk_enable_wan_p2p.blockSignals(False)
+                    if hasattr(self, "box_host_p2p_details"):
+                        self.box_host_p2p_details.setVisible(self.enable_wan_p2p)
 
-            if hasattr(self, "edit_host_passkey"):
-                self.edit_host_passkey.setText(self.p2p_passkey_raw)
-            if hasattr(self, "edit_allowed_twitch_user"):
-                self.edit_allowed_twitch_user.setText(self.allowed_twitch_user)
-            if hasattr(self, "edit_client_channel"):
-                self.edit_client_channel.setText(self.p2p_target_channel or self._get_streamer_channel())
-            if hasattr(self, "edit_client_passkey"):
-                self.edit_client_passkey.setText(self.p2p_client_passkey)
-            if hasattr(self, "edit_client_my_user"):
-                self.edit_client_my_user.setText(self.p2p_my_twitch_user)
+                if hasattr(self, "edit_host_passkey"):
+                    self.edit_host_passkey.setText(self.p2p_passkey_raw)
+                if hasattr(self, "edit_allowed_twitch_user"):
+                    self.edit_allowed_twitch_user.setText(self.allowed_twitch_user)
+                if hasattr(self, "edit_client_channel"):
+                    self.edit_client_channel.setText(self.p2p_target_channel or self._get_streamer_channel())
+                if hasattr(self, "edit_client_passkey"):
+                    self.edit_client_passkey.setText(self.p2p_client_passkey)
+                if hasattr(self, "edit_client_my_user"):
+                    my_user = self.p2p_my_twitch_user
+                    if not my_user:
+                        overlay = getattr(self.main_win, "overlay", None)
+                        my_user = (getattr(overlay, "twitch_login", "") or getattr(overlay, "twitch_display_name", "")) if overlay else ""
+                    self.edit_client_my_user.setText(my_user)
 
-            if hasattr(self, "combo_conn_mode"):
-                idx = self.combo_conn_mode.findData(self.conn_mode)
-                if idx >= 0:
-                    self.combo_conn_mode.setCurrentIndex(idx)
-                self._on_conn_mode_changed()
-            if hasattr(self, "edit_remote_host"):
-                self.edit_remote_host.setText(self.remote_host)
-            if hasattr(self, "edit_remote_port"):
-                self.edit_remote_port.setText(str(self.remote_port))
-            if hasattr(self, "edit_api_key"):
-                self.edit_api_key.setText(self.api_key)
+                if hasattr(self, "combo_conn_mode"):
+                    idx = self.combo_conn_mode.findData(self.conn_mode)
+                    if idx >= 0:
+                        self.combo_conn_mode.setCurrentIndex(idx)
+                    self._on_conn_mode_changed()
+                if hasattr(self, "edit_remote_host"):
+                    self.edit_remote_host.setText(self.remote_host)
+                if hasattr(self, "edit_remote_port"):
+                    self.edit_remote_port.setText(str(self.remote_port))
+                if hasattr(self, "edit_api_key"):
+                    self.edit_api_key.setText(self.api_key)
 
-            if hasattr(self, "slobs_client") and self.slobs_client:
-                self.slobs_client.configure_connection(
-                    mode=self.conn_mode,
-                    host=self.remote_host,
-                    port=self.remote_port,
-                    token=self.api_key
-                )
+                if hasattr(self, "slobs_client") and self.slobs_client:
+                    self.slobs_client.configure_connection(
+                        mode=self.conn_mode,
+                        host=self.remote_host,
+                        port=self.remote_port,
+                        token=self.api_key
+                    )
 
-            self.stream_url = d.get("stream_url", self.stream_url)
-            self.edit_stream_url.setText(self.stream_url)
-            self.target_monitor_idx = d.get("target_monitor", 0)
-            self.app_mode = d.get("app_mode", True)
-            if hasattr(self, "chk_app_mode"):
-                self.chk_app_mode.setChecked(self.app_mode)
-            self.scenes = d.get("scenes", self.scenes)
-            self.audio_toggles = d.get("audio_toggles", self.audio_toggles)
-            self.faders = d.get("faders", self.faders)
-            if len(self.faders) >= 3 and hasattr(self, "edit_fader1"):
-                for combo, default_val, idx in [
-                    (self.edit_fader1, "Mic", 0),
-                    (self.edit_fader2, "Game", 1),
-                    (self.edit_fader3, "Music", 2)
-                ]:
-                    fname = self.faders[idx].get("name", default_val)
-                    if combo.findText(fname) == -1:
-                        combo.insertItem(0, fname)
-                    combo.setCurrentText(fname)
+                self.stream_url = d.get("stream_url", self.stream_url)
+                self.edit_stream_url.setText(self.stream_url)
+                self.target_monitor_idx = d.get("target_monitor", 0)
+                self.app_mode = d.get("app_mode", True)
+                if hasattr(self, "chk_app_mode"):
+                    self.chk_app_mode.setChecked(self.app_mode)
+                self.scenes = d.get("scenes", self.scenes)
+                self.audio_toggles = d.get("audio_toggles", self.audio_toggles)
+                self.faders = d.get("faders", self.faders)
+                if len(self.faders) >= 3 and hasattr(self, "edit_fader1"):
+                    for combo, default_val, idx in [
+                        (self.edit_fader1, "Mic", 0),
+                        (self.edit_fader2, "Game", 1),
+                        (self.edit_fader3, "Music", 2)
+                    ]:
+                        fname = self.faders[idx].get("name", default_val)
+                        if combo.findText(fname) == -1:
+                            combo.insertItem(0, fname)
+                        combo.setCurrentText(fname)
 
-            # Auto-start host P2P if previously enabled and on local/remote host
-            if self.enable_wan_p2p and self.conn_mode != "webrtc_client":
-                self._start_host_p2p()
+                # Auto-start host P2P if previously enabled and on local/remote host
+                if self.enable_wan_p2p and self.conn_mode != "webrtc_client":
+                    self._start_host_p2p()
 
-        self.refresh_monitors_list()
-        self._refresh_scene_list_ui()
-        self._refresh_audio_list_ui()
-        self._refresh_cohosts_combo()
-        self._refresh_permissions_matrix_items()
+            self.refresh_monitors_list()
+            self._refresh_scene_list_ui()
+            self._refresh_audio_list_ui()
+            self._refresh_cohosts_combo()
+            self._refresh_permissions_matrix_items()
+        finally:
+            self._is_loading = False
 
     def save_to_settings(self):
+        if getattr(self, "_is_loading", False):
+            return
         if hasattr(self.main_win, "overlay") and self.main_win.overlay:
             self.main_win.overlay.director_settings = self.export_settings()
             self.main_win.overlay.save_settings()
@@ -1901,6 +1999,74 @@ class DirectorTab(QWidget):
             else:
                 self.lbl_host_p2p_status.setText(f"<span style='color: #ef4444;'>{msg}</span>")
 
+    def _get_live_audio_toggles(self) -> list:
+        live = []
+        slobs_ok = hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected()
+        for a in self.audio_toggles:
+            entry = dict(a)
+            name = entry.get("name", "")
+            if name and slobs_ok:
+                entry["muted"] = self.slobs_client.get_source_muted_state(name)
+            live.append(entry)
+        return live
+
+    def _get_fader_data(self):
+        f1 = self.edit_fader1.currentText().strip() if hasattr(self, "edit_fader1") else ""
+        f2 = self.edit_fader2.currentText().strip() if hasattr(self, "edit_fader2") else ""
+        f3 = self.edit_fader3.currentText().strip() if hasattr(self, "edit_fader3") else ""
+        n1 = f1 or (self.faders[0].get("name", "Audio 1") if len(self.faders) > 0 else "Audio 1")
+        n2 = f2 or (self.faders[1].get("name", "Audio 2") if len(self.faders) > 1 else "Audio 2")
+        n3 = f3 or (self.faders[2].get("name", "Audio 3") if len(self.faders) > 2 else "Audio 3")
+
+        slobs_ok = hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected()
+        v1 = self.slobs_client.get_source_volume_percent(n1) if slobs_ok else (self.faders[0].get("volume", 80) if len(self.faders) > 0 else 80)
+        v2 = self.slobs_client.get_source_volume_percent(n2) if slobs_ok else (self.faders[1].get("volume", 75) if len(self.faders) > 1 else 75)
+        v3 = self.slobs_client.get_source_volume_percent(n3) if slobs_ok else (self.faders[2].get("volume", 60) if len(self.faders) > 2 else 60)
+        return [
+            {"name": n1, "volume": v1},
+            {"name": n2, "volume": v2},
+            {"name": n3, "volume": v3},
+        ]
+
+    def _on_panel_resync_requested(self):
+        if self.client_webrtc and self.client_webrtc.isRunning():
+            log_debug("WEBRTC", "Panel requested state re-sync from streamer via P2P")
+            self.client_webrtc.send_command("REQUEST_STATE")
+        else:
+            self.push_sync_to_directors()
+
+    def push_sync_to_directors(self):
+        """Immediately broadcasts current scene and audio setup to all connected remote directors (or pulls from streamer if client)."""
+        if getattr(self, "conn_mode", "local") == "webrtc_client":
+            if self.client_webrtc and self.client_webrtc.isRunning():
+                log_debug("WEBRTC", "Director requested state sync from streamer via P2P")
+                self.client_webrtc.send_command("REQUEST_STATE")
+                if hasattr(self, "btn_push_sync"):
+                    orig_text = self.btn_push_sync.text()
+                    self.btn_push_sync.setText("🔄 Syncing...")
+                    QTimer.singleShot(1500, lambda: self.btn_push_sync.setText(orig_text))
+            else:
+                QMessageBox.information(
+                    self,
+                    "P2P Not Connected",
+                    "You are not connected to the streamer yet.\n\n"
+                    "Please click '🔗 Connect P2P' first to link with the streamer, then click sync."
+                )
+            return
+
+        log_debug("HOST_BOUNCER", "Streamer pushed state re-sync to directors")
+        self._broadcast_host_state_update()
+        if hasattr(self, "btn_push_sync"):
+            orig_text = self.btn_push_sync.text()
+            self.btn_push_sync.setText("✅ Synced!")
+            QTimer.singleShot(2000, lambda: self.btn_push_sync.setText(orig_text))
+        if hasattr(self, "lbl_host_p2p_status"):
+            cur = self.lbl_host_p2p_status.text()
+            self.lbl_host_p2p_status.setText("<span style='color: #22c55e;'>📡 Sync Pushed to Remote Directors!</span>")
+            QTimer.singleShot(2500, lambda: self.lbl_host_p2p_status.setText(cur))
+        if self.is_panel_open():
+            self.panel_window.load_configuration(self.scenes, self._get_live_audio_toggles(), self._get_fader_data())
+
     def _on_host_p2p_command_received(self, client_id: str, payload: dict):
         action = payload.get("action")
         if action == "HANDSHAKE":
@@ -1922,15 +2088,31 @@ class DirectorTab(QWidget):
                 return
 
             # Approved! Assemble current state and send approve
-            log_debug("HOST_BOUNCER", f"Handshake APPROVED for @{twitch_user or 'anonymous'} ({client_id})")
+            clean_user = (twitch_user or "").strip().lstrip("@")
+            log_debug("HOST_BOUNCER", f"Handshake APPROVED for @{clean_user or 'anonymous'} ({client_id})")
             if self.bouncer:
                 self.bouncer.register_peer(client_id, twitch_user)
-            _, active_name = self.slobs_client.get_active_scene_info()
+            act_id, active_name = self.slobs_client.get_active_scene_info()
+            fader_data = self._get_fader_data()
+            live_toggles = self._get_live_audio_toggles()
+            peer_perms = {}
+            if clean_user:
+                for k, v in self.user_permissions.items():
+                    if k.lower().strip().lstrip("@") == clean_user.lower():
+                        peer_perms = v
+                        break
             state = {
                 "active_scene": active_name or "",
+                "active_scene_id": act_id or "",
                 "scenes": self.scenes,
-                "audio_sources": self.slobs_client.get_cached_audio_sources()
+                "audio_toggles": live_toggles,
+                "faders": fader_data,
+                "audio_sources": self.slobs_client.get_cached_audio_sources(),
+                "permissions": peer_perms,
+                "user_permissions": self.user_permissions
             }
+            if self.bouncer:
+                self.bouncer.set_whitelists(self.scenes, live_toggles, fader_data)
             if self.host_webrtc:
                 self.host_webrtc.approve_peer_handshake(client_id, twitch_user, state)
             return
@@ -1948,12 +2130,18 @@ class DirectorTab(QWidget):
         if cmd_act == "SWITCH_SCENE":
             log_debug("HOST_BOUNCER", f"Executing validated SWITCH_SCENE -> '{target}'")
             self.slobs_client.make_scene_active(target)
+            QTimer.singleShot(400, self._broadcast_host_state_update)
         elif cmd_act == "TOGGLE_MUTE":
             log_debug("HOST_BOUNCER", f"Executing validated TOGGLE_MUTE -> '{target}' ({sanitized.get('muted')})")
             self.slobs_client.set_audio_muted(target, sanitized.get("muted", True))
+            QTimer.singleShot(300, self._broadcast_host_state_update)
         elif cmd_act == "SET_VOLUME":
             log_debug("HOST_BOUNCER", f"Executing validated SET_VOLUME -> '{target}' ({sanitized.get('volume')})")
             self.slobs_client.set_audio_deflection(target, sanitized.get("volume", 0.75))
+            QTimer.singleShot(300, self._broadcast_host_state_update)
+        elif cmd_act == "REQUEST_STATE":
+            log_debug("HOST_BOUNCER", f"Executing validated REQUEST_STATE from client {client_id}")
+            self._broadcast_host_state_update()
 
     def _on_host_p2p_peer_authenticated(self, client_id: str, twitch_user: str):
         clean_user = (twitch_user or "").strip().lstrip("@")
@@ -1975,12 +2163,20 @@ class DirectorTab(QWidget):
 
     def _broadcast_host_state_update(self, *args):
         if self.host_webrtc and self.host_webrtc.isRunning():
-            _, active_name = self.slobs_client.get_active_scene_info()
+            act_id, active_name = self.slobs_client.get_active_scene_info()
+            fader_data = self._get_fader_data()
+            live_toggles = self._get_live_audio_toggles()
             state = {
                 "active_scene": active_name or "",
+                "active_scene_id": act_id or "",
                 "scenes": self.scenes,
-                "audio_sources": self.slobs_client.get_cached_audio_sources()
+                "audio_toggles": live_toggles,
+                "faders": fader_data,
+                "audio_sources": self.slobs_client.get_cached_audio_sources(),
+                "user_permissions": self.user_permissions
             }
+            if self.bouncer:
+                self.bouncer.set_whitelists(self.scenes, live_toggles, fader_data)
             self.host_webrtc.broadcast_state(state)
 
     def _toggle_client_p2p_session(self, force_reconnect: bool = False):
@@ -1993,6 +2189,7 @@ class DirectorTab(QWidget):
                 self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #0284c7; color: white;")
             if hasattr(self, "lbl_client_p2p_status"):
                 self.lbl_client_p2p_status.setText("🔴 Disconnected")
+            self._update_slobs_status_ui()
             return
 
         if self.client_webrtc:
@@ -2047,13 +2244,42 @@ class DirectorTab(QWidget):
                 if hasattr(self, "btn_client_p2p_connect"):
                     self.btn_client_p2p_connect.setText("🔗 Connect P2P Session")
                     self.btn_client_p2p_connect.setStyleSheet("font-weight: 600; font-size: 11px; padding: 3px 8px; background-color: #0284c7; color: white;")
+        self._update_slobs_status_ui()
 
     def _on_client_p2p_state_received(self, state: dict):
+        log_debug("WEBRTC", "Client received state update from streamer")
         scenes = state.get("scenes", [])
         if scenes:
             self.scenes = scenes
             self._refresh_scene_list_ui()
-        self._refresh_fader_combos()
+
+        audio_toggles = state.get("audio_toggles", [])
+        if audio_toggles:
+            self.audio_toggles = audio_toggles
+            self._refresh_audio_list_ui()
+
+        faders = state.get("faders", [])
+        if faders:
+            self.faders = faders
+            self._refresh_fader_combos()
+
+        perms = state.get("permissions")
+        if not perms:
+            my_user = self.edit_client_my_user.text().strip().lstrip("@").lower() if hasattr(self, "edit_client_my_user") else ""
+            all_perms = state.get("user_permissions", {})
+            for u, p in all_perms.items():
+                if u.lower().strip().lstrip("@") == my_user:
+                    perms = p
+                    break
+
+        if self.panel_window:
+            fader_payload = faders or self._get_fader_data()
+            self.panel_window.load_configuration(self.scenes, self.audio_toggles, fader_payload, permissions=perms)
+            active_sc = state.get("active_scene", "")
+            active_sc_id = state.get("active_scene_id", "")
+            if active_sc or active_sc_id:
+                self.panel_window._on_slobs_scene_switched(active_sc_id, active_sc)
+
         self._update_slobs_status_ui()
 
     def closeEvent(self, event):

@@ -8,8 +8,8 @@ import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
 CURRENT_VERSION = "3.0.0-beta.3"
-BUILD_COMMIT = "343d8bb"
-BUILD_DATE = "2026-10-20"
+BUILD_COMMIT = "3e9b14a"
+BUILD_DATE = "2026-10-21"
 
 _cached_build_commit = None
 
@@ -92,7 +92,7 @@ def parse_version(v_str):
     major, minor, patch = parts[:3]
     
     if not pre_tag:
-        return (major, minor, patch, 999, 0)
+        return (major, minor, patch, 999, 0, 0)
         
     pre_lower = pre_tag.lower()
     pre_type = 1
@@ -105,9 +105,10 @@ def parse_version(v_str):
     elif "alpha" in pre_lower or "preview" in pre_lower:
         pre_type = 1
         
-    pre_nums = re.findall(r'\d+', pre_lower)
-    pre_num = int(pre_nums[-1]) if pre_nums else 0
-    return (major, minor, patch, pre_type, pre_num)
+    pre_nums = tuple(int(x) for x in re.findall(r'\d+', pre_lower)) or (0,)
+    while len(pre_nums) < 2:
+        pre_nums = pre_nums + (0,)
+    return (major, minor, patch, pre_type) + pre_nums[:2]
 
 def is_newer_version(latest_tag, current_ver=CURRENT_VERSION):
     return parse_version(latest_tag) > parse_version(current_ver)

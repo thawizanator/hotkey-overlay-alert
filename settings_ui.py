@@ -652,7 +652,9 @@ class TwitchTab(QWidget):
         channel_layout.addWidget(QLabel("Broadcaster Channel:"))
         self.txt_channel = QLineEdit()
         self.txt_channel.setFixedWidth(180)
+        self.txt_channel.setPlaceholderText("e.g. channel_name")
         self.txt_channel.setText(self.main_win.overlay.twitch_channel)
+        self.txt_channel.textChanged.connect(self._on_broadcaster_channel_changed)
         channel_layout.addWidget(self.txt_channel)
         channel_layout.addStretch()
         lay_acc.addLayout(channel_layout)
@@ -701,16 +703,20 @@ class TwitchTab(QWidget):
 
         self.update_connection_ui()
 
+    def _on_broadcaster_channel_changed(self, text):
+        self.main_win.overlay.twitch_channel = text.strip()
+        self.main_win.overlay.save_settings()
+
     def update_connection_ui(self):
         token = getattr(self.main_win.overlay, "twitch_token", "")
-        channel = getattr(self.main_win.overlay, "twitch_channel", "")
-        display = getattr(self.main_win.overlay, "twitch_display_name", "") or channel
+        login = getattr(self.main_win.overlay, "twitch_login", "")
+        display = getattr(self.main_win.overlay, "twitch_display_name", "") or login
         user_id = getattr(self.main_win.overlay, "twitch_user_id", "")
 
         if token:
             info_text = f"🟢 Connected as: <b>{display}</b>"
-            if channel and channel.lower() != display.lower():
-                info_text += f" (@{channel})"
+            if login and display and login.lower() != display.lower():
+                info_text += f" (@{login})"
             if user_id:
                 info_text += f" <span style='color: gray;'>(ID: {user_id})</span>"
             self.lbl_status.setText(info_text)
@@ -749,26 +755,35 @@ class TwitchTab(QWidget):
         login, user_id, display_name = fetch_twitch_user_info(token, client_id_str)
 
         if not login:
-            login = self.txt_channel.text().strip() or self.main_win.overlay.twitch_channel
+            login = self.txt_channel.text().strip() or getattr(self.main_win.overlay, "twitch_channel", "")
             display_name = login
 
         self.main_win.overlay.twitch_token = token
-        self.main_win.overlay.twitch_channel = login
+        self.main_win.overlay.twitch_login = login or ""
+        self.main_win.overlay.twitch_display_name = display_name or login or ""
         if user_id:
             self.main_win.overlay.twitch_user_id = str(user_id)
-        if display_name:
-            self.main_win.overlay.twitch_display_name = display_name
 
-        self.txt_channel.setText(login)
+        # Default broadcaster channel to user's channel if currently blank
+        current_broadcaster = self.txt_channel.text().strip() or getattr(self.main_win.overlay, "twitch_channel", "")
+        if not current_broadcaster:
+            self.main_win.overlay.twitch_channel = login or ""
+            self.txt_channel.setText(self.main_win.overlay.twitch_channel)
+        else:
+            self.main_win.overlay.twitch_channel = current_broadcaster
+            self.txt_channel.setText(current_broadcaster)
+
         self.update_connection_ui()
         self.main_win.overlay.save_settings()
 
+        handle_note = f" (@{login})" if login and display_name and login.lower() != display_name.lower() else ""
         QMessageBox.information(
             self,
             "Success",
             f"Your Twitch account has been linked successfully!\n\n"
-            f"Broadcaster: {display_name} ({login})\n"
-            f"User ID: {self.main_win.overlay.twitch_user_id or 'Auto-detected'}\n\n"
+            f"Connected as: {self.main_win.overlay.twitch_display_name}{handle_note}\n"
+            f"User ID: {self.main_win.overlay.twitch_user_id or 'Auto-detected'}\n"
+            f"Broadcaster Channel: {self.main_win.overlay.twitch_channel}\n\n"
             f"Credentials saved."
         )
 
@@ -781,8 +796,9 @@ class TwitchTab(QWidget):
         )
         if confirm == QMessageBox.StandardButton.Yes:
             self.main_win.overlay.twitch_token = ""
-            self.main_win.overlay.twitch_user_id = ""
+            self.main_win.overlay.twitch_login = ""
             self.main_win.overlay.twitch_display_name = ""
+            self.main_win.overlay.twitch_user_id = ""
             self.main_win.overlay.save_settings()
             self.update_connection_ui()
             QMessageBox.information(self, "Disconnected", "Twitch account unlinked successfully.")

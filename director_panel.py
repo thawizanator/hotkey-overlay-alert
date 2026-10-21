@@ -24,8 +24,21 @@ class SceneCardButton(QPushButton):
         self._update_style()
 
     def set_active(self, active: bool):
+        if getattr(self, "is_locked", False):
+            self.is_active = False
+            self.setChecked(False)
+            return
         self.is_active = active
         self.setChecked(active)
+        self._update_style()
+
+    def set_locked(self, locked: bool):
+        self.is_locked = locked
+        self.setEnabled(not locked)
+        self.setToolTip("🔒 Locked: Permission not granted by Streamer" if locked else "")
+        if locked:
+            self.is_active = False
+            self.setChecked(False)
         self._update_style()
 
     def update_data(self, name, color_hex, raw_id=None):
@@ -36,6 +49,25 @@ class SceneCardButton(QPushButton):
         self._update_style()
 
     def _update_style(self):
+        disp_name = self.scene_name
+        if len(disp_name) > 22:
+            disp_name = disp_name[:20] + "…"
+        if getattr(self, "is_locked", False):
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #121214;
+                    color: #52525b;
+                    border: 1px dashed #3f3f46;
+                    border-radius: 6px;
+                    padding: 4px;
+                    text-align: center;
+                    font-weight: bold;
+                    font-size: 11px;
+                }
+            """)
+            self.setText(f"{disp_name}\n\n[🔒 LOCKED]")
+            return
+
         bg = "#22222a" if self.is_active else "#141418"
         border_width = "3px" if self.is_active else "2px"
         border_color = self.accent_color
@@ -57,9 +89,6 @@ class SceneCardButton(QPushButton):
                 border-color: #ffffff;
             }}
         """)
-        disp_name = self.scene_name
-        if len(disp_name) > 22:
-            disp_name = disp_name[:20] + "…"
         self.setText(f"{disp_name}\n\n[{status_text}]")
 
 
@@ -72,6 +101,7 @@ class AudioMuteButton(QPushButton):
         self.audio_id = audio_id
         self.audio_name = name
         self.is_muted = is_muted
+        self.is_locked = False
         self.setCheckable(True)
         self.setChecked(is_muted)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -80,6 +110,8 @@ class AudioMuteButton(QPushButton):
         self.clicked.connect(self._on_click)
 
     def _on_click(self):
+        if getattr(self, "is_locked", False):
+            return
         self.is_muted = not self.is_muted
         self.setChecked(self.is_muted)
         self._update_style()
@@ -98,7 +130,31 @@ class AudioMuteButton(QPushButton):
         self.blockSignals(False)
         self._update_style()
 
+    def set_locked(self, locked: bool):
+        self.is_locked = locked
+        self.setEnabled(not locked)
+        self.setToolTip("🔒 Locked: Permission not granted by Streamer" if locked else "")
+        self._update_style()
+
     def _update_style(self):
+        disp_name = self.audio_name
+        if len(disp_name) > 13:
+            disp_name = disp_name[:12] + "…"
+        if getattr(self, "is_locked", False):
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #18181b;
+                    color: #52525b;
+                    border: 1px dashed #27272a;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    font-size: 9px;
+                    padding: 1px 3px;
+                }
+            """)
+            self.setText(f"{disp_name}\n[🔒 LOCKED]")
+            return
+
         if self.is_muted:
             bg = "#dc2626"
             fg = "#ffffff"
@@ -125,9 +181,6 @@ class AudioMuteButton(QPushButton):
                 border-color: #ffffff;
             }}
         """)
-        disp_name = self.audio_name
-        if len(disp_name) > 13:
-            disp_name = disp_name[:12] + "…"
         self.setText(f"{disp_name}\n[{status_text}]")
 
 
@@ -139,6 +192,14 @@ class VolumeFaderWidget(QWidget):
         super().__init__(parent)
         self.fader_id = fader_id
         self.fader_name = name
+        self.is_locked = False
+        self._is_dragging = False
+        self._pending_val = None
+
+        self._throttle_timer = QTimer(self)
+        self._throttle_timer.setSingleShot(True)
+        self._throttle_timer.setInterval(40)  # ~25 fps throttle to stay cleanly within security bouncer limit
+        self._throttle_timer.timeout.connect(self._flush_pending_value)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 0, 4, 0)
@@ -182,6 +243,8 @@ class VolumeFaderWidget(QWidget):
                 background: #38bdf8;
             }
         """)
+        self.slider.sliderPressed.connect(self._on_slider_pressed)
+        self.slider.sliderReleased.connect(self._on_slider_released)
         self.slider.valueChanged.connect(self._on_slider_moved)
         layout.addWidget(self.slider, 0, Qt.AlignmentFlag.AlignCenter)
 
@@ -194,23 +257,58 @@ class VolumeFaderWidget(QWidget):
         self.fader_name = name
         self.lbl_name.setText(name)
 
+    def set_locked(self, locked: bool):
+        self.is_locked = locked
+        self.slider.setEnabled(not locked)
+        self.setToolTip("🔒 Locked: Permission not granted by Streamer" if locked else "")
+        if locked:
+            self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #52525b;")
+            self.lbl_val.setText("🔒")
+            self.lbl_val.setStyleSheet("font-size: 9px; color: #52525b; font-family: monospace;")
+        else:
+            self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #d4d4d8;")
+            self.lbl_val.setText(f"{self.slider.value()}%")
+            self.lbl_val.setStyleSheet("font-size: 9px; color: #a1a1aa; font-family: monospace;")
+
     def set_value_silently(self, val: int):
         """Updates slider position visually without emitting value_changed signal."""
+        if self._is_dragging or getattr(self, "is_locked", False):
+            return  # Never overwrite slider position while user is holding mouse down or locked
         clamped = max(0, min(100, int(val)))
         self.slider.blockSignals(True)
         self.slider.setValue(clamped)
         self.lbl_val.setText(f"{clamped}%")
         self.slider.blockSignals(False)
 
+    def _on_slider_pressed(self):
+        self._is_dragging = True
+
+    def _on_slider_released(self):
+        self._is_dragging = False
+        if self._pending_val is not None:
+            self._flush_pending_value()
+
     def _on_slider_moved(self, val):
+        if getattr(self, "is_locked", False):
+            return
         self.lbl_val.setText(f"{val}%")
-        self.value_changed.emit(self.fader_id, val)
+        self._pending_val = val
+        if not self._throttle_timer.isActive():
+            self._flush_pending_value()
+            self._throttle_timer.start()
+
+    def _flush_pending_value(self):
+        if self._pending_val is not None and not getattr(self, "is_locked", False):
+            val = self._pending_val
+            self._pending_val = None
+            self.value_changed.emit(self.fader_id, val)
 
 
 class DirectorPanelWindow(QWidget):
     """Floating control dock positioned on the chosen monitor directly above the Windows taskbar."""
     panel_closed = pyqtSignal()
     settings_requested = pyqtSignal()
+    resync_requested = pyqtSignal()
     scene_selected = pyqtSignal(int, str)
     audio_toggled = pyqtSignal(int, str, bool)
     volume_adjusted = pyqtSignal(int, str, int)
@@ -292,6 +390,27 @@ class DirectorPanelWindow(QWidget):
         self.lbl_status.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_status.setStyleSheet("font-size: 10px; padding-right: 6px;")
         top_bar.addWidget(self.lbl_status)
+
+        self.btn_resync = QPushButton("🔄")
+        self.btn_resync.setFixedSize(20, 20)
+        self.btn_resync.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_resync.setToolTip("Re-sync Director Panel layout and audio state with Streamer")
+        self.btn_resync.setStyleSheet("""
+            QPushButton {
+                background: #27272a;
+                color: #a1a1aa;
+                border: 1px solid #3f3f46;
+                border-radius: 10px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background: #0284c7;
+                color: #ffffff;
+                border-color: #38bdf8;
+            }
+        """)
+        self.btn_resync.clicked.connect(self._on_resync_clicked)
+        top_bar.addWidget(self.btn_resync)
 
         btn_settings = QPushButton("⚙️")
         btn_settings.setFixedSize(20, 20)
@@ -457,8 +576,13 @@ class DirectorPanelWindow(QWidget):
             elif "volume" in f_info:
                 fader_widget.set_value_silently(f_info["volume"])
 
-    def load_configuration(self, scenes=None, audio=None, faders=None):
-        """Builds or rebuilds the dynamic scene cards, audio buttons, and faders."""
+    def load_configuration(self, scenes=None, audio=None, faders=None, permissions=None):
+        """Builds or rebuilds the dynamic scene cards, audio buttons, and faders with permission gating."""
+        if permissions is not None:
+            self._last_permissions = permissions
+        elif hasattr(self, "_last_permissions"):
+            permissions = self._last_permissions
+
         # 1. Populate Scene Cards (Up to 5)
         scenes = scenes or self.DEFAULT_SCENES
         # Clear existing
@@ -503,6 +627,46 @@ class DirectorPanelWindow(QWidget):
             self.lay_vol_row.addWidget(fader)
             self.volume_faders.append(fader)
 
+        # 4. Apply Granular Permissions Scoping
+        if permissions and not permissions.get("full_control", False):
+            raw_allowed_sc = [str(s).strip().lower() for s in permissions.get("allowed_scenes", [])]
+            for btn in self.scene_buttons:
+                bn = btn.scene_name.strip().lower()
+                bid = (getattr(btn, "scene_raw_id", None) or "").strip().lower()
+                allowed = False
+                for a in raw_allowed_sc:
+                    if a and (a == bn or a in bn or bn in a or (bid and a == bid)):
+                        allowed = True
+                        break
+                btn.set_locked(not allowed)
+
+            raw_allowed_mutes = [str(m).strip().lower() for m in permissions.get("allowed_audio_mutes", [])]
+            for btn in self.audio_buttons:
+                an = btn.audio_name.strip().lower()
+                allowed = False
+                for m in raw_allowed_mutes:
+                    if m and (m == an or m in an or an in m):
+                        allowed = True
+                        break
+                btn.set_locked(not allowed)
+
+            raw_allowed_vols = [str(v).strip().lower() for v in permissions.get("allowed_audio_volume", [])]
+            for fader in self.volume_faders:
+                fn = fader.fader_name.strip().lower()
+                allowed = False
+                for v in raw_allowed_vols:
+                    if v and (v == fn or v in fn or fn in v):
+                        allowed = True
+                        break
+                fader.set_locked(not allowed)
+        else:
+            for btn in self.scene_buttons:
+                btn.set_locked(False)
+            for btn in self.audio_buttons:
+                btn.set_locked(False)
+            for fader in self.volume_faders:
+                fader.set_locked(False)
+
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self._sync_with_slobs_state()
 
@@ -525,6 +689,15 @@ class DirectorPanelWindow(QWidget):
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self.slobs_client.set_audio_deflection(name, val / 100.0)
 
+    def _on_resync_clicked(self):
+        """User clicked the re-sync button on the Director Panel dock."""
+        if hasattr(self, "btn_resync"):
+            self.btn_resync.setEnabled(False)
+            QTimer.singleShot(1000, lambda: self.btn_resync.setEnabled(True) if hasattr(self, "btn_resync") else None)
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            self._sync_with_slobs_state()
+        self.resync_requested.emit()
+
     def _on_slobs_connected(self):
         if hasattr(self, "lbl_status"):
             self.lbl_status.setText("<span style='color: #22c55e;'>● Connected</span>")
@@ -535,14 +708,19 @@ class DirectorPanelWindow(QWidget):
             self.lbl_status.setText("<span style='color: #ef4444;'>● Disconnected</span>")
 
     def _on_slobs_scene_switched(self, scene_id, scene_name):
-        target = scene_name.strip().lower()
+        target = (scene_name or "").strip().lower()
+        target_id = (scene_id or "").strip().lower()
         for b in self.scene_buttons:
+            if getattr(b, "is_locked", False):
+                continue
             b_name = b.scene_name.strip().lower()
-            raw_id = getattr(b, "scene_raw_id", None)
-            if b_name == target or (raw_id and raw_id == scene_id):
-                b.set_active(True)
-            else:
-                b.set_active(False)
+            raw_id = (getattr(b, "scene_raw_id", None) or "").strip().lower()
+            is_match = False
+            if raw_id and target_id and raw_id == target_id:
+                is_match = True
+            elif b_name and target and (b_name == target or b_name in target or target in b_name):
+                is_match = True
+            b.set_active(is_match)
 
     def _on_slobs_audio_muted_changed(self, source_name_or_id, is_muted):
         target = source_name_or_id.strip().lower()

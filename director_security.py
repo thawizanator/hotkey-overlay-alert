@@ -49,7 +49,7 @@ class BouncerValidator:
     and blocks unauthorized or malformed requests.
     Supports granular Windows-style per-user permission profiles.
     """
-    def __init__(self, allowed_twitch_user: str = "", rate_limit_per_sec: int = 10, user_permissions: Optional[Dict[str, dict]] = None):
+    def __init__(self, allowed_twitch_user: str = "", rate_limit_per_sec: int = 35, user_permissions: Optional[Dict[str, dict]] = None):
         self.allowed_twitch_user = allowed_twitch_user.lower().strip()
         self.rate_limit_per_sec = rate_limit_per_sec
         self._peer_request_times: Dict[str, List[float]] = {}
@@ -57,6 +57,16 @@ class BouncerValidator:
         self.active_audio_whitelist: List[str] = []
         self.user_permissions: Dict[str, dict] = user_permissions or {}
         self._peer_usernames: Dict[str, str] = {}
+
+    def _lookup_user_perm(self, username: str) -> dict:
+        """Case-insensitive and '@'-stripped lookup for a user's permissions dict."""
+        clean = (username or "").lower().strip().lstrip("@")
+        if not clean:
+            return {}
+        for k, v in self.user_permissions.items():
+            if k.lower().strip().lstrip("@") == clean:
+                return v
+        return {}
 
     def register_peer(self, peer_id: str, twitch_username: str):
         """Associates a connected peer with their verified Twitch username."""
@@ -73,21 +83,42 @@ class BouncerValidator:
 
     def get_user_permissions(self, twitch_username: str) -> Optional[dict]:
         clean_user = (twitch_username or "").lower().strip().lstrip("@")
-        return self.user_permissions.get(clean_user)
+        perm = self._lookup_user_perm(clean_user)
+        return perm if perm else None
 
     def set_whitelists(self, scenes: List[dict], audio_toggles: List[dict], faders: Optional[List[dict]] = None):
-        """Updates the list of approved scene names and audio names."""
-        self.active_scenes_whitelist = [
-            s.get("name", "").strip().lower() for s in scenes if s.get("name")
-        ]
-        audio_names = [
-            a.get("name", "").strip().lower() for a in audio_toggles if a.get("name")
-        ]
+        """Updates the list of approved scene names, UUIDs, and audio names."""
+        self._current_scenes = scenes or []
+        self._current_audio = audio_toggles or []
+        self._current_faders = faders or []
+
+        self.active_scenes_whitelist = []
+        for s in scenes:
+            name = s.get("name", "").strip().lower()
+            if name and name not in self.active_scenes_whitelist:
+                self.active_scenes_whitelist.append(name)
+            sid = str(s.get("id", "")).strip().lower()
+            if sid and sid not in self.active_scenes_whitelist:
+                self.active_scenes_whitelist.append(sid)
+
+        audio_names = []
+        for a in audio_toggles:
+            name = a.get("name", "").strip().lower()
+            if name and name not in audio_names:
+                audio_names.append(name)
+            aid = str(a.get("id", "")).strip().lower()
+            if aid and aid not in audio_names:
+                audio_names.append(aid)
+
         if faders:
             for f in faders:
                 fn = f.get("name", "").strip().lower()
                 if fn and fn not in audio_names:
                     audio_names.append(fn)
+                fid = str(f.get("id", "")).strip().lower()
+                if fid and fid not in audio_names:
+                    audio_names.append(fid)
+
         self.active_audio_whitelist = audio_names
 
     def verify_identity(self, twitch_username: str, twitch_user_id: Optional[str] = None) -> Tuple[bool, str]:
@@ -98,9 +129,9 @@ class BouncerValidator:
         """
         clean_user = (twitch_username or "").lower().strip().lstrip("@")
         if self.user_permissions:
-            if clean_user in self.user_permissions:
+            if self._lookup_user_perm(clean_user):
                 return True, f"Twitch co-host verified: @{clean_user}"
-            expected = self.allowed_twitch_user.lstrip("@")
+            expected = self.allowed_twitch_user.lower().strip().lstrip("@")
             if expected and expected != "*" and clean_user == expected:
                 return True, f"Twitch co-host verified: @{clean_user}"
             return False, f"Twitch user @{clean_user} is not in the authorized co-host list"
@@ -108,7 +139,7 @@ class BouncerValidator:
         if not self.allowed_twitch_user or self.allowed_twitch_user == "*":
             return True, f"Open access with valid passkey (User: @{clean_user or 'anonymous'})"
 
-        expected = self.allowed_twitch_user.lstrip("@")
+        expected = self.allowed_twitch_user.lower().strip().lstrip("@")
         if clean_user == expected:
             return True, f"Twitch identity verified: @{clean_user}"
         return False, f"Twitch user @{clean_user} is not authorized (Expected: @{expected})"
@@ -160,7 +191,7 @@ class BouncerValidator:
 
         # Check granular per-user permissions
         username = self._peer_usernames.get(peer_id, "")
-        user_perm = self.user_permissions.get(username, {}) if username else {}
+        user_perm = self._lookup_user_perm(username) if username else {}
         full_control = user_perm.get("full_control", False) if user_perm else (not self.user_permissions)
 
         # 1. Validate SWITCH_SCENE
@@ -171,11 +202,29 @@ class BouncerValidator:
 
             if not full_control:
                 allowed_scenes = [s.lower() for s in user_perm.get("allowed_scenes", [])]
-                if lower_target not in allowed_scenes:
+                allowed_all = set(allowed_scenes)
+                for s in getattr(self, "_current_scenes", []):
+                    s_name = s.get("name", "").strip().lower()
+                    s_id = str(s.get("id", "")).strip().lower()
+                    if s_name in allowed_scenes or s_id in allowed_scenes:
+                        if s_name: allowed_all.add(s_name)
+                        if s_id: allowed_all.add(s_id)
+
+                if lower_target not in allowed_all:
                     log_debug("BOUNCER", f"Permission denied: @{username} is not permitted to switch scene '{clean_target}'")
                     return False, f"Permission denied: user @{username} cannot switch to scene '{clean_target}'", None
 
-            return True, "Valid", {"action": action, "target": clean_target}
+            # Resolve canonical scene ID if available
+            resolved_target = clean_target
+            for s in getattr(self, "_current_scenes", []):
+                s_name = s.get("name", "").strip().lower()
+                s_id = str(s.get("id", "")).strip()
+                if lower_target in (s_name, s_id.lower()):
+                    if s_id:
+                        resolved_target = s_id
+                    break
+
+            return True, "Valid", {"action": action, "target": resolved_target}
 
         # 2. Validate TOGGLE_MUTE
         elif action == "TOGGLE_MUTE":
@@ -185,7 +234,15 @@ class BouncerValidator:
 
             if not full_control:
                 allowed_mutes = [m.lower() for m in user_perm.get("allowed_audio_mutes", [])]
-                if lower_target not in allowed_mutes:
+                allowed_all = set(allowed_mutes)
+                for a in getattr(self, "_current_audio", []):
+                    a_name = a.get("name", "").strip().lower()
+                    a_id = str(a.get("id", "")).strip().lower()
+                    if a_name in allowed_mutes or a_id in allowed_mutes:
+                        if a_name: allowed_all.add(a_name)
+                        if a_id: allowed_all.add(a_id)
+
+                if lower_target not in allowed_all:
                     log_debug("BOUNCER", f"Permission denied: @{username} is not permitted to mute '{clean_target}'")
                     return False, f"Permission denied: user @{username} cannot mute/unmute '{clean_target}'", None
 
@@ -203,7 +260,15 @@ class BouncerValidator:
 
             if not full_control:
                 allowed_vols = [v.lower() for v in user_perm.get("allowed_audio_volume", [])]
-                if lower_target not in allowed_vols:
+                allowed_all = set(allowed_vols)
+                for f in getattr(self, "_current_faders", []) + getattr(self, "_current_audio", []):
+                    f_name = f.get("name", "").strip().lower()
+                    f_id = str(f.get("id", "")).strip().lower()
+                    if f_name in allowed_vols or f_id in allowed_vols:
+                        if f_name: allowed_all.add(f_name)
+                        if f_id: allowed_all.add(f_id)
+
+                if lower_target not in allowed_all:
                     log_debug("BOUNCER", f"Permission denied: @{username} is not permitted to adjust volume for '{clean_target}'")
                     return False, f"Permission denied: user @{username} cannot adjust volume for '{clean_target}'", None
 

@@ -104,9 +104,14 @@ class StreamlabsClient(QObject):
 
     def _on_webrtc_state_received(self, state: dict):
         active_scene = state.get("active_scene")
-        if active_scene:
-            self._active_scene_name = active_scene
-            self.scene_switched.emit("", active_scene)
+        active_scene_id = state.get("active_scene_id", "")
+        if active_scene or active_scene_id:
+            self._active_scene_name = active_scene or ""
+            self.scene_switched.emit(active_scene_id, active_scene or "")
+
+        scenes = state.get("scenes", [])
+        if scenes:
+            self._scenes_cache = scenes
 
         sources = state.get("audio_sources", [])
         if sources:
