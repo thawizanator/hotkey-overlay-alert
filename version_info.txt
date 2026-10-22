@@ -23,8 +23,8 @@ VSVersionInfo(
             StringStruct('LegalCopyright', 'Copyright (c) 2026 ThaWizanator. All rights reserved.'),
             StringStruct('OriginalFilename', 'StreamerCalyx.exe'),
             StringStruct('ProductName', 'Streamer Calyx'),
-            StringStruct('ProductVersion', '3.0.0-beta.3 (6a74929)'),
-            StringStruct('SpecialBuild', 'Commit 6a74929')
+            StringStruct('ProductVersion', '3.0.0-beta.3 (a82bfd5)'),
+            StringStruct('SpecialBuild', 'Commit a82bfd5')
           ]
         )
       ]
