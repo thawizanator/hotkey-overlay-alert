@@ -113,7 +113,7 @@ class TwitchAuthHandler(BaseHTTPRequestHandler):
                 <html>
                 <head>
                     <meta charset='utf-8'>
-                    <title>Twitch Linked! - HotKey Overlay Alert</title>
+                    <title>Twitch Linked! - Streamer Calyx</title>
                     <style>
                         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0e0e10; color: #efeff1; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
                         .card { background: #18181b; border: 1px solid #303032; border-radius: 8px; padding: 32px 40px; text-align: center; max-width: 480px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
@@ -124,7 +124,7 @@ class TwitchAuthHandler(BaseHTTPRequestHandler):
                 <body>
                     <div class='card'>
                         <h2>Account Connected Successfully!</h2>
-                        <p>Your Twitch account has been authenticated with HotKey Overlay Alert.</p>
+                        <p>Your Twitch account has been authenticated with Streamer Calyx.</p>
                         <p>You can now close this tab and return to the application settings.</p>
                     </div>
                 </body>
@@ -137,7 +137,7 @@ class TwitchAuthHandler(BaseHTTPRequestHandler):
                 html_response = f"""
                 <!DOCTYPE html>
                 <html>
-                <head><meta charset='utf-8'><title>Error - HotKey Overlay Alert</title>
+                <head><meta charset='utf-8'><title>Error - Streamer Calyx</title>
                 <style>body {{ font-family: sans-serif; background: #0e0e10; color: #efeff1; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }} .card {{ background: #18181b; border: 1px solid #ff5555; border-radius: 8px; padding: 32px 40px; text-align: center; max-width: 480px; }} h2 {{ color: #ff5555; }}</style>
                 </head>
                 <body>
@@ -332,7 +332,7 @@ class MainTab(QWidget):
         )
         self.lbl_hint.setText(
             f"<span style='color: {tert_color}; font-size: 11px;'>"
-            "💡 Tip: HotKey Overlay Alert runs quietly in your Windows system tray. "
+            "💡 Tip: Streamer Calyx runs quietly in your Windows system tray. "
             "Right-click the <b>wizanator icon</b> anytime to reopen settings or exit."
             "</span>"
         )
@@ -464,7 +464,7 @@ class MonitorTab(QWidget):
                 "Restart Required",
                 "<b>DPI Awareness Setting Saved</b><br><br>"
                 "Windows requires the application to restart for new DPI awareness settings to take effect.<br><br>"
-                "Please restart HotKey Overlay Alert when convenient."
+                "Please restart Streamer Calyx when convenient."
             )
 
     def refresh_monitors(self):
@@ -1156,7 +1156,7 @@ class SystemTab(QWidget):
                 """)
 
         self.lbl_about_txt.setText(
-            f"<b>HotKey Overlay Alert</b> – Version {CURRENT_VERSION} <span style='font-weight: normal; color: {tert_color};'>(Commit: <code>{get_build_commit()}</code>)</span><br>"
+            f"<b>Streamer Calyx</b> – Version {CURRENT_VERSION} <span style='font-weight: normal; color: {tert_color};'>(Commit: <code>{get_build_commit()}</code>)</span><br>"
             "Created by <b>ThaWizanator</b> • <a href='https://twitch.tv/thawizanator' style='color: #9146ff;'>twitch.tv/thawizanator</a><br>"
             f"<span style='color: {tert_color};'>Licensed under the MIT License • Standalone Authenticode Signed</span>"
         )
@@ -1212,7 +1212,7 @@ class SystemTab(QWidget):
         msg.setWindowIcon(get_app_icon())
         theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
         msg.setText(
-            f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
+            f"<b>A new version of Streamer Calyx is available!</b><br><br>"
             f"Current version: <b>{get_full_version_string()}</b><br>"
             f"Latest version: <b>{latest_tag}</b><br><br>"
             f"Would you like to download and install this update now?"
@@ -1235,7 +1235,7 @@ class SystemTab(QWidget):
         msg.setWindowIcon(get_app_icon())
         theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
         msg.setText(
-            f"<b>HotKey Overlay Alert is up to date!</b><br><br>"
+            f"<b>Streamer Calyx is up to date!</b><br><br>"
             f"• <b>Active Channel:</b> {chan_title}<br>"
             f"• <b>Installed Version:</b> {get_clickable_version_html()}<br><br>"
             f"<i>Successfully connected to GitHub releases. There are currently no newer releases available on the {chan_title.lower()} channel.</i>"
@@ -1263,7 +1263,7 @@ class SystemTab(QWidget):
             return
 
         app_dir = getattr(self.main_win.overlay, "app_dir", None) or os.path.dirname(os.path.abspath(__file__))
-        temp_exe = os.path.join(app_dir, f"HotKeyOverlayAlert_new_{self.latest_tag}.exe")
+        temp_exe = os.path.join(app_dir, f"StreamerCalyx_new_{self.latest_tag}.exe")
 
         self.btn_download_update.setEnabled(False)
         self.btn_check_update.setEnabled(False)
@@ -1391,7 +1391,7 @@ class SettingsWindow(QWidget):
         self.overlay = overlay_app
         self.setObjectName("SettingsWindow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setWindowTitle(f"HotKey Overlay Alert - Streamer Hub ({get_full_version_string()})")
+        self.setWindowTitle(f"Streamer Calyx - Streamer Hub ({get_full_version_string()})")
         self.is_sidebar_collapsed = getattr(self.overlay, "sidebar_collapsed", False)
         init_width = 570 if self.is_sidebar_collapsed else 780
         self.setFixedSize(init_width, 600)
@@ -1411,7 +1411,7 @@ class SettingsWindow(QWidget):
         sidebar_layout.setSpacing(4)
 
         # App Brand Header
-        lbl_brand = QLabel("<b>HotKey Overlay</b>")
+        lbl_brand = QLabel("<b>Streamer Calyx</b>")
         lbl_brand.setObjectName("sidebarBrand")
         lbl_sub = QLabel("Streamer Control Hub")
         lbl_sub.setObjectName("sidebarSub")
@@ -1689,7 +1689,7 @@ class SettingsWindow(QWidget):
             btn = self.nav_button_group.button(idx)
             if btn:
                 btn.setChecked(True)
-            title = PAGE_TITLES.get(idx, "HotKey Overlay Alert")
+            title = PAGE_TITLES.get(idx, "Streamer Calyx")
             self.lbl_page_title.setText(title)
             if hasattr(self, "combo_collapsed_nav") and self.combo_collapsed_nav:
                 c_idx = self.combo_collapsed_nav.findData(idx)

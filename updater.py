@@ -127,7 +127,7 @@ class UpdateCheckWorker(QThread):
         try:
             if self.channel == "beta":
                 api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=50"
-                req = urllib.request.Request(api_url, headers={"User-Agent": "HotKeyOverlayAlert"})
+                req = urllib.request.Request(api_url, headers={"User-Agent": "StreamerCalyx"})
                 with urllib.request.urlopen(req, timeout=10) as res:
                     releases = json.loads(res.read().decode("utf-8"))
                     if not isinstance(releases, list) or not releases:
@@ -146,7 +146,7 @@ class UpdateCheckWorker(QThread):
                         name = asset.get("name", "").lower()
                         if name.endswith(".exe"):
                             download_url = asset.get("browser_download_url", "")
-                            if "hotkeyoverlayalert" in name:
+                            if "streamercalyx" in name or "hotkeyoverlayalert" in name:
                                 break
                     if is_newer_version(tag_name, self.current_version):
                         self.update_available.emit(tag_name, release_url, download_url, notes)
@@ -155,7 +155,7 @@ class UpdateCheckWorker(QThread):
             else:
                 # Stable channel: GitHub's /releases/latest automatically filters out pre-releases
                 api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-                req = urllib.request.Request(api_url, headers={"User-Agent": "HotKeyOverlayAlert"})
+                req = urllib.request.Request(api_url, headers={"User-Agent": "StreamerCalyx"})
                 with urllib.request.urlopen(req, timeout=10) as res:
                     data = json.loads(res.read().decode("utf-8"))
                     tag_name = data.get("tag_name", "")
@@ -166,7 +166,7 @@ class UpdateCheckWorker(QThread):
                         name = asset.get("name", "").lower()
                         if name.endswith(".exe"):
                             download_url = asset.get("browser_download_url", "")
-                            if "hotkeyoverlayalert" in name:
+                            if "streamercalyx" in name or "hotkeyoverlayalert" in name:
                                 break
                     if is_newer_version(tag_name, self.current_version):
                         self.update_available.emit(tag_name, release_url, download_url, notes)
@@ -191,7 +191,7 @@ class DownloadWorker(QThread):
 
     def run(self):
         try:
-            req = urllib.request.Request(self.download_url, headers={"User-Agent": "HotKeyOverlayAlert"})
+            req = urllib.request.Request(self.download_url, headers={"User-Agent": "StreamerCalyx"})
             with urllib.request.urlopen(req, timeout=30) as response:
                 total_size = int(response.headers.get("content-length", 0))
                 downloaded = 0
@@ -271,29 +271,33 @@ if ($parentPid) {{
     }}
 }}
 
-# Wait for ALL instances of HotKeyOverlayAlert (including parent bootloader) to fully terminate
+# Wait for ALL instances of StreamerCalyx or HotKeyOverlayAlert to fully terminate
 $maxWait = 10
 while ($maxWait -gt 0) {{
-    $running = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
+    $running = Get-Process -Name "StreamerCalyx", "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
     if (-not $running) {{ break }}
-    Log-Update "Waiting for running HotKeyOverlayAlert instances to terminate ($maxWait remaining)..."
+    Log-Update "Waiting for running application instances to terminate ($maxWait remaining)..."
     Start-Sleep -Milliseconds 500
     $maxWait--
 }}
 
 # If any lingering instance (such as an antivirus-suspended bootloader) is still alive, forcefully terminate it
-$lingering = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
+$lingering = Get-Process -Name "StreamerCalyx", "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
 if ($lingering) {{
-    Log-Update "Forcefully terminating lingering HotKeyOverlayAlert instance(s)..."
+    Log-Update "Forcefully terminating lingering application instance(s)..."
     $lingering | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 }}
 
 # Clean any lingering stale app.lock file
-$lockFile = "$env:APPDATA\\ThaWizanator_Overlay\\app.lock"
+$lockFile = "$env:APPDATA\\StreamerCalyx\\app.lock"
 if (Test-Path -LiteralPath $lockFile) {{
     Log-Update "Removing stale app.lock file..."
     Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+}}
+$legacyLockFile = "$env:APPDATA\\ThaWizanator_Overlay\\app.lock"
+if (Test-Path -LiteralPath $legacyLockFile) {{
+    Remove-Item -LiteralPath $legacyLockFile -Force -ErrorAction SilentlyContinue
 }}
 
 # Grace period for Windows OS and Defender filesystem release

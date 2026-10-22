@@ -1,10 +1,10 @@
-﻿import os
+import os
 import sys
 import time
 import datetime
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal, QDateTime
 
-APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "ThaWizanator_Overlay")
+APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "StreamerCalyx")
 DEFAULT_OBS_FILE = os.path.join(APP_DIR, "obs_timer.txt")
 
 class ChronosMode:

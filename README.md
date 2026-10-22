@@ -1,6 +1,6 @@
-# HotKey Overlay Alert 🔔
+# Streamer Calyx 🌿
 
-A lightweight, high-performance Windows system tray utility created to prevent streaming on mute! **HotKey Overlay Alert** renders an on-screen colored border highlight around your chosen monitor to remind you when a hotkey is active, plus features direct **Twitch Helix API** integration for stream markers, announcements, and shoutouts.
+A comprehensive, lightweight, and high-performance Windows backstage broadcast suite for streamers, co-hosts, and producers! **Streamer Calyx** (formerly *HotKey Overlay Alert*) combines real-time screen-border visual indicators, encrypted WebRTC P2P remote producer docking, live OBS Studio and Streamlabs Desktop dual-bridge scene control, and Twitch Helix API automation.
 
 ---
 
@@ -42,7 +42,7 @@ A lightweight, high-performance Windows system tray utility created to prevent s
 - **HUD Toast & System Tray Feedback**: Real-time on-screen HUD alerts and balloon notifications confirm action status (*e.g., marker timestamp, chat message status, cooldown warnings*).
 - **Diagnostics, Debug Logging & Automated Crash Capture**:
   - Checkbox and "debug.txt" button on the System settings screen logs all hotkey events, window actions, Twitch API requests, and responses.
-  - Global crash interceptor (`sys.excepthook`, `threading.excepthook`, and `faulthandler`) catches unexpected errors and writes full stack traces to `%APPDATA%\ThaWizanator_Overlay\crash_log.txt` with one-click access in Settings.
+  - Global crash interceptor (`sys.excepthook`, `threading.excepthook`, and `faulthandler`) catches unexpected errors and writes full stack traces to `%APPDATA%\StreamerCalyx\crash_log.txt` with one-click access in Settings.
 
 ### 🗂️ Clean 5-Tab Modern Settings Layout
 - **Main Tab (🏠)**: Streamer Mode toggle (in-game HUD vs. desktop modals) and primary activation hotkey recorder.
@@ -111,7 +111,7 @@ To compile a standalone .exe with embedded icon and resources using PyInstaller:
 .\venv\Scripts\pyinstaller.exe --noconfirm main.spec
 ```
 
-The compiled binary will be placed in `dist\HotKeyOverlayAlert.exe` and `dist\main.exe`.
+The compiled binary will be placed in `dist\StreamerCalyx.exe`.
 
 ---
 
@@ -136,7 +136,7 @@ If Windows Defender SmartScreen, Avast CyberCapture, or other antivirus software
 ## ⚙️ Configuration & Storage
 
 Settings are automatically synchronized to:
-- `%APPDATA%\ThaWizanator_Overlay\config.json`
+- `%APPDATA%\StreamerCalyx\config.json`
 - `./config.json` *(local fallback)*
 
 Sensitive OAuth credentials are obfuscated and stored locally only. A template is provided in [config.example.json](config.example.json).
@@ -147,7 +147,7 @@ Sensitive OAuth credentials are obfuscated and stored locally only. A template i
 
 - **Created by**: ThaWizanator
 - **Twitch**: [twitch.tv/thawizanator](https://twitch.tv/thawizanator)
-- **Version**: 2.3.4 (October 2026)
+- **Version**: v3.0.0-beta.3 (October 2026)
 
 ---
 

@@ -8,7 +8,7 @@ from PyQt6.QtCore import PYQT_VERSION_STR
 
 from updater import CURRENT_VERSION, get_full_version_string, get_build_commit
 
-APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "ThaWizanator_Overlay")
+APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "StreamerCalyx")
 
 def check_vcredist():
     """Checks for presence of Microsoft Visual C++ 2015-2022 Redistributable (msvcp140.dll)."""
@@ -94,7 +94,7 @@ def bundle_logs(overlay_app=None, target_dir=None) -> tuple:
     
     lines = []
     lines.append("=" * 80)
-    lines.append("HOTKEY OVERLAY ALERT - BUG REPORT DIAGNOSTICS BUNDLE")
+    lines.append("STREAMER CALYX - BUG REPORT DIAGNOSTICS BUNDLE")
     lines.append("=" * 80)
     for k, v in sys_info.items():
         if isinstance(v, list):

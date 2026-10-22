@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt
 def get_checkmark_icon_path() -> str:
     """Returns absolute path with forward slashes to the checkmark icon, creating it if needed."""
     app_data = os.environ.get("APPDATA", "")
-    target_dir = os.path.join(app_data, "ThaWizanator_Overlay") if app_data else os.path.dirname(__file__)
+    target_dir = os.path.join(app_data, "StreamerCalyx") if app_data else os.path.dirname(__file__)
     try:
         os.makedirs(target_dir, exist_ok=True)
     except Exception:

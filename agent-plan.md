@@ -18,13 +18,13 @@ The application has outgrown its original identity. What began as a lightweight 
 The name **Streamer Calyx** represents this expanded vision. In botany, the *calyx* is the protective outer whorl of sepals that encloses, shields, and supports the budding flower as it blossoms. Similarly, **Streamer Calyx** is the protective, backstage command center that supports streamers and their co-hosts before and during live broadcasts.
 
 This document covers two major architectural pillars:
-- **Part 1**: The end-to-end **App Renaming & Migration Blueprint** (codebase, zero-downtime user data migration, updater pipeline, executable branding).
-- **Part 2**: The **Full Autonomous Support & Triage Agent** (evaluation of existing tools vs. custom microservice, Gemini/Claude integration, Discord modals, and bidirectional GitHub Issues sync).
+- **Part 1 [⏳ PENDING / NEXT UP]**: The end-to-end **App Renaming & Migration Blueprint** (codebase, zero-downtime user data migration, updater pipeline, executable branding) — *We still need to do this step*.
+- **Part 2 [✅ COMPLETED THIS AFTERNOON]**: The **Automated Issue, Bug Report & Feedback Agent** (evaluation of existing tools vs. custom microservice, Gemini/Claude integration, Discord modals, bidirectional GitHub Issues sync, and the autonomous triage pipeline protocol in [`AUTONOMOUS_TRIAGE_PIPELINE.md`](file:///E:/_DEV/App-%20Streamer%20Tool%20-%20Hothey%20monitor%20highlight/_monitior%20highlight/AUTONOMOUS_TRIAGE_PIPELINE.md)).
 - **Part 3**: **Implementation Workflow & Dedicated Conversation Strategy**.
 
 ---
 
-# Part 1: Rebranding to "Streamer Calyx"
+# Part 1: Rebranding to "Streamer Calyx" ⏳ (Pending - Next Up)
 
 ```
 [ Old Identity ]                              [ New Identity ]
@@ -123,7 +123,10 @@ When existing installations of `HotKeyOverlayAlert.exe` check for updates, the i
 
 ---
 
-# Part 2: The "Full Autonomous Suite" for Bug Reports & Feedback
+# Part 2: Automated Issue, Bug Report & Feedback Agent ✅ (Completed This Afternoon)
+
+> [!NOTE]
+> **Status: Architecture & Triage Specification Finalized**. The full autonomous protocol, ticket schema, and classification criteria were completed this afternoon and are documented in [`AUTONOMOUS_TRIAGE_PIPELINE.md`](file:///E:/_DEV/App-%20Streamer%20Tool%20-%20Hothey%20monitor%20highlight/_monitior%20highlight/AUTONOMOUS_TRIAGE_PIPELINE.md).
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -300,14 +303,15 @@ When you are ready to build the bot (in the new conversation), here are the 3 fr
 
 ```mermaid
 graph LR
-    A["Morning: Test v3.0.0-beta.3 with Jazzy"] --> B["Apply Rebranding: Streamer Calyx"]
-    B --> C["Launch New Conversation: Build Calyx Support Bot"]
-    C --> D["Deploy Bot & Link In-App Reporter"]
+    A["✅ Completed This Afternoon: Part 2 Triage Pipeline & Architecture"] --> B["🌅 Morning: Test v3.0.0-beta.3 with Purplen3rd"]
+    B --> C["⏳ Next Up: Part 1 Rebranding to Streamer Calyx"]
+    C --> D["🚀 Dedicated Conversation: Build Calyx Support Bot"]
 ```
 
-1. **First Priority**: Complete live morning testing with Jazzy on the currently deployed `HotKeyOverlayAlert.exe` build (`v3.0.0-beta.3`).
-2. **Second Priority**: Execute the **Streamer Calyx** app renaming and AppData migration.
-3. **Third Priority**: Open a new conversation to build the **Calyx Support Bot** using the blueprint in this document.
+1. **✅ Completed This Afternoon**: **Part 2 (Automated Issue, Bug Report & Feedback Agent)** architecture and autonomous protocol finalized in [`AUTONOMOUS_TRIAGE_PIPELINE.md`](file:///E:/_DEV/App-%20Streamer%20Tool%20-%20Hothey%20monitor%20highlight/_monitior%20highlight/AUTONOMOUS_TRIAGE_PIPELINE.md).
+2. **Current Immediate Step**: Complete live morning testing with Jazzy/purplen3rd on the currently deployed `HotKeyOverlayAlert.exe` build (`v3.0.0-beta.3`).
+3. **⏳ What We Still Need To Do**: **Part 1 (Rebranding to "Streamer Calyx")** — Execute the application renaming, AppData migration hook, and updater continuity.
+4. **Subsequent Step**: Open a new conversation to build and deploy the **Calyx Support Bot** microservice using the completed Part 2 blueprint.
 
 ---
 

@@ -1,9 +1,9 @@
-﻿import os
+import os
 import sys
 import random
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "ThaWizanator_Overlay")
+APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "StreamerCalyx")
 DEFAULT_CYCLER_FILE = os.path.join(APP_DIR, "obs_text_cycler.txt")
 
 SAMPLE_TRIVIA = [

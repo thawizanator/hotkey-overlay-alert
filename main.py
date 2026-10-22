@@ -7,7 +7,9 @@ import keyboard
 def get_initial_dpi_mode():
     try:
         appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
-        cfg_path = os.path.join(appdata_root, "ThaWizanator_Overlay", "config.json")
+        cfg_path = os.path.join(appdata_root, "StreamerCalyx", "config.json")
+        if not os.path.exists(cfg_path):
+            cfg_path = os.path.join(appdata_root, "ThaWizanator_Overlay", "config.json")
         if not os.path.exists(cfg_path):
             script_dir = os.path.dirname(os.path.abspath(__file__))
             cfg_path = os.path.join(script_dir, "config.json")
@@ -45,7 +47,7 @@ from updater import CURRENT_VERSION, BUILD_COMMIT, get_build_commit, get_full_ve
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = f"thawizanator.hotkeyoverlayalert.app.{CURRENT_VERSION}"
+        app_user_model_id = f"thawizanator.streamercalyx.app.{CURRENT_VERSION}"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -64,10 +66,17 @@ from cycler_engine import CyclerEngine
 
 def get_app_directory():
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
-    app_folder = os.path.join(appdata_root, "ThaWizanator_Overlay")
-    if not os.path.exists(app_folder): 
-        os.makedirs(app_folder)
-    return app_folder
+    new_dir = os.path.join(appdata_root, "StreamerCalyx")
+    old_dir = os.path.join(appdata_root, "ThaWizanator_Overlay")
+    if not os.path.exists(new_dir) and os.path.exists(old_dir):
+        try:
+            import shutil
+            shutil.copytree(old_dir, new_dir)
+        except Exception:
+            pass
+    if not os.path.exists(new_dir): 
+        os.makedirs(new_dir, exist_ok=True)
+    return new_dir
 
 APP_DIR = get_app_directory()
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
@@ -140,7 +149,13 @@ def set_autostart_registry(enable: bool) -> bool:
             0,
             winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE
         )
-        app_name = "HotKeyOverlayAlert"
+        app_name = "StreamerCalyx"
+        # Always clean up legacy registry value if present
+        try:
+            winreg.DeleteValue(key, "HotKeyOverlayAlert")
+        except FileNotFoundError:
+            pass
+
         if enable:
             if getattr(sys, "frozen", False):
                 exe_path = f'"{sys.executable}"'
@@ -171,7 +186,10 @@ def is_autostart_registry_enabled() -> bool:
             0,
             winreg.KEY_QUERY_VALUE
         )
-        val, _ = winreg.QueryValueEx(key, "HotKeyOverlayAlert")
+        try:
+            val, _ = winreg.QueryValueEx(key, "StreamerCalyx")
+        except FileNotFoundError:
+            val, _ = winreg.QueryValueEx(key, "HotKeyOverlayAlert")
         winreg.CloseKey(key)
         return bool(val)
     except Exception:
@@ -714,7 +732,7 @@ class RedBorderOverlay(QMainWindow):
         log_debug("UPDATER", f"Startup check found update: {latest_tag}")
         if self.auto_update_enabled and download_url:
             log_debug("UPDATER", f"Auto-update enabled. Starting background download for {latest_tag}...")
-            temp_exe = os.path.join(APP_DIR, f"HotKeyOverlayAlert_new_{latest_tag}.exe")
+            temp_exe = os.path.join(APP_DIR, f"StreamerCalyx_new_{latest_tag}.exe")
             self.bg_download_worker = DownloadWorker(download_url, temp_exe)
             self.bg_download_worker.finished.connect(lambda p: self.on_bg_download_finished(p, latest_tag))
             self.bg_download_worker.start()
@@ -724,7 +742,7 @@ class RedBorderOverlay(QMainWindow):
             msg_box.setWindowIcon(get_app_icon())
             theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
             msg_box.setText(
-                f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
+                f"<b>A new version of Streamer Calyx is available!</b><br><br>"
                 f"Installed Version: <b>{get_full_version_string()}</b><br>"
                 f"Latest Version: <b>{latest_tag}</b><br><br>"
                 f"Would you like to download and install this update now?"
@@ -778,7 +796,7 @@ class RedBorderOverlay(QMainWindow):
         try:
             if not os.path.exists(DEBUG_LOG_FILE):
                 with open(DEBUG_LOG_FILE, "w", encoding="utf-8") as f:
-                    f.write(f"=== HotKey Overlay Alert Debug Log ({get_full_version_string()}) ===\n")
+                    f.write(f"=== Streamer Calyx Debug Log ({get_full_version_string()}) ===\n")
             os.startfile(DEBUG_LOG_FILE)
             log_debug("SYSTEM", "Opened debug.txt in default viewer")
         except Exception as e:
@@ -791,7 +809,7 @@ class RedBorderOverlay(QMainWindow):
             if p:
                 if not os.path.exists(p):
                     with open(p, "w", encoding="utf-8") as f:
-                        f.write("=== HotKey Overlay Alert Crash Log ===\nNo crashes recorded.\n")
+                        f.write("=== Streamer Calyx Crash Log ===\nNo crashes recorded.\n")
                 os.startfile(p)
                 log_debug("SYSTEM", "Opened crash_log.txt in default viewer")
         except Exception as e:
@@ -914,11 +932,11 @@ class RedBorderOverlay(QMainWindow):
 
         icon = QSystemTrayIcon.MessageIcon.Information if is_success else QSystemTrayIcon.MessageIcon.Warning
         if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
-            self.tray_icon.showMessage("HotKey Overlay Alert - Twitch", message, icon, 4000)
+            self.tray_icon.showMessage("Streamer Calyx - Twitch", message, icon, 4000)
 
     def show_welcome_message(self):
         msg = QMessageBox()
-        msg.setWindowTitle("HotKey Overlay Alert Loaded")
+        msg.setWindowTitle("Streamer Calyx Loaded")
         msg.setWindowIcon(get_app_icon())
         pref = getattr(self, "theme_preference", "system")
         effective = theme_manager.apply_theme_to_window(msg, pref)
@@ -934,7 +952,7 @@ class RedBorderOverlay(QMainWindow):
 
         msg.setText(
             f"<div style='color: {text_color}; font-family: Segoe UI, -apple-system, sans-serif; font-size: 13px; line-height: 1.5;'>"
-            f"<b style='font-size: 15px; color: {accent_color};'>Thanks for using HotKey Overlay Alert!</b><br><br>"
+            f"<b style='font-size: 15px; color: {accent_color};'>Thanks for using Streamer Calyx!</b><br><br>"
             "The program is now active and running quietly in your background. You can "
             "find it anytime down in your taskbar's hidden system tray drawer (click the little "
             "<b>^</b> arrow near your system clock).<br><br>"
@@ -961,7 +979,7 @@ class RedBorderOverlay(QMainWindow):
     def init_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(get_app_icon())
-        self.tray_icon.setToolTip("HotKey Overlay Alert")
+        self.tray_icon.setToolTip("Streamer Calyx")
         self.tray_menu = QMenu()
         theme_manager.apply_theme_to_window(self.tray_menu, getattr(self, "theme_preference", "system"))
         self.settings_action = QAction("Settings", self.tray_menu)
@@ -1070,7 +1088,7 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"thawizanator.hotkeyoverlayalert.app.{CURRENT_VERSION}")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"thawizanator.streamercalyx.app.{CURRENT_VERSION}")
         except Exception:
             pass
 

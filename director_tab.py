@@ -30,7 +30,7 @@ def obfuscate_str(data_str: str, key: int = 140) -> str:
 
 def get_permissions_file_path() -> str:
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
-    app_folder = os.path.join(appdata_root, "ThaWizanator_Overlay")
+    app_folder = os.path.join(appdata_root, "StreamerCalyx")
     if not os.path.exists(app_folder):
         try:
             os.makedirs(app_folder, exist_ok=True)
@@ -1253,7 +1253,7 @@ class DirectorTab(QWidget):
                 f"• Streaming PC LAN IP: {local_ip}\n"
                 f"• Remote Port: {port}\n"
                 f"• API Token: {token[:8]}...{token[-4:] if len(token) > 8 else ''}\n\n"
-                f"💡 If configuring HotKey Overlay Alert on another PC on your LAN, enter these exact values on that second PC!"
+                f"💡 If configuring Streamer Calyx on another PC on your LAN, enter these exact values on that second PC!"
             )
         else:
             QMessageBox.warning(

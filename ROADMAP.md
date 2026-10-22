@@ -1,6 +1,6 @@
-# HotKey Overlay Alert — Project Roadmap 🗺️
+# Streamer Calyx — Project Roadmap 🗺️
 
-Welcome to the development roadmap for **HotKey Overlay Alert**. This document tracks completed milestones, current progress, and upcoming features designed to make this the ultimate visual overlay and workflow utility for streamers and gamers.
+Welcome to the development roadmap for **Streamer Calyx** (formerly *HotKey Overlay Alert*). This document tracks completed milestones, current progress, and upcoming features designed to make this the ultimate backstage broadcast suite for streamers, co-hosts, and remote directors.
 
 ---
 
@@ -31,37 +31,31 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
 - Real-time OBS / Streamlabs output sync with prefix/suffix formatting.
 - Compacted UI item rows and collapsible sidebar navigation (`◀` / `▶` and `Ctrl+B`) fitting compact and portrait displays (Monitor #3).
 
-### Phase 3.5: Multi-Monitor Cross-DPI Handling & Traceability — *Partial / Backburner*
+### Phase 3.5: Multi-Monitor Cross-DPI Handling & Traceability — *Completed*
 - Unified multi-monitor virtual coordinate space via **System DPI Awareness** (`windows:dpiawareness=1`) and user-selectable toggle under **Monitor Setup**.
 - Integrated Git commit hash (`get_build_commit()`) across sidebar footer, window titles, Updates tab, and diagnostic bug report templates.
-- *Status Note*: Core DPI mode toggle and build commit tracking are functional; minor cross-monitor spanning refinements placed on the backburner to prioritize Phase 4.
 
 ### Phase 4.1: OBS Studio & Streamlabs Desktop WebSocket Gateway — *Completed*
 - **WebSocket Integration**: Direct low-latency connection to local OBS Studio and Streamlabs Desktop via OBS WebSocket protocol (`ws://localhost:4455`).
 - **Scene & Source Control**: Instantly switch scenes, toggle display/browser sources, mute/unmute audio tracks, and trigger transitions.
 - **LAN & Multi-PC Verification**: Verified operational across local PCs connected to the same LAN.
 
+### Phase 4.2: Stream Director, Remote P2P WebRTC & Fine-Grained Permissions (`v3.0.0-beta.3`) — *Completed*
+- **P2P WebRTC Data Channels + Signaling Bouncer Proxy**: Encrypted WAN remote control between streamer and remote director with zero port forwarding.
+- **Twitch Identity Whitelist & Pairing Passkeys**: Automated handshake combining Twitch username verification with AES-256 encrypted pairing keys.
+- **3-Tab Layout & Conditional Visibility**: Dedicated tabs for *Scenes & Controls*, *Audio Mixer*, and *Remote Co-Host* (automatically shown/hidden based on Streamer Mode).
+- **Granular Windows-Style User Permissions Matrix**: Element-by-element permission checklist per remote director (allowed scenes, mute controls, volume adjustments, or full control).
+- **Instant Visual Locking**: Gated controls display `[🔒 LOCKED]` badge and disabled state on initial connect without requiring first click.
+- **Smooth Fader Dragging & Non-Destructive Layout**: Custom `SmoothSlider` with 1:1 mouse tracking and in-place widget updates eliminating flickering, sizing glitches, and mouse-grab drops.
+- **Live Peer Testing Passed**: Successfully validated in live peer-to-peer remote testing with co-host `@purplen3rd`.
+- **Identity Rebrand**: Transitioned full project identity to **Streamer Calyx** (`StreamerCalyx.exe`, `%APPDATA%\StreamerCalyx` zero-downtime auto-migration).
+
 ---
 
-## 🚀 Active Milestones: Phase 4.2 — Stream Director & Secure Remote OBS Integration (`v3.0.0-beta.3`)
+## 🚀 Active Milestones: Phase 5 — Unified Hotkey Center & Gamepad Controller Support (`v3.1.0`)
 
 > [!IMPORTANT]
-> **Remote Producer & Director Vision**: Allow the streamer, trusted co-hosts, or remote channel directors to trigger actions and switch scenes in **OBS Studio** and **Streamlabs Desktop** from anywhere over the internet, while enforcing strict per-user authentication so only authorized users can connect.
-
-### 4.2 🔒 Secure Remote Access Control ("Connect from Anywhere") — *Built, Awaiting Testing*
-- **Architecture Implemented**:
-  - **P2P WebRTC Data Channels + Signaling Bouncer Proxy**: Direct peer-to-peer encrypted data channel between streamer and remote director without exposing private IP addresses.
-  - **Twitch Identity Whitelist & Pairing Passkey**: Handshake combining Twitch username verification with AES-encrypted pairing keys.
-  - **3-Tab Layout & Conditional Visibility**: Dedicated tabs for *Scenes & Controls*, *Audio Mixer*, and *Remote Co-Host* (automatically shown/hidden based on Streamer Mode).
-  - **Granular Windows-Style User Permissions Matrix**: Element-by-element permission checklist per remote director (allowed scenes, mute controls, volume adjustments, or full control).
-- **Status & Testing Delay**:
-  - Feature implementation is fully built and integrated in `v3.0.0-beta.3`.
-  - Testing was temporarily delayed due to host/tester environment issues (hidden drawer tray context menu and contrast display bugs), which were successfully resolved and backported in stable releases **v2.5.1** and **v2.5.2**.
-  - Ready for live peer-to-peer remote testing.
-
----
-
-## 🔮 Upcoming Roadmap Milestones
+> **Phase 5 Focus**: Having perfected the backstage Stream Director and remote co-host integration, Phase 5 expands direct input control with a master hotkey table and low-latency gamepad/controller mapping.
 
 ### Phase 5: Unified Hotkey Center & Gamepad Controller Support (`v3.1.0`)
 - **Central Hotkey Manager Tab**: A dedicated view (**Hotkeys & Gamepad**) in the left sidebar displaying a master table of all configured shortcuts across the entire app with inline conflict detection.
@@ -84,8 +78,8 @@ Welcome to the development roadmap for **HotKey Overlay Alert**. This document t
   - Exclude heavy, unused FFmpeg video codec DLLs from PyInstaller bundle (`libx265.dll` [12 MB], `libSvtAv1Enc.dll` [7.3 MB], `libvpx.dll`, etc.) since P2P WebRTC Director only requires RTCDataChannel JSON messaging.
   - Exclude unused Qt6 components (`opengl32sw.dll` [19.7 MB], `Qt6Pdf.dll` [4.4 MB]) to shave ~25 MB off the standalone executable size.
 - **Dual-Distribution Packaging**:
-  - **Portable Standalone Executable**: `HotKeyOverlayAlert-Portable.exe` for streamers who prefer zero-installation portability.
-  - **Lightweight Windows Installer**: `HotKeyOverlayAlert-Setup.exe` (via Inno Setup with LZMA2 compression) for instant boot without `%TEMP%` extraction, Start Menu integration, desktop shortcuts, and a download size under 30 MB.
+  - **Portable Standalone Executable**: `StreamerCalyx-Portable.exe` for streamers who prefer zero-installation portability.
+  - **Lightweight Windows Installer**: `StreamerCalyx-Setup.exe` (via Inno Setup with LZMA2 compression) for instant boot without `%TEMP%` extraction, Start Menu integration, desktop shortcuts, and a download size under 30 MB.
 
 ---
 

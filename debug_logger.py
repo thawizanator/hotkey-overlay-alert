@@ -48,7 +48,7 @@ def write_crash_report(exctype, value, tb, thread_name=None):
         crash_text = "".join(traceback.format_exception(exctype, value, tb))
         header = f"""
 ================================================================================
-CRASH REPORT - HOTKEY OVERLAY ALERT
+CRASH REPORT - STREAMER CALYX
 Timestamp: {timestamp}
 Python: {platform.python_version()} ({platform.architecture()[0]})
 Platform: {platform.platform()}
@@ -75,9 +75,9 @@ Thread: {thread_name or 'MainThread'}
             if QApplication.instance():
                 msg = QMessageBox()
                 msg.setIcon(QMessageBox.Icon.Critical)
-                msg.setWindowTitle("HotKey Overlay Alert - Crash Detected")
+                msg.setWindowTitle("Streamer Calyx - Crash Detected")
                 msg.setText(
-                    f"<b>An unexpected error occurred in HotKey Overlay Alert:</b><br><br>"
+                    f"<b>An unexpected error occurred in Streamer Calyx:</b><br><br>"
                     f"<code>{exctype.__name__}: {value}</code><br><br>"
                     f"A detailed crash report has been saved to:<br>"
                     f"<b>{CRASH_LOG_FILE}</b>"
@@ -92,7 +92,7 @@ Thread: {thread_name or 'MainThread'}
                     ctypes.windll.user32.MessageBoxW(
                         0,
                         f"An unexpected error occurred:\n{exctype.__name__}: {value}\n\nCrash log saved to:\n{CRASH_LOG_FILE}",
-                        "HotKey Overlay Alert Crash",
+                        "Streamer Calyx Crash",
                         0x10 # MB_ICONERROR
                     )
                 except Exception:
