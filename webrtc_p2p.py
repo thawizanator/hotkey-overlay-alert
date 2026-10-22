@@ -341,10 +341,20 @@ class WebRTCManager(QThread):
 
     def broadcast_state(self, state: dict):
         """Broadcasts scene & mixer state update to all authenticated connected remote directors."""
-        payload = {"type": "STATE_UPDATE", "state": state}
+        all_perms = state.get("user_permissions", {})
         for client_id, info in list(self._peers.items()):
             if info.get("auth", False) and info.get("channel"):
-                self._send_on_channel(info["channel"], payload)
+                peer_state = dict(state)
+                peer_user = (info.get("user") or "").strip().lower().lstrip("@")
+                if peer_user and all_perms:
+                    for u, p in all_perms.items():
+                        if u.lower().strip().lstrip("@") == peer_user:
+                            peer_state["permissions"] = p
+                            break
+                elif not peer_user and "permissions" in state:
+                    peer_state["permissions"] = state["permissions"]
+                self._send_on_channel(info["channel"], {"type": "STATE_UPDATE", "state": peer_state})
+
 
     def disconnect_peer(self, client_id: str):
         """Terminates connection to a specific peer."""

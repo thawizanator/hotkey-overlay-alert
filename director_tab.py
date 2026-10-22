@@ -1592,7 +1592,9 @@ class DirectorTab(QWidget):
             self.panel_window.resync_requested.connect(self._on_panel_resync_requested)
 
         fader_data = self._get_fader_data()
-        self.panel_window.load_configuration(self.scenes, self._get_live_audio_toggles(), fader_data)
+        perms = getattr(self, "_cached_client_permissions", None)
+        self.panel_window.load_configuration(self.scenes, self._get_live_audio_toggles(), fader_data, permissions=perms)
+
         
         target_mon = self.combo_monitor.currentData()
         if target_mon is None:
@@ -2065,7 +2067,13 @@ class DirectorTab(QWidget):
             self.lbl_host_p2p_status.setText("<span style='color: #22c55e;'>📡 Sync Pushed to Remote Directors!</span>")
             QTimer.singleShot(2500, lambda: self.lbl_host_p2p_status.setText(cur))
         if self.is_panel_open():
-            self.panel_window.load_configuration(self.scenes, self._get_live_audio_toggles(), self._get_fader_data())
+            self.panel_window.load_configuration(
+                self.scenes, 
+                self._get_live_audio_toggles(), 
+                self._get_fader_data(), 
+                permissions=getattr(self, "_cached_client_permissions", None)
+            )
+
 
     def _on_host_p2p_command_received(self, client_id: str, payload: dict):
         action = payload.get("action")
@@ -2264,13 +2272,20 @@ class DirectorTab(QWidget):
             self._refresh_fader_combos()
 
         perms = state.get("permissions")
-        if not perms:
-            my_user = self.edit_client_my_user.text().strip().lstrip("@").lower() if hasattr(self, "edit_client_my_user") else ""
+        if perms is None:
+            my_user = ""
+            if self.client_webrtc and hasattr(self.client_webrtc, "twitch_user"):
+                my_user = (self.client_webrtc.twitch_user or "").strip().lower().lstrip("@")
+            if not my_user and hasattr(self, "edit_client_my_user"):
+                my_user = self.edit_client_my_user.text().strip().lower().lstrip("@")
             all_perms = state.get("user_permissions", {})
             for u, p in all_perms.items():
                 if u.lower().strip().lstrip("@") == my_user:
                     perms = p
                     break
+
+        self._cached_client_permissions = perms
+
 
         if self.panel_window:
             fader_payload = faders or self._get_fader_data()
