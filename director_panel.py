@@ -1,4 +1,5 @@
 import sys
+import time
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -184,6 +185,54 @@ class AudioMuteButton(QPushButton):
         self.setText(f"{disp_name}\n[{status_text}]")
 
 
+class SmoothSlider(QSlider):
+    """
+    Vertical volume slider providing continuous smooth scrubbing on direct click & drag,
+    and granular 2% mouse wheel adjustments without discrete 10% jumps.
+    """
+    def __init__(self, orientation=Qt.Orientation.Vertical, parent=None):
+        super().__init__(orientation, parent)
+        self.setTracking(True)
+        self.setSingleStep(1)
+        self.setPageStep(5)
+
+    def mousePressEvent(self, event):
+        if not self.isEnabled():
+            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            val = self._pos_to_val(event.position().y())
+            self.setValue(val)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not self.isEnabled():
+            return
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            val = self._pos_to_val(event.position().y())
+            self.setValue(val)
+        super().mouseMoveEvent(event)
+
+    def wheelEvent(self, event):
+        if not self.isEnabled():
+            return
+        delta = event.angleDelta().y()
+        if delta != 0:
+            step = 2 if delta > 0 else -2
+            new_val = max(self.minimum(), min(self.maximum(), self.value() + step))
+            self.setValue(new_val)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+    def _pos_to_val(self, pos_y: float) -> int:
+        h = self.height()
+        if h <= 0:
+            return self.value()
+        return QStyle.sliderValueFromPosition(
+            self.minimum(), self.maximum(), int(pos_y), h, True
+        )
+
+
 class VolumeFaderWidget(QWidget):
     """Vertical volume slider with label and value readout."""
     value_changed = pyqtSignal(int, int)  # (fader_id, value 0-100)
@@ -195,6 +244,7 @@ class VolumeFaderWidget(QWidget):
         self.is_locked = False
         self._is_dragging = False
         self._pending_val = None
+        self._last_interaction = 0.0
 
         self._throttle_timer = QTimer(self)
         self._throttle_timer.setSingleShot(True)
@@ -213,7 +263,7 @@ class VolumeFaderWidget(QWidget):
         self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #d4d4d8;")
         layout.addWidget(self.lbl_name)
 
-        self.slider = QSlider(Qt.Orientation.Vertical)
+        self.slider = SmoothSlider(Qt.Orientation.Vertical, self)
         self.slider.setRange(0, 100)
         self.slider.setValue(initial_val)
         self.slider.setFixedHeight(75)
@@ -274,6 +324,8 @@ class VolumeFaderWidget(QWidget):
         """Updates slider position visually without emitting value_changed signal."""
         if self._is_dragging or getattr(self, "is_locked", False):
             return  # Never overwrite slider position while user is holding mouse down or locked
+        if hasattr(self, "_last_interaction") and time.time() - self._last_interaction < 0.8:
+            return  # Never overwrite slider position while user was actively scrolling or adjusting recently
         clamped = max(0, min(100, int(val)))
         self.slider.blockSignals(True)
         self.slider.setValue(clamped)
@@ -282,15 +334,18 @@ class VolumeFaderWidget(QWidget):
 
     def _on_slider_pressed(self):
         self._is_dragging = True
+        self._last_interaction = time.time()
 
     def _on_slider_released(self):
         self._is_dragging = False
+        self._last_interaction = time.time()
         if self._pending_val is not None:
             self._flush_pending_value()
 
     def _on_slider_moved(self, val):
         if getattr(self, "is_locked", False):
             return
+        self._last_interaction = time.time()
         self.lbl_val.setText(f"{val}%")
         self._pending_val = val
         if not self._throttle_timer.isActive():
@@ -584,48 +639,82 @@ class DirectorPanelWindow(QWidget):
             permissions = self._last_permissions
 
         # 1. Populate Scene Cards (Up to 5)
-        scenes = scenes or self.DEFAULT_SCENES
-        # Clear existing
-        self._clear_layout(self.lay_scenes_row)
-        self.scene_buttons.clear()
-
-        for i, sc in enumerate(scenes[:5]):
-            btn = SceneCardButton(
-                i,
-                sc.get("name", f"Scene {i+1}"),
-                sc.get("color", "#22c55e"),
-                raw_id=sc.get("id"),
-                parent=self
+        scenes = (scenes or self.DEFAULT_SCENES)[:5]
+        scenes_match = (
+            len(self.scene_buttons) == len(scenes)
+            and all(
+                b.scene_name == sc.get("name", f"Scene {idx+1}")
+                and (getattr(b, "scene_raw_id", None) or "") == (sc.get("id") or "")
+                for idx, (b, sc) in enumerate(zip(self.scene_buttons, scenes))
             )
-            if i == self.active_scene_index:
-                btn.set_active(True)
-            btn.clicked.connect(lambda chk, idx=i, b=btn: self._on_scene_clicked(idx, b.scene_name, b))
-            self.lay_scenes_row.addWidget(btn)
-            self.scene_buttons.append(btn)
+        )
+        if not scenes_match:
+            self._clear_layout(self.lay_scenes_row)
+            self.scene_buttons.clear()
+            for i, sc in enumerate(scenes):
+                btn = SceneCardButton(
+                    i,
+                    sc.get("name", f"Scene {i+1}"),
+                    sc.get("color", "#22c55e"),
+                    raw_id=sc.get("id"),
+                    parent=self
+                )
+                if i == self.active_scene_index:
+                    btn.set_active(True)
+                btn.clicked.connect(lambda chk, idx=i, b=btn: self._on_scene_clicked(idx, b.scene_name, b))
+                self.lay_scenes_row.addWidget(btn)
+                self.scene_buttons.append(btn)
+        else:
+            for i, sc in enumerate(scenes):
+                b = self.scene_buttons[i]
+                b.accent_color = sc.get("color", b.accent_color)
+                if sc.get("id"):
+                    b.scene_raw_id = sc.get("id")
 
         # 2. Populate Audio Mute Toggles (2 rows of 3)
-        audio = audio or self.DEFAULT_AUDIO
-        self._clear_layout(self.lay_audio_grid)
-        self.audio_buttons.clear()
-
-        for i, a in enumerate(audio[:6]):
-            row = i // 3
-            col = i % 3
-            btn = AudioMuteButton(i, a.get("name", f"Audio {i+1}"), a.get("muted", False), self)
-            btn.toggled_mute.connect(lambda aid, m, b=btn: self._on_audio_toggled(aid, b.audio_name, m))
-            self.lay_audio_grid.addWidget(btn, row, col)
-            self.audio_buttons.append(btn)
+        audio = (audio or self.DEFAULT_AUDIO)[:6]
+        audio_match = (
+            len(self.audio_buttons) == len(audio)
+            and all(
+                b.audio_name == a.get("name", f"Audio {idx+1}")
+                for idx, (b, a) in enumerate(zip(self.audio_buttons, audio))
+            )
+        )
+        if not audio_match:
+            self._clear_layout(self.lay_audio_grid)
+            self.audio_buttons.clear()
+            for i, a in enumerate(audio):
+                row = i // 3
+                col = i % 3
+                btn = AudioMuteButton(i, a.get("name", f"Audio {i+1}"), a.get("muted", False), self)
+                btn.toggled_mute.connect(lambda aid, m, b=btn: self._on_audio_toggled(aid, b.audio_name, m))
+                self.lay_audio_grid.addWidget(btn, row, col)
+                self.audio_buttons.append(btn)
+        else:
+            for i, a in enumerate(audio):
+                self.audio_buttons[i].set_muted_silently(a.get("muted", False))
 
         # 3. Populate Volume Faders (3 Sliders)
-        faders = faders or self.DEFAULT_FADERS
-        self._clear_layout(self.lay_vol_row)
-        self.volume_faders.clear()
-
-        for i, f in enumerate(faders[:3]):
-            fader = VolumeFaderWidget(i, f.get("name", f"Audio {i+1}"), f.get("volume", 75), self)
-            fader.value_changed.connect(lambda fid, v, fw=fader: self._on_volume_adjusted(fid, fw.fader_name, v))
-            self.lay_vol_row.addWidget(fader)
-            self.volume_faders.append(fader)
+        faders = (faders or self.DEFAULT_FADERS)[:3]
+        faders_match = (
+            len(self.volume_faders) == len(faders)
+            and all(
+                f.fader_name == fi.get("name", f"Audio {idx+1}")
+                for idx, (f, fi) in enumerate(zip(self.volume_faders, faders))
+            )
+        )
+        if not faders_match:
+            self._clear_layout(self.lay_vol_row)
+            self.volume_faders.clear()
+            for i, f in enumerate(faders):
+                fader = VolumeFaderWidget(i, f.get("name", f"Audio {i+1}"), f.get("volume", 75), self)
+                fader.value_changed.connect(lambda fid, v, fw=fader: self._on_volume_adjusted(fid, fw.fader_name, v))
+                self.lay_vol_row.addWidget(fader)
+                self.volume_faders.append(fader)
+        else:
+            for i, fi in enumerate(faders):
+                if "volume" in fi:
+                    self.volume_faders[i].set_value_silently(fi["volume"])
 
         # 4. Apply Granular Permissions Scoping
         if permissions and not permissions.get("full_control", False):
