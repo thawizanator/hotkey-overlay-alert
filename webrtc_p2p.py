@@ -408,9 +408,12 @@ class WebRTCManager(QThread):
                 log_debug("WEBRTC", "Client handshake APPROVED by streamer!")
                 self.connection_status_changed.emit("connected", f"🟢 Connected to {self.channel_name} (Encrypted P2P)")
                 state = payload.get("state", {})
+                if "user" in payload and "user" not in state:
+                    state["user"] = payload["user"]
                 if state:
                     self.state_received.emit(state)
                 handshake_done.set()
+                self.send_command("REQUEST_STATE")
 
             elif mtype == "HANDSHAKE_FAIL":
                 reason = payload.get("reason", "Unauthorized")

@@ -578,7 +578,7 @@ class DirectorPanelWindow(QWidget):
 
     def load_configuration(self, scenes=None, audio=None, faders=None, permissions=None):
         """Builds or rebuilds the dynamic scene cards, audio buttons, and faders with permission gating."""
-        if permissions is not None:
+        if permissions is not None and bool(permissions):
             self._last_permissions = permissions
         elif hasattr(self, "_last_permissions"):
             permissions = self._last_permissions

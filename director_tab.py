@@ -1573,10 +1573,12 @@ class DirectorTab(QWidget):
     def launch_director_panel(self):
         log_debug("DIRECTOR", "User clicked Launch Director Panel")
 
-        # In client P2P mode, ensure P2P session is active
+        # In client P2P mode, ensure P2P session is active and request fresh state
         if getattr(self, "conn_mode", "local") == "webrtc_client":
             if not getattr(self, "client_webrtc", None) or not self.client_webrtc.isRunning():
                 self._toggle_client_p2p_session()
+            else:
+                QTimer.singleShot(150, lambda: self.client_webrtc.send_command("REQUEST_STATE") if self.client_webrtc and self.client_webrtc.isRunning() else None)
 
         # 1. Instantiate or show panel first so we know exact geometry above taskbar
         if not self.is_panel_open():
@@ -2105,10 +2107,14 @@ class DirectorTab(QWidget):
             live_toggles = self._get_live_audio_toggles()
             peer_perms = {}
             if clean_user:
-                for k, v in self.user_permissions.items():
-                    if k.lower().strip().lstrip("@") == clean_user.lower():
-                        peer_perms = v
-                        break
+                if self.bouncer:
+                    peer_perms = self.bouncer.get_user_permissions(clean_user) or {}
+                if not peer_perms:
+                    for k, v in self.user_permissions.items():
+                        if k.lower().strip().lstrip("@") == clean_user.lower():
+                            peer_perms = v
+                            break
+
             state = {
                 "active_scene": active_name or "",
                 "active_scene_id": act_id or "",
@@ -2157,6 +2163,8 @@ class DirectorTab(QWidget):
         log_debug("HOST_BOUNCER", f"Remote Director authenticated: {user_str} ({client_id})")
         if hasattr(self, "lbl_host_p2p_status"):
             self.lbl_host_p2p_status.setText(f"<span style='color: #22c55e;'>🟢 1 Remote Director Connected ({user_str})</span>")
+        # Proactively push tailored permissions and state to newly connected peer immediately
+        QTimer.singleShot(200, self._broadcast_host_state_update)
 
     def _on_host_p2p_peer_disconnected(self, client_id: str):
         log_debug("HOST_BOUNCER", f"Remote Director disconnected: {client_id}")
@@ -2272,17 +2280,21 @@ class DirectorTab(QWidget):
             self._refresh_fader_combos()
 
         perms = state.get("permissions")
-        if perms is None:
+        if not perms:
             my_user = ""
             if self.client_webrtc and hasattr(self.client_webrtc, "twitch_user"):
                 my_user = (self.client_webrtc.twitch_user or "").strip().lower().lstrip("@")
             if not my_user and hasattr(self, "edit_client_my_user"):
                 my_user = self.edit_client_my_user.text().strip().lower().lstrip("@")
+            if not my_user and "user" in state:
+                my_user = str(state.get("user", "")).strip().lower().lstrip("@")
             all_perms = state.get("user_permissions", {})
             for u, p in all_perms.items():
                 if u.lower().strip().lstrip("@") == my_user:
                     perms = p
                     break
+            if not perms and len(all_perms) == 1:
+                perms = next(iter(all_perms.values()))
 
         self._cached_client_permissions = perms
 
