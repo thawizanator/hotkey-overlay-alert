@@ -18,6 +18,8 @@ hidden_imports = [
     'webrtc_p2p',
     'cryptography',
     'pylibsrtp',
+    'input_manager',
+    'hotkey_tab',
 ] + collect_submodules('aiortc') + collect_submodules('aioice')
 
 a = Analysis(

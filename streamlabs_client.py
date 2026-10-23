@@ -56,6 +56,8 @@ class StreamlabsClient(QObject):
         self._active_scene_id: Optional[str] = None
         self._active_scene_name: Optional[str] = None
         self._audio_cache: List[Dict[str, Any]] = []
+        self._pipe_unavailable_logged = False
+        self._ws_unavailable_logged = False
 
         # Watchdog timer to auto-reconnect if connection drops
         self._watchdog = QTimer(self)
@@ -173,6 +175,8 @@ class StreamlabsClient(QObject):
         log_debug("SLOBS", f"Disconnecting from Streamlabs Desktop ({self._mode} mode)...")
         self._running = False
         self._is_connected = False
+        self._pipe_unavailable_logged = False
+        self._ws_unavailable_logged = False
         if self._mode == "webrtc_client":
             if getattr(self, "_webrtc_mgr", None):
                 self._webrtc_mgr.stop_session()
@@ -233,14 +237,18 @@ class StreamlabsClient(QObject):
             return False
 
         try:
-            log_debug("SLOBS", f"Attempting connection to {SLOBS_PIPE_PATH}...")
+            if not getattr(self, "_pipe_unavailable_logged", False):
+                log_debug("SLOBS", f"Attempting connection to {SLOBS_PIPE_PATH}...")
             self._cmd_pipe = open(SLOBS_PIPE_PATH, "r+b", buffering=0)
             self._sub_pipe = open(SLOBS_PIPE_PATH, "r+b", buffering=0)
         except (FileNotFoundError, OSError, PermissionError) as e:
-            log_debug("SLOBS", f"Streamlabs pipe not available: {e}")
+            if not getattr(self, "_pipe_unavailable_logged", False):
+                log_debug("SLOBS", f"Streamlabs pipe not available ({e}). Background reconnect will monitor silently until Streamlabs Desktop is running.")
+                self._pipe_unavailable_logged = True
             self._cleanup_pipes()
             return False
 
+        self._pipe_unavailable_logged = False
         self._is_connected = True
         self._running = True
 
@@ -325,7 +333,8 @@ class StreamlabsClient(QObject):
     def _connect_websocket(self) -> bool:
         self._cleanup_ws()
         url_str = f"ws://{self._remote_host}:{self._remote_port}/api/websocket"
-        log_debug("SLOBS", f"Attempting WebSocket connection to {url_str}...")
+        if not getattr(self, "_ws_unavailable_logged", False):
+            log_debug("SLOBS", f"Attempting WebSocket connection to {url_str}...")
 
         self._ws = QWebSocket()
         self._ws.textMessageReceived.connect(self._on_ws_text_message)
@@ -343,9 +352,13 @@ class StreamlabsClient(QObject):
         loop.exec()
 
         if not self._ws or not self._ws.isValid():
-            log_debug("SLOBS", f"WebSocket handshake failed to {url_str}")
+            if not getattr(self, "_ws_unavailable_logged", False):
+                log_debug("SLOBS", f"WebSocket handshake failed to {url_str}. Background reconnect will monitor silently.")
+                self._ws_unavailable_logged = True
             self._cleanup_ws()
             return False
+
+        self._ws_unavailable_logged = False
 
         # Authenticate with token via TcpServerService.auth
         if self._remote_token:

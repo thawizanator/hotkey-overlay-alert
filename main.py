@@ -63,6 +63,7 @@ from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_
 import theme_manager
 from chronos_engine import ChronosEngine
 from cycler_engine import CyclerEngine
+from input_manager import InputManager
 
 def get_app_directory():
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -499,6 +500,8 @@ class RedBorderOverlay(QMainWindow):
         
         self.chronos_engine = ChronosEngine(self)
         self.cycler_engine = CyclerEngine(self)
+        self.input_manager = InputManager(overlay=self, parent=self)
+        self.input_manager.trigger_action.connect(self._handle_input_action)
         self.load_settings()
         self.is_visible = False
         self.id_windows = []
@@ -550,6 +553,11 @@ class RedBorderOverlay(QMainWindow):
     def _on_splash_done(self):
         if self.is_first_run:
             self.show_welcome_message()
+
+        if "--settings" in sys.argv or "--hotkeys" in sys.argv:
+            QTimer.singleShot(150, lambda: self.open_settings())
+            if "--hotkeys" in sys.argv and hasattr(self, "settings_window"):
+                QTimer.singleShot(250, lambda: self.settings_window.set_view_index(8))
 
         if getattr(self, "check_updates_on_startup", True):
             QTimer.singleShot(2500, self.run_startup_update_check)
@@ -641,8 +649,12 @@ class RedBorderOverlay(QMainWindow):
                     if hasattr(self, "cycler_engine") and self.cycler_engine and "cycler" in d:
                         self.cycler_engine.import_settings(d.get("cycler", {}))
                     self.director_settings = d.get("director", {})
+                    if hasattr(self, "input_manager") and self.input_manager:
+                        self.input_manager.load_bindings(d)
             except Exception as e:
                 print(f"Error loading configuration: {e}")
+        elif hasattr(self, "input_manager") and self.input_manager:
+            self.input_manager.load_bindings({})
 
     def save_settings(self):
         for m in self.twitch_macros:
@@ -687,6 +699,8 @@ class RedBorderOverlay(QMainWindow):
             self.director_settings = self.settings_window.tab_director.export_settings()
         if hasattr(self, "director_settings") and self.director_settings:
             d["director"] = self.director_settings
+        if hasattr(self, "input_manager") and self.input_manager:
+            self.input_manager.save_bindings_to_config(d)
         # Save to primary APPDATA location
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -831,6 +845,16 @@ class RedBorderOverlay(QMainWindow):
         if new_hotkey is not None:
             self.activation_hotkey = normalize_hotkey(new_hotkey)
 
+        if hasattr(self, "input_manager") and self.input_manager:
+            self.input_manager.set_binding(
+                "primary_overlay",
+                "keyboard",
+                self.activation_hotkey,
+                hold=0.0,
+                enabled=self.primary_hotkey_enabled
+            )
+            return
+
         if hasattr(self, "_bound_activation_hotkey") and self._bound_activation_hotkey:
             try:
                 keyboard.remove_hotkey(self._bound_activation_hotkey)
@@ -851,6 +875,21 @@ class RedBorderOverlay(QMainWindow):
             log_debug("HOTKEY", "Primary activation hotkey is disabled or empty")
 
     def rebind_twitch_macros(self):
+        if hasattr(self, "input_manager") and self.input_manager:
+            for i in range(10):
+                aid = f"macro_{i}"
+                if i < len(self.twitch_macros):
+                    hk = self.twitch_macros[i].get("hotkey", "")
+                    if hk and hk not in ["set hotkey...", "Press Key...", "Press key(s)..."]:
+                        norm_hk = normalize_hotkey(hk)
+                        self.twitch_macros[i]["hotkey"] = norm_hk
+                        self.input_manager.set_binding(aid, "keyboard", norm_hk, hold=0.0, enabled=True)
+                    else:
+                        self.input_manager.clear_binding(aid)
+                else:
+                    self.input_manager.clear_binding(aid)
+            return
+
         for m in self.twitch_macros:
             try:
                 raw_hk = m.get("hotkey", "")
@@ -868,6 +907,79 @@ class RedBorderOverlay(QMainWindow):
                     keyboard.add_hotkey(norm_hk, lambda idx=i: self.macro_signaler.trigger.emit(idx))
                 except Exception as e:
                     print(f"Warning: Could not bind macro hotkey '{norm_hk}': {e}")
+
+    def _handle_input_action(self, action_id):
+        log_debug("INPUT", f"Unified input action triggered: {action_id}")
+        if action_id == "primary_overlay":
+            self.signaler.trigger.emit(0)
+        elif action_id.startswith("macro_"):
+            try:
+                idx = int(action_id.split("_")[1])
+                self.macro_signaler.trigger.emit(idx)
+            except Exception as e:
+                log_debug("INPUT_ERR", f"Error dispatching macro {action_id}: {e}")
+        elif action_id == "chronos_toggle":
+            if hasattr(self, "chronos_engine") and self.chronos_engine:
+                self.chronos_engine.toggle_start_pause()
+                log_debug("CHRONOS", "Toggled Chronos timer via hotkey/peripheral")
+        elif action_id == "chronos_reset":
+            if hasattr(self, "chronos_engine") and self.chronos_engine:
+                self.chronos_engine.reset()
+                log_debug("CHRONOS", "Reset Chronos timer via hotkey/peripheral")
+        elif action_id == "cycler_next":
+            if hasattr(self, "cycler_engine") and self.cycler_engine:
+                self.cycler_engine.next_item()
+                log_debug("CYCLER", "Next cycler item via hotkey/peripheral")
+        elif action_id == "cycler_prev":
+            if hasattr(self, "cycler_engine") and self.cycler_engine:
+                self.cycler_engine.prev_item()
+                log_debug("CYCLER", "Prev cycler item via hotkey/peripheral")
+        elif action_id == "cycler_pause":
+            if hasattr(self, "cycler_engine") and self.cycler_engine:
+                self.cycler_engine.toggle_start_pause()
+                log_debug("CYCLER", "Toggled cycler pause via hotkey/peripheral")
+        elif action_id == "director_toggle":
+            if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+                self.settings_window.tab_director.toggle_director_panel()
+                log_debug("DIRECTOR", "Toggled Director Panel dock via hotkey/peripheral")
+        elif action_id.startswith("director_scene_"):
+            try:
+                sc_idx = int(action_id.split("_")[-1]) - 1
+                if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+                    td = self.settings_window.tab_director
+                    if 0 <= sc_idx < len(td.scenes):
+                        sc = td.scenes[sc_idx]
+                        target = sc.get("id") or sc.get("name")
+                        if td.slobs_client and td.slobs_client.is_connected():
+                            td.slobs_client.make_scene_active(target)
+                        if td.panel_window:
+                            for btn in td.panel_window.scene_buttons:
+                                if btn.scene_id == sc_idx:
+                                    td.panel_window._on_scene_clicked(sc_idx, sc.get("name"), btn)
+                                    break
+                        log_debug("DIRECTOR", f"Switched scene {sc_idx + 1} ({target}) via hotkey/peripheral")
+            except Exception as e:
+                log_debug("INPUT_ERR", f"Error dispatching scene switch {action_id}: {e}")
+        elif action_id.startswith("director_mute_"):
+            try:
+                aud_idx = int(action_id.split("_")[-1]) - 1
+                if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+                    td = self.settings_window.tab_director
+                    if 0 <= aud_idx < len(td.audio_toggles):
+                        aud = td.audio_toggles[aud_idx]
+                        new_state = not aud.get("muted", False)
+                        aud["muted"] = new_state
+                        target = aud.get("id") or aud.get("name")
+                        if td.slobs_client and td.slobs_client.is_connected():
+                            td.slobs_client.set_audio_muted(target, new_state)
+                        if td.panel_window:
+                            for abtn in td.panel_window.audio_buttons:
+                                if abtn.audio_id == aud_idx:
+                                    abtn.set_muted(new_state)
+                                    break
+                        log_debug("DIRECTOR", f"Toggled audio mute {aud_idx + 1} ({target} -> {new_state}) via hotkey/peripheral")
+            except Exception as e:
+                log_debug("INPUT_ERR", f"Error dispatching audio mute {action_id}: {e}")
 
     def evaluate_macro_trigger(self, slot_index):
         if slot_index >= len(self.twitch_macros): return
@@ -1069,6 +1181,11 @@ class RedBorderOverlay(QMainWindow):
 
     def close_application(self):
         global lock_file_handle
+        if hasattr(self, "input_manager") and self.input_manager:
+            try:
+                self.input_manager.shutdown()
+            except Exception:
+                pass
         keyboard.unhook_all()
         self.tray_icon.hide()
         if hasattr(self, "settings_window") and self.settings_window:

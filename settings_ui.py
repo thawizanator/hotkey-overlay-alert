@@ -25,6 +25,7 @@ from bug_report_dialog import BugReportDialog
 from chronos_tab import ChronosTab
 from cycler_tab import CyclerTab
 from director_tab import DirectorTab
+from hotkey_tab import HotkeysTab
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -351,7 +352,26 @@ class MainTab(QWidget):
     def update_activation_hotkey_label(self):
         current = getattr(self.main_win.overlay, "activation_hotkey", "ctrl+add")
         enabled = getattr(self.main_win.overlay, "primary_hotkey_enabled", True)
-        formatted = format_hotkey_display(current)
+        
+        # Check if peripheral manager has a mouse or gamepad binding
+        input_mgr = getattr(self.main_win.overlay, "input_manager", None)
+        if input_mgr and "primary_overlay" in input_mgr.bindings:
+            b_info = input_mgr.bindings["primary_overlay"]
+            dev = b_info.get("device", "keyboard")
+            b_str = b_info.get("binding", "")
+            enabled = b_info.get("enabled", enabled)
+            if b_str:
+                if dev == "gamepad":
+                    formatted = f"🎮 {b_str}"
+                elif dev == "mouse":
+                    formatted = f"🖱️ {b_str}"
+                else:
+                    formatted = format_hotkey_display(b_str)
+            else:
+                formatted = "Not Set"
+        else:
+            formatted = format_hotkey_display(current)
+
         if enabled:
             self.lbl_hotkey.setText(f"Active Highlight Hotkey: <b>{formatted}</b>")
         else:
@@ -373,6 +393,8 @@ class MainTab(QWidget):
                 new_hk = "+".join(recorded)
                 self.main_win.overlay.rebind_activation_hotkey(new_hk)
                 self.main_win.overlay.save_settings()
+                if hasattr(self.main_win, "tab_hotkeys"):
+                    self.main_win.tab_hotkeys.populate_table()
             btn.setText("Change Hotkey")
             btn._recorded_keys = []
             self.update_activation_hotkey_label()
@@ -384,6 +406,8 @@ class MainTab(QWidget):
         self.btn_change_hk._recorded_keys = []
         self.main_win.overlay.rebind_activation_hotkey("ctrl+add")
         self.main_win.overlay.save_settings()
+        if hasattr(self.main_win, "tab_hotkeys"):
+            self.main_win.tab_hotkeys.populate_table()
         self.update_activation_hotkey_label()
 
 
@@ -1381,7 +1405,8 @@ PAGE_TITLES = {
     4: "⚙️  System, Updates & Diagnostics",
     5: "⏱️  Chronos Live Stream Timers",
     6: "📜  Rotating Text & Trivia Cycler",
-    7: "🎬  Stream Director Panel"
+    7: "🎬  Stream Director Panel",
+    8: "🎮  Unified Hotkeys & Peripherals"
 }
 
 
@@ -1454,7 +1479,9 @@ class SettingsWindow(QWidget):
         lbl_cat_sys.setObjectName("navCatLabel")
         sidebar_layout.addWidget(lbl_cat_sys)
 
+        self.btn_nav_hotkeys = self._create_nav_btn("🎮  Hotkeys && Peripherals", 8)
         self.btn_nav_system = self._create_nav_btn("⚙️  System && Logs", 4)
+        sidebar_layout.addWidget(self.btn_nav_hotkeys)
         sidebar_layout.addWidget(self.btn_nav_system)
 
         sidebar_layout.addStretch()
@@ -1549,6 +1576,10 @@ class SettingsWindow(QWidget):
         self.tab_director = DirectorTab(self)
         self.tab_director.set_streamer_mode(getattr(self.overlay, "streamer_mode", False))
         self.stacked_pages.addWidget(self.tab_director)          # 7
+
+        # Initialize Unified Hotkeys & Peripherals (Phase 5)
+        self.tab_hotkeys = HotkeysTab(self)
+        self.stacked_pages.addWidget(self.tab_hotkeys)           # 8
 
         content_layout.addWidget(self.stacked_pages)
 
@@ -1691,6 +1722,8 @@ class SettingsWindow(QWidget):
                 btn.setChecked(True)
             title = PAGE_TITLES.get(idx, "Streamer Calyx")
             self.lbl_page_title.setText(title)
+            if idx == 8 and hasattr(self, "tab_hotkeys"):
+                self.tab_hotkeys.populate_table()
             if hasattr(self, "combo_collapsed_nav") and self.combo_collapsed_nav:
                 c_idx = self.combo_collapsed_nav.findData(idx)
                 if c_idx >= 0 and self.combo_collapsed_nav.currentIndex() != c_idx:

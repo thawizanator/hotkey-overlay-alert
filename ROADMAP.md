@@ -52,18 +52,22 @@ Welcome to the development roadmap for **Streamer Calyx** (formerly *HotKey Over
 
 ---
 
-## 🚀 Active Milestones: Phase 5 — Unified Hotkey Center & Gamepad Controller Support (`v3.1.0`)
+### Phase 5: Unified Hotkey Center & Peripheral Support (`v3.0.0-beta.4`) — *Completed*
+- **Central Hotkey Manager Tab**: A dedicated view (**Hotkeys & Peripherals**) in the navigation sidebar displaying an expandable accordion drawer interface for all 22 stream actions with zero horizontal clipping.
+- **Native Zero-Dependency XInput Gamepad Support**:
+  - Low-latency background controller polling via Windows `xinput1_4.dll` (with ordinal 100 for central Xbox Guide button support).
+  - Captures inputs globally across games and full-screen streaming setups (<0.1% CPU).
+  - **Streamer Chords & Hold Delays**: Supports combination buttons (e.g., `LT + LS Click + Y`, `LB + RB`, `Back + Y`) and configurable hold thresholds (0.5s, 0.75s, 1.0s) so active gameplay controls are shielded.
+  - **Peak Chord Accumulator & Release Shielding**: Multi-button combos persist through sequential button releases without accidental single-button trigger misfires.
+- **2-Row Live Controller Visualizer HUD & 1-Click Recorder**: Real-time HUD lighting up physical buttons as pressed, fitting comfortably within collapsed 570px windows (>140px clearance).
+- **Multi-Device Mouse & Keyboard Hooks**: Full global mapping for Mouse 3, 4, 5, modifiers, and keyboard keys.
+
+---
+
+## 🚀 Active Milestones: Phase 6 — Soundboard Triggering & Audio Production Hub (`v3.1.0`)
 
 > [!IMPORTANT]
-> **Phase 5 Focus**: Having perfected the backstage Stream Director and remote co-host integration, Phase 5 expands direct input control with a master hotkey table and low-latency gamepad/controller mapping.
-
-### Phase 5: Unified Hotkey Center & Gamepad Controller Support (`v3.1.0`)
-- **Central Hotkey Manager Tab**: A dedicated view (**Hotkeys & Gamepad**) in the left sidebar displaying a master table of all configured shortcuts across the entire app with inline conflict detection.
-- **Background Gamepad & Controller Support (Xbox, PlayStation, Generic Gamepads)**:
-  - Low-latency background controller polling via Windows **XInput API** (`xinput1_4.dll`), allowing gamepad players to trigger alerts, macros, and timers without setting down their controller.
-  - Works globally even when full-screen games have exclusive focus.
-  - **Safe "Streamer Chords" & Hold Delays**: Supports combination buttons (e.g., `LB + RB`, `Back + Y`, `L3 + R3`) or 0.75s hold thresholds so normal in-game button taps (jumping, shooting) are never disrupted.
-- **Live Controller Visualizer & Button Recorder**: Real-time HUD that highlights gamepad buttons as you press them, with a 1-click button recorder.
+> **Phase 6 Focus**: With multi-device input and backstage Stream Director established, Phase 6 brings native soundboard triggering and audio production routing to Streamer Calyx.
 
 ### Phase 6: Soundboard Triggering & Audio Production Hub (`v3.2.0`)
 - Standalone sound effect player and audio production routing.
