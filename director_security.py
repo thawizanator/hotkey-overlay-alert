@@ -86,11 +86,12 @@ class BouncerValidator:
         perm = self._lookup_user_perm(clean_user)
         return perm if perm else None
 
-    def set_whitelists(self, scenes: List[dict], audio_toggles: List[dict], faders: Optional[List[dict]] = None):
+    def set_whitelists(self, scenes: List[dict], audio_toggles: List[dict], faders: Optional[List[dict]] = None, fader_pool: Optional[List[Any]] = None):
         """Updates the list of approved scene names, UUIDs, and audio names."""
         self._current_scenes = scenes or []
         self._current_audio = audio_toggles or []
         self._current_faders = faders or []
+        self._current_fader_pool = fader_pool or []
 
         self.active_scenes_whitelist = []
         for s in scenes:
@@ -118,6 +119,12 @@ class BouncerValidator:
                 fid = str(f.get("id", "")).strip().lower()
                 if fid and fid not in audio_names:
                     audio_names.append(fid)
+
+        if fader_pool:
+            for fp in fader_pool:
+                pn = (fp.get("name") if isinstance(fp, dict) else str(fp)).strip().lower()
+                if pn and pn not in audio_names:
+                    audio_names.append(pn)
 
         self.active_audio_whitelist = audio_names
 
@@ -267,6 +274,10 @@ class BouncerValidator:
                     if f_name in allowed_vols or f_id in allowed_vols:
                         if f_name: allowed_all.add(f_name)
                         if f_id: allowed_all.add(f_id)
+                for pool_item in getattr(self, "_current_fader_pool", []):
+                    pn = (pool_item.get("name") if isinstance(pool_item, dict) else str(pool_item)).strip().lower()
+                    if pn in allowed_vols:
+                        allowed_all.add(pn)
 
                 if lower_target not in allowed_all:
                     log_debug("BOUNCER", f"Permission denied: @{username} is not permitted to adjust volume for '{clean_target}'")

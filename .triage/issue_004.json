@@ -1,0 +1,12 @@
+﻿{
+  "issue_number": 4,
+  "title": "[BUG] Stream Director Toggles tab elements out of bounds",
+  "status": "resolved",
+  "resolved_at": "2026-10-23T20:06:35-05:00",
+  "component": "main settings window",
+  "urgency": "High",
+  "created_at": "2026-10-24T00:59:23Z",
+  "author": "thawizanator",
+  "github_url": "https://github.com/thawizanator/hotkey-overlay-alert/issues/4",
+  "resolution": "Refactored Group 2 and 3 into two-tier header and dedicated action toolbar; enabled word wrapping and full column span on Group 4 hint label; constrained combo sizing."
+}

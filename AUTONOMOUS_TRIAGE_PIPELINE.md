@@ -138,7 +138,11 @@ Close the GitHub issue using the GitHub CLI:
 gh issue close <issue_number> --comment "Resolved in commit $(git rev-parse --short HEAD) for release v3.0.0-beta.4. Verified via automated tests."
 ```
 
-### 🤖 Automatic Discord Notification:
-The **Calyx Support Bot** background service will automatically detect the GitHub close event and post a celebratory update in the user's Discord thread:
-> 🎉 **GitHub Issue #NN was closed by @thawizanator!**  
-> *Resolution: Fixed in commit `d8ddd16` for release `v3.0.0-beta.4`. Thank you for helping improve Streamer Calyx!*
+### 🤖 Automatic Discord Notification (Outbound GitHub Poller):
+The **Calyx Support Bot** runs an automated outbound background polling loop every **30 seconds** (`poll_github_issues_task`) using PyGithub:
+- It checks all open issues tracked in `calyx_bot.db`.
+- When an issue is closed on GitHub (via `gh issue close`, commit message, or web UI), the bot automatically detects it!
+- It extracts the closing comment details, updates `calyx_bot.db` to `status: "closed"`, and dispatches the green resolution embed into the user's Discord thread!
+- If a developer comments on an open issue on GitHub, that comment is also mirrored into the Discord thread!
+- **Zero Webhooks / Zero Ingress Required**: Because this is an outbound API check, it works 100% reliably on local dev machines without needing ngrok, public IPs, or Cloudflare tunnels.
+- **Manual Trigger**: You can also run `/sync-github` directly in Discord to trigger an immediate check!

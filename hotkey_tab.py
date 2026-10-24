@@ -33,11 +33,17 @@ ACTION_DESCRIPTIONS = {
     "director_scene_3": "Switches OBS / SLOBS active scene to Scene 3.",
     "director_scene_4": "Switches OBS / SLOBS active scene to Scene 4.",
     "director_scene_5": "Switches OBS / SLOBS active scene to Scene 5.",
+    "director_scene_6": "Switches OBS / SLOBS active scene to Scene 6.",
+    "director_scene_7": "Switches OBS / SLOBS active scene to Scene 7.",
+    "director_scene_8": "Switches OBS / SLOBS active scene to Scene 8.",
     "director_mute_1": "Toggles mute / unmute on Audio Source 1 (Microphone).",
     "director_mute_2": "Toggles mute / unmute on Audio Source 2 (Desktop / Game Audio).",
     "director_mute_3": "Toggles mute / unmute on Audio Source 3 (Music / Media).",
     "director_mute_4": "Toggles mute / unmute on Audio Source 4 (Discord / Voice Chat).",
     "director_mute_5": "Toggles mute / unmute on Audio Source 5 (Alerts / Soundboard).",
+    "director_mute_6": "Toggles mute / unmute on Audio Source 6.",
+    "director_mute_7": "Toggles mute / unmute on Audio Source 7.",
+    "director_mute_8": "Toggles mute / unmute on Audio Source 8.",
 }
 
 

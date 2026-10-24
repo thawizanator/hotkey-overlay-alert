@@ -385,11 +385,17 @@ class InputManager(QObject):
         {"id": "director_scene_3", "name": "Switch Scene 3", "category": "Stream Director", "default_key": ""},
         {"id": "director_scene_4", "name": "Switch Scene 4", "category": "Stream Director", "default_key": ""},
         {"id": "director_scene_5", "name": "Switch Scene 5", "category": "Stream Director", "default_key": ""},
+        {"id": "director_scene_6", "name": "Switch Scene 6", "category": "Stream Director", "default_key": ""},
+        {"id": "director_scene_7", "name": "Switch Scene 7", "category": "Stream Director", "default_key": ""},
+        {"id": "director_scene_8", "name": "Switch Scene 8", "category": "Stream Director", "default_key": ""},
         {"id": "director_mute_1", "name": "Toggle Mute Audio 1 (Mic)", "category": "Stream Director", "default_key": ""},
         {"id": "director_mute_2", "name": "Toggle Mute Audio 2 (Game)", "category": "Stream Director", "default_key": ""},
         {"id": "director_mute_3", "name": "Toggle Mute Audio 3 (Music)", "category": "Stream Director", "default_key": ""},
         {"id": "director_mute_4", "name": "Toggle Mute Audio 4 (Discord)", "category": "Stream Director", "default_key": ""},
         {"id": "director_mute_5", "name": "Toggle Mute Audio 5 (Alerts)", "category": "Stream Director", "default_key": ""},
+        {"id": "director_mute_6", "name": "Toggle Mute Audio 6", "category": "Stream Director", "default_key": ""},
+        {"id": "director_mute_7", "name": "Toggle Mute Audio 7", "category": "Stream Director", "default_key": ""},
+        {"id": "director_mute_8", "name": "Toggle Mute Audio 8", "category": "Stream Director", "default_key": ""},
     ]
 
     def __init__(self, overlay=None, parent=None):

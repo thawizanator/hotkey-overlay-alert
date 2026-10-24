@@ -3,14 +3,15 @@ import time
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QSlider, QFrame, QGridLayout, QApplication, QStyleOption, QStyle
+    QSlider, QFrame, QGridLayout, QApplication, QStyleOption, QStyle,
+    QMenu
 )
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QIcon
 
 from streamlabs_client import get_streamlabs_client
 
 class SceneCardButton(QPushButton):
-    """Custom rectangular scene card with distinct colored border and active glow."""
+    """Custom rectangular scene card with distinct colored border, active glow, and slot swapping context menu."""
     def __init__(self, scene_id, name, color_hex="#22c55e", raw_id=None, parent=None):
         super().__init__(parent)
         self.scene_id = scene_id
@@ -18,6 +19,7 @@ class SceneCardButton(QPushButton):
         self.scene_raw_id = raw_id
         self.accent_color = color_hex
         self.is_active = False
+        self.is_locked = False
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(84)
@@ -36,18 +38,87 @@ class SceneCardButton(QPushButton):
     def set_locked(self, locked: bool):
         self.is_locked = locked
         self.setEnabled(not locked)
-        self.setToolTip("🔒 Locked: Permission not granted by Streamer" if locked else "")
         if locked:
+            self.setToolTip("🔒 Locked: Permission not granted by Streamer")
             self.is_active = False
             self.setChecked(False)
+        else:
+            self.setToolTip("Click to switch scene | Right-click to swap slot from pool")
         self._update_style()
 
     def update_data(self, name, color_hex, raw_id=None):
         self.scene_name = name
         self.accent_color = color_hex
-        if raw_id:
+        if raw_id is not None:
             self.scene_raw_id = raw_id
         self._update_style()
+
+    def contextMenuEvent(self, event):
+        panel = self.window()
+        if not panel or not hasattr(panel, "pool_scenes"):
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #18181b;
+                border: 1px solid #3f3f46;
+                border-radius: 6px;
+                padding: 4px;
+                color: #ffffff;
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 4px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #0284c7;
+                color: #ffffff;
+            }
+            QMenu::item:disabled {
+                color: #52525b;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #27272a;
+                margin: 4px 0px;
+            }
+        """)
+        title_act = menu.addAction("⇄ Swap Scene Slot:")
+        title_act.setEnabled(False)
+        menu.addSeparator()
+
+        for sc in getattr(panel, "pool_scenes", []):
+            sc_n = sc.get("name", "Scene")
+            sc_c = sc.get("color", "#22c55e")
+            sc_id = sc.get("id", "")
+            permitted = panel.is_scene_permitted(sc_n, sc_id)
+            if not permitted:
+                act = menu.addAction(f"🎬 {sc_n} [🔒 LOCKED]")
+                act.setEnabled(False)
+            else:
+                is_curr = (sc_n == self.scene_name or (sc_id and sc_id == getattr(self, "scene_raw_id", "")))
+                prefix = "✓ " if is_curr else "   "
+                act = menu.addAction(f"{prefix}🎬 {sc_n}")
+                act.triggered.connect(lambda chk, s=sc: self._swap_to_scene(s))
+
+        menu.addSeparator()
+        if len(panel.scene_buttons) < 8 and len(panel.scene_buttons) < len(getattr(panel, "pool_scenes", [])):
+            act_add = menu.addAction("➕ Add Scene Slot")
+            act_add.triggered.connect(panel.add_scene_slot)
+        if len(panel.scene_buttons) > 1:
+            act_rem = menu.addAction("🗑️ Remove This Slot")
+            act_rem.triggered.connect(lambda: panel.remove_scene_slot(self))
+
+        menu.exec(event.globalPos())
+
+    def _swap_to_scene(self, sc: dict):
+        panel = self.window()
+        self.update_data(sc.get("name", "Scene"), sc.get("color", "#22c55e"), raw_id=sc.get("id"))
+        if hasattr(panel, "re_evaluate_scene_states"):
+            panel.re_evaluate_scene_states()
+        if hasattr(panel, "_sync_with_slobs_state"):
+            panel._sync_with_slobs_state()
 
     def _update_style(self):
         disp_name = self.scene_name
@@ -134,8 +205,80 @@ class AudioMuteButton(QPushButton):
     def set_locked(self, locked: bool):
         self.is_locked = locked
         self.setEnabled(not locked)
-        self.setToolTip("🔒 Locked: Permission not granted by Streamer" if locked else "")
+        if locked:
+            self.setToolTip("🔒 Locked: Permission not granted by Streamer")
+        else:
+            self.setToolTip("Click to toggle mute | Right-click to swap slot from pool")
         self._update_style()
+
+    def contextMenuEvent(self, event):
+        panel = self.window()
+        if not panel or not hasattr(panel, "pool_audio"):
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #18181b;
+                border: 1px solid #3f3f46;
+                border-radius: 6px;
+                padding: 4px;
+                color: #ffffff;
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 4px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #0284c7;
+                color: #ffffff;
+            }
+            QMenu::item:disabled {
+                color: #52525b;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #27272a;
+                margin: 4px 0px;
+            }
+        """)
+        title_act = menu.addAction("⇄ Swap Audio Mute Slot:")
+        title_act.setEnabled(False)
+        menu.addSeparator()
+
+        for a in getattr(panel, "pool_audio", []):
+            an = a.get("name", "Audio")
+            aid = a.get("id", "")
+            permitted = panel.is_audio_permitted(an)
+            if not permitted:
+                act = menu.addAction(f"🔊 {an} [🔒 LOCKED]")
+                act.setEnabled(False)
+            else:
+                is_curr = (an == self.audio_name)
+                prefix = "✓ " if is_curr else "   "
+                act = menu.addAction(f"{prefix}🔊 {an}")
+                act.triggered.connect(lambda chk, item=a: self._swap_to_audio(item))
+
+        menu.addSeparator()
+        if len(panel.audio_buttons) < 8 and len(panel.audio_buttons) < len(getattr(panel, "pool_audio", [])):
+            act_add = menu.addAction("➕ Add Mute Slot")
+            act_add.triggered.connect(panel.add_audio_slot)
+        if len(panel.audio_buttons) > 1:
+            act_rem = menu.addAction("🗑️ Remove This Slot")
+            act_rem.triggered.connect(lambda: panel.remove_audio_slot(self))
+
+        menu.exec(event.globalPos())
+
+    def _swap_to_audio(self, a: dict):
+        panel = self.window()
+        self.audio_name = a.get("name", "Audio")
+        self.audio_raw_id = a.get("id", "")
+        self.set_muted_silently(a.get("muted", False))
+        if hasattr(panel, "re_evaluate_audio_states"):
+            panel.re_evaluate_audio_states()
+        if hasattr(panel, "slobs_client") and panel.slobs_client and panel.slobs_client.is_connected():
+            muted = panel.slobs_client.get_source_muted_state(self.audio_name)
+            self.set_muted_silently(muted)
 
     def _update_style(self):
         disp_name = self.audio_name
@@ -310,15 +453,82 @@ class VolumeFaderWidget(QWidget):
     def set_locked(self, locked: bool):
         self.is_locked = locked
         self.slider.setEnabled(not locked)
-        self.setToolTip("🔒 Locked: Permission not granted by Streamer" if locked else "")
         if locked:
+            self.setToolTip("🔒 Locked: Permission not granted by Streamer")
             self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #52525b;")
             self.lbl_val.setText("🔒")
             self.lbl_val.setStyleSheet("font-size: 9px; color: #52525b; font-family: monospace;")
         else:
+            self.setToolTip("Scroll wheel or drag to adjust | Right-click to swap channel from pool")
             self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #d4d4d8;")
             self.lbl_val.setText(f"{self.slider.value()}%")
             self.lbl_val.setStyleSheet("font-size: 9px; color: #a1a1aa; font-family: monospace;")
+
+    def contextMenuEvent(self, event):
+        panel = self.window()
+        if not panel or not hasattr(panel, "pool_faders"):
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #18181b;
+                border: 1px solid #3f3f46;
+                border-radius: 6px;
+                padding: 4px;
+                color: #ffffff;
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 4px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #0284c7;
+                color: #ffffff;
+            }
+            QMenu::item:disabled {
+                color: #52525b;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #27272a;
+                margin: 4px 0px;
+            }
+        """)
+        title_act = menu.addAction("⇄ Swap Slider Channel:")
+        title_act.setEnabled(False)
+        menu.addSeparator()
+
+        for fp in getattr(panel, "pool_faders", []):
+            fn = fp.get("name") if isinstance(fp, dict) else str(fp)
+            permitted = panel.is_volume_permitted(fn)
+            if not permitted:
+                act = menu.addAction(f"🎚️ {fn} [🔒 LOCKED]")
+                act.setEnabled(False)
+            else:
+                is_curr = (fn == self.fader_name)
+                prefix = "✓ " if is_curr else "   "
+                act = menu.addAction(f"{prefix}🎚️ {fn}")
+                act.triggered.connect(lambda chk, name=fn: self._swap_to_fader(name))
+
+        menu.addSeparator()
+        if len(panel.volume_faders) < 8 and len(panel.volume_faders) < len(getattr(panel, "pool_faders", [])):
+            act_add = menu.addAction("➕ Add Slider Slot")
+            act_add.triggered.connect(panel.add_fader_slot)
+        if len(panel.volume_faders) > 1:
+            act_rem = menu.addAction("🗑️ Remove This Slider")
+            act_rem.triggered.connect(lambda: panel.remove_fader_slot(self))
+
+        menu.exec(event.globalPos())
+
+    def _swap_to_fader(self, name: str):
+        panel = self.window()
+        self.set_label(name)
+        if hasattr(panel, "re_evaluate_volume_states"):
+            panel.re_evaluate_volume_states()
+        if hasattr(panel, "slobs_client") and panel.slobs_client and panel.slobs_client.is_connected():
+            vol = panel.slobs_client.get_source_volume_percent(name)
+            self.set_value_silently(vol)
 
     def set_value_silently(self, val: int):
         """Updates slider position visually without emitting value_changed signal."""
@@ -386,9 +596,11 @@ class DirectorPanelWindow(QWidget):
     ]
 
     DEFAULT_FADERS = [
-        {"name": "Audio 1", "volume": 80},
-        {"name": "Audio 2", "volume": 75},
-        {"name": "Audio 3", "volume": 60},
+        {"name": "Mic", "volume": 80},
+        {"name": "Game", "volume": 75},
+        {"name": "Music", "volume": 60},
+        {"name": "Discord", "volume": 70},
+        {"name": "Alerts", "volume": 65},
     ]
 
     def __init__(self, parent=None):
@@ -409,6 +621,13 @@ class DirectorPanelWindow(QWidget):
         self.volume_faders = []
         self.active_scene_index = 0
         self._drag_pos = None
+
+        self.pool_scenes = list(self.DEFAULT_SCENES)
+        self.pool_audio = list(self.DEFAULT_AUDIO)
+        self.pool_faders = [f["name"] for f in self.DEFAULT_FADERS]
+        self._active_scene_name = ""
+        self._active_scene_id = ""
+        self._last_permissions = None
 
         self._build_ui()
 
@@ -590,7 +809,7 @@ class DirectorPanelWindow(QWidget):
         self.lay_vol_row.setSpacing(8)
         self.lay_vol_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay_vol_box.addLayout(self.lay_vol_row)
-        content_row.addWidget(self.grp_volume, 2)
+        content_row.addWidget(self.grp_volume, 3)
 
         root.addLayout(content_row)
 
@@ -614,6 +833,8 @@ class DirectorPanelWindow(QWidget):
             item = layout.takeAt(0)
             w = item.widget()
             if w:
+                w.hide()
+                w.setParent(None)
                 w.deleteLater()
 
     def update_faders(self, faders_data: list):
@@ -631,15 +852,191 @@ class DirectorPanelWindow(QWidget):
             elif "volume" in f_info:
                 fader_widget.set_value_silently(f_info["volume"])
 
-    def load_configuration(self, scenes=None, audio=None, faders=None, permissions=None):
-        """Builds or rebuilds the dynamic scene cards, audio buttons, and faders with permission gating."""
+    def is_scene_permitted(self, name: str, sid: str = "") -> bool:
+        """Checks if a scene name or raw ID is permitted by streamer permissions."""
+        if not self._last_permissions or self._last_permissions.get("full_control", False):
+            return True
+        raw_allowed = [str(s).strip().lower() for s in self._last_permissions.get("allowed_scenes", [])]
+        bn = (name or "").strip().lower()
+        bid = (sid or "").strip().lower()
+        for a in raw_allowed:
+            if a and (a == bn or a in bn or bn in a or (bid and a == bid)):
+                return True
+        return False
+
+    def is_audio_permitted(self, name: str) -> bool:
+        """Checks if an audio toggle source name is permitted by streamer permissions."""
+        if not self._last_permissions or self._last_permissions.get("full_control", False):
+            return True
+        raw_allowed = [str(m).strip().lower() for m in self._last_permissions.get("allowed_audio_mutes", [])]
+        an = (name or "").strip().lower()
+        for m in raw_allowed:
+            if m and (m == an or m in an or an in m):
+                return True
+        return False
+
+    def is_volume_permitted(self, name: str) -> bool:
+        """Checks if a volume slider channel is permitted by streamer permissions."""
+        if not self._last_permissions or self._last_permissions.get("full_control", False):
+            return True
+        raw_allowed = [str(v).strip().lower() for v in self._last_permissions.get("allowed_audio_volume", [])]
+        fn = (name or "").strip().lower()
+        for v in raw_allowed:
+            if v and (v == fn or v in fn or fn in v):
+                return True
+        return False
+
+    def re_evaluate_scene_states(self):
+        """Re-applies lock status to all active scene cards based on permissions."""
+        for btn in self.scene_buttons:
+            permitted = self.is_scene_permitted(btn.scene_name, getattr(btn, "scene_raw_id", ""))
+            btn.set_locked(not permitted)
+
+    def re_evaluate_audio_states(self):
+        """Re-applies lock status to all active audio mute buttons based on permissions."""
+        for btn in self.audio_buttons:
+            permitted = self.is_audio_permitted(btn.audio_name)
+            btn.set_locked(not permitted)
+
+    def re_evaluate_volume_states(self):
+        """Re-applies lock status to all active volume faders based on permissions."""
+        for f in self.volume_faders:
+            permitted = self.is_volume_permitted(f.fader_name)
+            f.set_locked(not permitted)
+
+    def add_scene_slot(self):
+        """Adds another scene card slot (up to 8) populated from pool_scenes."""
+        if len(self.scene_buttons) >= 8:
+            return
+        idx = len(self.scene_buttons)
+        active_names = {b.scene_name for b in self.scene_buttons}
+        candidate = next((sc for sc in self.pool_scenes if sc.get("name") not in active_names), None)
+        if not candidate:
+            candidate = {"name": f"Scene {idx+1}", "color": "#0284c7"}
+        btn = SceneCardButton(
+            idx,
+            candidate.get("name", f"Scene {idx+1}"),
+            candidate.get("color", "#0284c7"),
+            raw_id=candidate.get("id"),
+            parent=self
+        )
+        btn.clicked.connect(lambda chk, i=idx, b=btn: self._on_scene_clicked(i, b.scene_name, b))
+        self.lay_scenes_row.addWidget(btn)
+        self.scene_buttons.append(btn)
+        self.re_evaluate_scene_states()
+        if hasattr(self, "_active_scene_name") and self._active_scene_name:
+            self._on_slobs_scene_switched(self._active_scene_id, self._active_scene_name)
+
+    def remove_scene_slot(self, btn):
+        """Removes a scene slot from the dock panel."""
+        if len(self.scene_buttons) <= 1:
+            return
+        if btn in self.scene_buttons:
+            self.scene_buttons.remove(btn)
+            self.lay_scenes_row.removeWidget(btn)
+            btn.hide()
+            btn.setParent(None)
+            btn.deleteLater()
+            for i, b in enumerate(self.scene_buttons):
+                b.scene_id = i
+
+    def add_audio_slot(self):
+        """Adds another audio mute slot (up to 8) populated from pool_audio."""
+        if len(self.audio_buttons) >= 8:
+            return
+        idx = len(self.audio_buttons)
+        active_names = {b.audio_name for b in self.audio_buttons}
+        candidate = next((a for a in self.pool_audio if a.get("name") not in active_names), None)
+        if not candidate:
+            candidate = {"name": f"Audio {idx+1}", "muted": False}
+        btn = AudioMuteButton(idx, candidate.get("name", f"Audio {idx+1}"), candidate.get("muted", False), self)
+        btn.toggled_mute.connect(lambda aid, m, b=btn: self._on_audio_toggled(aid, b.audio_name, m))
+        self.audio_buttons.append(btn)
+        self._reflow_audio_grid()
+        self.re_evaluate_audio_states()
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            muted = self.slobs_client.get_source_muted_state(btn.audio_name)
+            btn.set_muted_silently(muted)
+
+    def remove_audio_slot(self, btn):
+        """Removes an audio mute slot from the dock panel."""
+        if len(self.audio_buttons) <= 1:
+            return
+        if btn in self.audio_buttons:
+            self.audio_buttons.remove(btn)
+            self.lay_audio_grid.removeWidget(btn)
+            btn.hide()
+            btn.setParent(None)
+            btn.deleteLater()
+            for i, b in enumerate(self.audio_buttons):
+                b.audio_id = i
+            self._reflow_audio_grid()
+
+    def _reflow_audio_grid(self):
+        """Reflows audio buttons evenly into a 2-row grid with dynamic columns."""
+        while self.lay_audio_grid.count():
+            self.lay_audio_grid.takeAt(0)
+        cols = max(3, (len(self.audio_buttons) + 1) // 2)
+        for i, b in enumerate(self.audio_buttons):
+            row = i // cols
+            col = i % cols
+            self.lay_audio_grid.addWidget(b, row, col)
+
+    def add_fader_slot(self):
+        """Adds another volume fader slot (up to 8) populated from pool_faders."""
+        if len(self.volume_faders) >= 8:
+            return
+        idx = len(self.volume_faders)
+        active_names = {f.fader_name for f in self.volume_faders}
+        candidate = next((fp for fp in self.pool_faders if (fp.get("name") if isinstance(fp, dict) else str(fp)) not in active_names), None)
+        name = candidate.get("name") if isinstance(candidate, dict) else (str(candidate) if candidate else f"Audio {idx+1}")
+        vol = candidate.get("volume", 75) if isinstance(candidate, dict) else 75
+        fader = VolumeFaderWidget(idx, name, vol, self)
+        fader.value_changed.connect(lambda fid, v, fw=fader: self._on_volume_adjusted(fid, fw.fader_name, v))
+        self.lay_vol_row.addWidget(fader)
+        self.volume_faders.append(fader)
+        self.re_evaluate_volume_states()
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            v = self.slobs_client.get_source_volume_percent(name)
+            fader.set_value_silently(v)
+
+    def remove_fader_slot(self, fader):
+        """Removes a volume fader from the dock panel."""
+        if len(self.volume_faders) <= 1:
+            return
+        if fader in self.volume_faders:
+            self.volume_faders.remove(fader)
+            self.lay_vol_row.removeWidget(fader)
+            fader.hide()
+            fader.setParent(None)
+            fader.deleteLater()
+            for i, f in enumerate(self.volume_faders):
+                f.fader_id = i
+
+    def load_configuration(self, scenes=None, audio=None, faders=None, permissions=None, pool_scenes=None, pool_audio=None, pool_faders=None):
+        """Builds or rebuilds the dynamic scene cards, audio buttons, and faders with permission gating and preselection pools."""
         if permissions is not None and bool(permissions):
             self._last_permissions = permissions
         elif hasattr(self, "_last_permissions"):
             permissions = self._last_permissions
 
-        # 1. Populate Scene Cards (Up to 5)
-        scenes = (scenes or self.DEFAULT_SCENES)[:5]
+        if pool_scenes is not None:
+            self.pool_scenes = list(pool_scenes)
+        elif scenes is not None:
+            self.pool_scenes = list(scenes)
+
+        if pool_audio is not None:
+            self.pool_audio = list(pool_audio)
+        elif audio is not None:
+            self.pool_audio = list(audio)
+
+        if pool_faders is not None:
+            self.pool_faders = list(pool_faders)
+        elif faders is not None:
+            self.pool_faders = [f.get("name") if isinstance(f, dict) else str(f) for f in faders]
+
+        # 1. Populate Scene Cards (Up to 8)
+        scenes = (scenes or self.DEFAULT_SCENES)[:8]
         scenes_match = (
             len(self.scene_buttons) == len(scenes)
             and all(
@@ -671,8 +1068,8 @@ class DirectorPanelWindow(QWidget):
                 if sc.get("id"):
                     b.scene_raw_id = sc.get("id")
 
-        # 2. Populate Audio Mute Toggles (2 rows of 3)
-        audio = (audio or self.DEFAULT_AUDIO)[:6]
+        # 2. Populate Audio Mute Toggles (Up to 8 in dynamic 2-row grid)
+        audio = (audio or self.DEFAULT_AUDIO)[:8]
         audio_match = (
             len(self.audio_buttons) == len(audio)
             and all(
@@ -684,18 +1081,16 @@ class DirectorPanelWindow(QWidget):
             self._clear_layout(self.lay_audio_grid)
             self.audio_buttons.clear()
             for i, a in enumerate(audio):
-                row = i // 3
-                col = i % 3
                 btn = AudioMuteButton(i, a.get("name", f"Audio {i+1}"), a.get("muted", False), self)
                 btn.toggled_mute.connect(lambda aid, m, b=btn: self._on_audio_toggled(aid, b.audio_name, m))
-                self.lay_audio_grid.addWidget(btn, row, col)
                 self.audio_buttons.append(btn)
+            self._reflow_audio_grid()
         else:
             for i, a in enumerate(audio):
                 self.audio_buttons[i].set_muted_silently(a.get("muted", False))
 
-        # 3. Populate Volume Faders (3 Sliders)
-        faders = (faders or self.DEFAULT_FADERS)[:3]
+        # 3. Populate Volume Faders (Up to 8 active, default 5)
+        faders = (faders or self.DEFAULT_FADERS)[:8]
         faders_match = (
             len(self.volume_faders) == len(faders)
             and all(
@@ -717,44 +1112,9 @@ class DirectorPanelWindow(QWidget):
                     self.volume_faders[i].set_value_silently(fi["volume"])
 
         # 4. Apply Granular Permissions Scoping
-        if permissions and not permissions.get("full_control", False):
-            raw_allowed_sc = [str(s).strip().lower() for s in permissions.get("allowed_scenes", [])]
-            for btn in self.scene_buttons:
-                bn = btn.scene_name.strip().lower()
-                bid = (getattr(btn, "scene_raw_id", None) or "").strip().lower()
-                allowed = False
-                for a in raw_allowed_sc:
-                    if a and (a == bn or a in bn or bn in a or (bid and a == bid)):
-                        allowed = True
-                        break
-                btn.set_locked(not allowed)
-
-            raw_allowed_mutes = [str(m).strip().lower() for m in permissions.get("allowed_audio_mutes", [])]
-            for btn in self.audio_buttons:
-                an = btn.audio_name.strip().lower()
-                allowed = False
-                for m in raw_allowed_mutes:
-                    if m and (m == an or m in an or an in m):
-                        allowed = True
-                        break
-                btn.set_locked(not allowed)
-
-            raw_allowed_vols = [str(v).strip().lower() for v in permissions.get("allowed_audio_volume", [])]
-            for fader in self.volume_faders:
-                fn = fader.fader_name.strip().lower()
-                allowed = False
-                for v in raw_allowed_vols:
-                    if v and (v == fn or v in fn or fn in v):
-                        allowed = True
-                        break
-                fader.set_locked(not allowed)
-        else:
-            for btn in self.scene_buttons:
-                btn.set_locked(False)
-            for btn in self.audio_buttons:
-                btn.set_locked(False)
-            for fader in self.volume_faders:
-                fader.set_locked(False)
+        self.re_evaluate_scene_states()
+        self.re_evaluate_audio_states()
+        self.re_evaluate_volume_states()
 
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self._sync_with_slobs_state()
@@ -797,6 +1157,8 @@ class DirectorPanelWindow(QWidget):
             self.lbl_status.setText("<span style='color: #ef4444;'>● Disconnected</span>")
 
     def _on_slobs_scene_switched(self, scene_id, scene_name):
+        self._active_scene_id = scene_id or ""
+        self._active_scene_name = scene_name or ""
         target = (scene_name or "").strip().lower()
         target_id = (scene_id or "").strip().lower()
         for b in self.scene_buttons:
@@ -884,7 +1246,7 @@ class DirectorPanelWindow(QWidget):
         self.adjustSize()
         hint = self.sizeHint()
         dock_height = max(hint.height(), 154)
-        dock_width = min(1140, max(hint.width(), int(avail.width() * 0.96)))
+        dock_width = min(1400, max(hint.width(), int(avail.width() * 0.96)))
         if dock_width > avail.width():
             dock_width = avail.width()
         
