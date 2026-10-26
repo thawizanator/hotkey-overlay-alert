@@ -66,9 +66,10 @@ Track upcoming milestones, completed phases, and design plans in **[ROADMAP.md](
 - **Phase 2 (Completed)**: Chronos Timers Engine & OBS Text Sync (`v3.0.0-beta.1`)
 - **Phase 3 (Completed)**: Rotating Text & Trivia Cycler Engine (`v3.0.0-beta.2`)
 - **Phase 4 (Completed)**: Stream Director & Secure Remote OBS/Streamlabs Integration (`v3.0.0-beta.3`)
-- **Phase 5 (Completed)**: Unified Hotkey Center & Native Gamepad / Controller Support (`v3.0.0-beta.4`)
-- **Phase 6**: Soundboard Triggering & Audio Production Hub (`v3.2.0`)
-- **Phase 7**: Mobile & Local Web Deck Companion (`v3.3.0`)
+- **Phase 5 (Completed)**: Unified Hotkey Center, Per-Scene Shortcuts & Controller Support (`v3.0.0-beta.4.2`)
+- **Phase 6**: Soundboard & Audio Triggers for Stream Markers
+- **Phase 7 (v3 Finale)**: Optimization & Debloating Architecture
+- **v4 Backlog**: Mobile & Local Web Deck Companion, Chrome Extension
 
 ---
 
