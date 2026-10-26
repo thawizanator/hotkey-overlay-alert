@@ -359,12 +359,13 @@ class AudioMuteButton(QPushButton):
 
 
 class ViewToggleButton(QPushButton):
-    """Toggle button for live scene source visibility (e.g., Legal-View, SandMan View)."""
+    """Toggle button for live scene source visibility (e.g., SandMan View, Legal-View)."""
     toggled_visibility = pyqtSignal(str, bool)
 
-    def __init__(self, name: str, is_visible: bool = False, parent=None):
+    def __init__(self, name: str, is_visible: bool = False, hotkey_hint: str = "", parent=None):
         super().__init__(parent)
         self.source_name = name
+        self.hotkey_hint = hotkey_hint
         self.is_visible = is_visible
         self.is_locked = False
         self.setCheckable(True)
@@ -440,7 +441,12 @@ class ViewToggleButton(QPushButton):
                 border-color: #ffffff;
             }}
         """)
-        self.setText(f"👁️ {disp_name}\n[{status}]")
+        hint_label = f" · {self.hotkey_hint}" if getattr(self, "hotkey_hint", "") else ""
+        self.setText(f"👁️ {disp_name}\n[{status}{hint_label}]")
+        if getattr(self, "hotkey_hint", ""):
+            self.setToolTip(f"{self.source_name} ({self.hotkey_hint})\nClick to fire hotkey & toggle visibility in SLOBS")
+        else:
+            self.setToolTip(f"{self.source_name}\nClick to toggle visibility in SLOBS")
 
 
 class SmoothSlider(QSlider):
@@ -894,7 +900,7 @@ class DirectorPanelWindow(QWidget):
         lay_view_box.setContentsMargins(6, 4, 6, 4)
         lay_view_box.setSpacing(4)
 
-        lbl_sec_views = QLabel("IN-GAME VIEWS")
+        lbl_sec_views = QLabel("SLOBS HOTKEYS")
         lbl_sec_views.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_sec_views.setStyleSheet("font-size: 9px; font-weight: bold; color: #38bdf8; letter-spacing: 0.5px;")
         lay_view_box.addWidget(lbl_sec_views)
@@ -903,8 +909,8 @@ class DirectorPanelWindow(QWidget):
         self.lay_views_row.setSpacing(6)
         lay_view_box.addLayout(self.lay_views_row)
 
-        for v_name in ["Legal-View", "SandMan View"]:
-            btn_v = ViewToggleButton(v_name, is_visible=False, parent=self)
+        for v_name, v_hint in [("SandMan View", "Ctrl+Num6"), ("Legal-View", "Ctrl+Num7")]:
+            btn_v = ViewToggleButton(v_name, is_visible=False, hotkey_hint=v_hint, parent=self)
             btn_v.toggled_visibility.connect(self._on_view_toggle_clicked)
             self.lay_views_row.addWidget(btn_v)
             self.view_toggle_buttons[v_name] = btn_v
@@ -1323,41 +1329,54 @@ class DirectorPanelWindow(QWidget):
     def _fire_view_hotkey(self, source_name: str):
         """Simulates the hotkey sequence configured in Streamlabs Desktop for the view."""
         sn_lower = (source_name or "").strip().lower()
-        hotkey = None
+        hotkey_str = None
         vk_code = None
-        if "legal" in sn_lower:
-            hotkey = "ctrl+num 6"
-            vk_code = 0x66  # VK_NUMPAD6
-        elif "sandman" in sn_lower:
-            hotkey = "ctrl+num 7"
-            vk_code = 0x67  # VK_NUMPAD7
+        scan_code = None
 
-        if not hotkey:
+        if "sandman" in sn_lower:
+            hotkey_str = "ctrl+num 6"
+            vk_code = 0x66  # VK_NUMPAD6
+            scan_code = 0x4D  # Scan code for Numpad 6
+        elif "legal" in sn_lower:
+            hotkey_str = "ctrl+num 7"
+            vk_code = 0x67  # VK_NUMPAD7
+            scan_code = 0x47  # Scan code for Numpad 7
+
+        if not vk_code:
             return
 
-        # 1. Fire via python keyboard library
+        # 1. Fire via python keyboard library using hardware scan codes (LCTRL=29, Numpad=77 or 71)
         try:
             import keyboard
-            keyboard.send(hotkey)
+            keyboard.press(29)  # LCTRL scan code
+            keyboard.press(scan_code)
+            time.sleep(0.02)
+            keyboard.release(scan_code)
+            keyboard.release(29)
         except Exception:
-            pass
+            try:
+                import keyboard
+                keyboard.send(hotkey_str)
+            except Exception:
+                pass
 
-        # 2. Also simulate via Windows Win32 API keybd_event with scan codes as fallback
+        # 2. Also simulate via Windows Win32 API keybd_event with scan codes and virtual keys
         if sys.platform == "win32" and vk_code:
             try:
                 import ctypes
                 user32 = ctypes.windll.user32
                 VK_CONTROL = 0x11
                 KEYEVENTF_KEYUP = 0x0002
-                scan_ctrl = user32.MapVirtualKeyW(VK_CONTROL, 0)
-                scan_key = user32.MapVirtualKeyW(vk_code, 0)
+                scan_ctrl = 0x1D
 
-                # Press Ctrl + Key
+                # Press Ctrl + Numpad
                 user32.keybd_event(VK_CONTROL, scan_ctrl, 0, 0)
-                user32.keybd_event(vk_code, scan_key, 0, 0)
+                time.sleep(0.01)
+                user32.keybd_event(vk_code, scan_code, 0, 0)
                 time.sleep(0.02)
-                # Release Key + Ctrl
-                user32.keybd_event(vk_code, scan_key, KEYEVENTF_KEYUP, 0)
+                # Release Numpad + Ctrl
+                user32.keybd_event(vk_code, scan_code, KEYEVENTF_KEYUP, 0)
+                time.sleep(0.01)
                 user32.keybd_event(VK_CONTROL, scan_ctrl, KEYEVENTF_KEYUP, 0)
             except Exception:
                 pass
