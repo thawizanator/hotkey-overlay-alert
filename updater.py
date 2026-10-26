@@ -115,7 +115,7 @@ def is_newer_version(latest_tag, current_ver=CURRENT_VERSION):
 
 class UpdateCheckWorker(QThread):
     update_available = pyqtSignal(str, str, str, str)  # latest_tag, release_url, download_url, release_notes
-    up_to_date = pyqtSignal(str)                       # current_version
+    up_to_date = pyqtSignal(str, str)                  # current_version, latest_channel_version
     check_error = pyqtSignal(str)                      # error message
 
     def __init__(self, current_version=CURRENT_VERSION, channel="stable"):
@@ -131,11 +131,11 @@ class UpdateCheckWorker(QThread):
                 with urllib.request.urlopen(req, timeout=10) as res:
                     releases = json.loads(res.read().decode("utf-8"))
                     if not isinstance(releases, list) or not releases:
-                        self.up_to_date.emit(self.current_version)
+                        self.up_to_date.emit(self.current_version, "")
                         return
                     valid = [r for r in releases if not r.get("draft", False)]
                     if not valid:
-                        self.up_to_date.emit(self.current_version)
+                        self.up_to_date.emit(self.current_version, "")
                         return
                     newest = max(valid, key=lambda r: parse_version(r.get("tag_name", "")))
                     tag_name = newest.get("tag_name", "")
@@ -151,7 +151,7 @@ class UpdateCheckWorker(QThread):
                     if is_newer_version(tag_name, self.current_version):
                         self.update_available.emit(tag_name, release_url, download_url, notes)
                     else:
-                        self.up_to_date.emit(self.current_version)
+                        self.up_to_date.emit(self.current_version, tag_name)
             else:
                 # Stable channel: GitHub's /releases/latest automatically filters out pre-releases
                 api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -171,7 +171,7 @@ class UpdateCheckWorker(QThread):
                     if is_newer_version(tag_name, self.current_version):
                         self.update_available.emit(tag_name, release_url, download_url, notes)
                     else:
-                        self.up_to_date.emit(self.current_version)
+                        self.up_to_date.emit(self.current_version, tag_name)
         except Exception as e:
             self.check_error.emit(str(e))
 

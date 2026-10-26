@@ -1214,12 +1214,31 @@ class SystemTab(QWidget):
             self.btn_download_update.setVisible(True)
             self.btn_download_update.setEnabled(True)
 
-    def on_up_to_date(self, current_ver):
+    def on_up_to_date(self, current_ver, latest_tag=""):
         chan = getattr(self.main_win.overlay, "update_channel", "stable")
+        cur_v_str = f"v{current_ver}" if not str(current_ver).startswith("v") else str(current_ver)
+        latest_str = f"v{latest_tag}" if (latest_tag and not str(latest_tag).startswith("v")) else str(latest_tag)
+
         if chan == "beta":
-            self.lbl_update_status.setText(f"<span style='color: #eab308; font-weight: bold;'>✔️ Up to date on Beta (v{current_ver})</span>")
+            disp = latest_str or cur_v_str
+            self.lbl_update_status.setText(f"<span style='color: #eab308; font-weight: bold;'>✔️ Up to date on Beta ({disp})</span>")
         else:
-            self.lbl_update_status.setText(f"<span style='color: #43b581; font-weight: bold;'>✔️ Up to date on Stable (v{current_ver})</span>")
+            # Stable channel
+            is_preview = any(k in cur_v_str.lower() for k in ["beta", "rc", "alpha", "dev"])
+            if is_preview:
+                if latest_str:
+                    self.lbl_update_status.setText(
+                        f"<span style='color: #43b581; font-weight: bold;'>✔️ Latest Stable: {latest_str}</span> "
+                        f"<span style='color: #a1a1aa; font-size: 11px;'>(Installed: {cur_v_str})</span>"
+                    )
+                else:
+                    self.lbl_update_status.setText(
+                        f"<span style='color: #43b581; font-weight: bold;'>✔️ Up to date on Stable</span> "
+                        f"<span style='color: #a1a1aa; font-size: 11px;'>(Installed: {cur_v_str})</span>"
+                    )
+            else:
+                disp = latest_str or cur_v_str
+                self.lbl_update_status.setText(f"<span style='color: #43b581; font-weight: bold;'>✔️ Up to date on Stable ({disp})</span>")
         self.btn_download_update.setVisible(False)
         self.btn_download_update.setEnabled(False)
 
@@ -1249,20 +1268,34 @@ class SystemTab(QWidget):
         if msg.clickedButton() == btn_yes and download_url:
             self.download_update_clicked()
 
-    def on_up_to_date_interactive(self, current_ver):
+    def on_up_to_date_interactive(self, current_ver, latest_tag=""):
         self.btn_check_update.setEnabled(True)
-        self.on_up_to_date(current_ver)
+        self.on_up_to_date(current_ver, latest_tag)
         chan = getattr(self.main_win.overlay, "update_channel", "stable")
         chan_title = "Beta / Early Access" if chan == "beta" else "Stable"
+        cur_v_str = f"v{current_ver}" if not str(current_ver).startswith("v") else str(current_ver)
+        latest_str = f"v{latest_tag}" if (latest_tag and not str(latest_tag).startswith("v")) else str(latest_tag)
+
         msg = QMessageBox(self)
         msg.setWindowTitle("Update Check Complete")
         msg.setWindowIcon(get_app_icon())
         theme_manager.apply_theme_to_window(msg, getattr(self.main_win.overlay, "theme_preference", "system"))
+
+        details_html = f"• <b>Active Channel:</b> {chan_title}<br>"
+        if latest_str:
+            details_html += f"• <b>Latest Release on {chan_title}:</b> <b>{latest_str}</b><br>"
+        details_html += f"• <b>Installed Version:</b> {get_clickable_version_html()}<br><br>"
+
+        is_preview = any(k in cur_v_str.lower() for k in ["beta", "rc", "alpha", "dev"])
+        if chan != "beta" and is_preview:
+            note_html = f"<i>You are currently running a preview build ({cur_v_str}). The latest release on the official stable channel is <b>{latest_str or 'v2.5.2'}</b>. There are no newer stable releases.</i>"
+        else:
+            note_html = f"<i>Successfully connected to GitHub releases. There are currently no newer releases available on the {chan_title.lower()} channel.</i>"
+
         msg.setText(
             f"<b>Streamer Calyx is up to date!</b><br><br>"
-            f"• <b>Active Channel:</b> {chan_title}<br>"
-            f"• <b>Installed Version:</b> {get_clickable_version_html()}<br><br>"
-            f"<i>Successfully connected to GitHub releases. There are currently no newer releases available on the {chan_title.lower()} channel.</i>"
+            f"{details_html}"
+            f"{note_html}"
         )
         msg.setTextFormat(Qt.TextFormat.RichText)
         msg.setStandardButtons(QMessageBox.StandardButton.Ok)
