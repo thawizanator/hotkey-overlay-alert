@@ -181,7 +181,7 @@ class BouncerValidator:
             return False, "Action must be a string", None
 
         action = action.upper().strip()
-        allowed_actions = {"SWITCH_SCENE", "TOGGLE_MUTE", "SET_VOLUME", "REQUEST_STATE", "PING"}
+        allowed_actions = {"SWITCH_SCENE", "TOGGLE_MUTE", "SET_VOLUME", "REQUEST_STATE", "PING", "SET_VISIBILITY"}
         if action not in allowed_actions:
             log_debug("BOUNCER", f"Unauthorized action rejected: '{action}' from {peer_id}")
             return False, f"Action '{action}' is not allowed", None
@@ -289,5 +289,10 @@ class BouncerValidator:
             except (ValueError, TypeError):
                 return False, "Volume must be a numeric value between 0.0 and 1.0", None
             return True, "Valid", {"action": action, "target": clean_target, "volume": volume}
+
+        # 4. Validate SET_VISIBILITY
+        elif action == "SET_VISIBILITY":
+            visible = bool(payload.get("visible", True))
+            return True, "Valid", {"action": action, "target": clean_target, "visible": visible}
 
         return False, "Unknown command format", None

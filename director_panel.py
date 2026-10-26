@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QFrame, QGridLayout, QApplication, QStyleOption, QStyle,
-    QMenu
+    QMenu, QSizeGrip
 )
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QIcon
 
@@ -22,8 +22,8 @@ class SceneCardButton(QPushButton):
         self.is_locked = False
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(84)
-        self.setMinimumWidth(100)
+        self.setFixedHeight(42)
+        self.setMinimumWidth(76)
         self._update_style()
 
     def set_active(self, active: bool):
@@ -122,28 +122,31 @@ class SceneCardButton(QPushButton):
 
     def _update_style(self):
         disp_name = self.scene_name
-        if len(disp_name) > 22:
-            disp_name = disp_name[:20] + "…"
+        if len(disp_name) > 13:
+            disp_name = disp_name[:12] + "…"
         if getattr(self, "is_locked", False):
+            self.setToolTip(f"🔒 {self.scene_name} (Permission locked)")
             self.setStyleSheet("""
                 QPushButton {
                     background-color: #121214;
                     color: #52525b;
                     border: 1px dashed #3f3f46;
                     border-radius: 6px;
-                    padding: 4px;
+                    padding: 2px 6px;
                     text-align: center;
                     font-weight: bold;
                     font-size: 11px;
                 }
             """)
-            self.setText(f"{disp_name}\n\n[🔒 LOCKED]")
+            self.setText(f"🔒 {disp_name}")
             return
+
+        self.setToolTip(f"{self.scene_name}\n(Click to switch | Right-click to swap)")
 
         bg = "#22222a" if self.is_active else "#141418"
         border_width = "3px" if self.is_active else "2px"
         border_color = self.accent_color
-        status_text = "● LIVE" if self.is_active else "READY"
+        status_dot = "● " if self.is_active else "🎬 "
         
         self.setStyleSheet(f"""
             QPushButton {{
@@ -151,7 +154,7 @@ class SceneCardButton(QPushButton):
                 color: #ffffff;
                 border: {border_width} solid {border_color};
                 border-radius: 6px;
-                padding: 4px;
+                padding: 2px 6px;
                 text-align: center;
                 font-weight: bold;
                 font-size: 11px;
@@ -161,7 +164,7 @@ class SceneCardButton(QPushButton):
                 border-color: #ffffff;
             }}
         """)
-        self.setText(f"{disp_name}\n\n[{status_text}]")
+        self.setText(f"{status_dot}{disp_name}")
 
 
 class AudioMuteButton(QPushButton):
@@ -326,6 +329,91 @@ class AudioMuteButton(QPushButton):
             }}
         """)
         self.setText(f"{disp_name}\n[{status_text}]")
+
+
+class ViewToggleButton(QPushButton):
+    """Toggle button for live scene source visibility (e.g., Legal-View, SandMan View)."""
+    toggled_visibility = pyqtSignal(str, bool)
+
+    def __init__(self, name: str, is_visible: bool = False, parent=None):
+        super().__init__(parent)
+        self.source_name = name
+        self.is_visible = is_visible
+        self.is_locked = False
+        self.setCheckable(True)
+        self.setChecked(is_visible)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(38)
+        self.setMinimumWidth(85)
+        self._update_style()
+        self.clicked.connect(self._on_click)
+
+    def _on_click(self):
+        if getattr(self, "is_locked", False):
+            return
+        new_vis = not self.is_visible
+        self.is_visible = new_vis
+        self.setChecked(new_vis)
+        self._update_style()
+        self.toggled_visibility.emit(self.source_name, new_vis)
+
+    def set_visibility_state(self, visible: bool):
+        self.is_visible = visible
+        self.blockSignals(True)
+        self.setChecked(visible)
+        self.blockSignals(False)
+        self._update_style()
+
+    def set_locked(self, locked: bool):
+        self.is_locked = locked
+        self.setEnabled(not locked)
+        self._update_style()
+
+    def _update_style(self):
+        disp_name = self.source_name
+        if len(disp_name) > 16:
+            disp_name = disp_name[:14] + "…"
+        if getattr(self, "is_locked", False):
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #121214;
+                    color: #52525b;
+                    border: 1px dashed #3f3f46;
+                    border-radius: 6px;
+                    padding: 2px 4px;
+                    font-size: 9px;
+                    font-weight: bold;
+                }
+            """)
+            self.setText(f"🔒 {disp_name}")
+            return
+
+        if self.is_visible:
+            bg = "#14291e"
+            border = "2px solid #22c55e"
+            color = "#4ade80"
+            status = "SHOW"
+        else:
+            bg = "#18181b"
+            border = "1px solid #3f3f46"
+            color = "#a1a1aa"
+            status = "HIDE"
+
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: {color};
+                border: {border};
+                border-radius: 6px;
+                padding: 2px 4px;
+                font-size: 9px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                border-color: #ffffff;
+            }}
+        """)
+        self.setText(f"👁️ {disp_name}\n[{status}]")
 
 
 class SmoothSlider(QSlider):
@@ -577,6 +665,7 @@ class DirectorPanelWindow(QWidget):
     scene_selected = pyqtSignal(int, str)
     audio_toggled = pyqtSignal(int, str, bool)
     volume_adjusted = pyqtSignal(int, str, int)
+    view_visibility_toggled = pyqtSignal(str, bool)
 
     DEFAULT_SCENES = [
         {"name": "Scene 1", "color": "#22c55e"},
@@ -622,6 +711,7 @@ class DirectorPanelWindow(QWidget):
         self.active_scene_index = 0
         self._drag_pos = None
 
+        self.view_toggle_buttons = {}
         self.pool_scenes = list(self.DEFAULT_SCENES)
         self.pool_audio = list(self.DEFAULT_AUDIO)
         self.pool_faders = [f["name"] for f in self.DEFAULT_FADERS]
@@ -638,6 +728,7 @@ class DirectorPanelWindow(QWidget):
         self.slobs_client.scene_switched.connect(self._on_slobs_scene_switched)
         self.slobs_client.audio_muted_changed.connect(self._on_slobs_audio_muted_changed)
         self.slobs_client.audio_volume_changed.connect(self._on_slobs_audio_volume_changed)
+        self.slobs_client.source_visibility_changed.connect(self._on_slobs_source_visibility_changed)
 
         if self.slobs_client.is_connected():
             self._on_slobs_connected()
@@ -758,9 +849,41 @@ class DirectorPanelWindow(QWidget):
         self.lay_scenes_row = QHBoxLayout()
         self.lay_scenes_row.setSpacing(6)
         lay_scenes_box.addLayout(self.lay_scenes_row)
-        content_row.addWidget(self.grp_scenes, 5)
+        content_row.addWidget(self.grp_scenes, 4)
 
-        # SECTION 2: AUDIO MUTE TOGGLES (2x3 Grid)
+        # SECTION 2: IN-GAME VIEW TOGGLES (SLOBS Source Visibility)
+        self.grp_view_toggles = QFrame()
+        self.grp_view_toggles.setObjectName("cardViewToggles")
+        self.grp_view_toggles.setStyleSheet("""
+            QFrame#cardViewToggles {
+                background-color: #121214;
+                border: 1px solid #27272a;
+                border-radius: 6px;
+                padding: 4px;
+            }
+        """)
+        lay_view_box = QVBoxLayout(self.grp_view_toggles)
+        lay_view_box.setContentsMargins(6, 4, 6, 4)
+        lay_view_box.setSpacing(4)
+
+        lbl_sec_views = QLabel("IN-GAME VIEWS")
+        lbl_sec_views.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_sec_views.setStyleSheet("font-size: 9px; font-weight: bold; color: #38bdf8; letter-spacing: 0.5px;")
+        lay_view_box.addWidget(lbl_sec_views)
+
+        self.lay_views_row = QHBoxLayout()
+        self.lay_views_row.setSpacing(6)
+        lay_view_box.addLayout(self.lay_views_row)
+
+        for v_name in ["Legal-View", "SandMan View"]:
+            btn_v = ViewToggleButton(v_name, is_visible=False, parent=self)
+            btn_v.toggled_visibility.connect(self._on_view_toggle_clicked)
+            self.lay_views_row.addWidget(btn_v)
+            self.view_toggle_buttons[v_name] = btn_v
+
+        content_row.addWidget(self.grp_view_toggles, 2)
+
+        # SECTION 3: AUDIO MUTE TOGGLES (2x3 Grid)
         self.grp_audio = QFrame()
         self.grp_audio.setObjectName("cardAudio")
         self.grp_audio.setStyleSheet("""
@@ -785,7 +908,7 @@ class DirectorPanelWindow(QWidget):
         lay_audio_box.addLayout(self.lay_audio_grid)
         content_row.addWidget(self.grp_audio, 3)
 
-        # SECTION 3: VOLUME ADJUST SLIDERS (3 Faders)
+        # SECTION 4: VOLUME ADJUST SLIDERS (Faders)
         self.grp_volume = QFrame()
         self.grp_volume.setObjectName("cardVolume")
         self.grp_volume.setStyleSheet("""
@@ -821,6 +944,11 @@ class DirectorPanelWindow(QWidget):
                 border-radius: 8px;
             }
         """)
+
+        # Add resize grip to bottom-right corner for frameless resizing
+        self.size_grip = QSizeGrip(self)
+        self.size_grip.setStyleSheet("background: transparent;")
+        self.size_grip.setFixedSize(14, 14)
 
         # Populate defaults
         self.load_configuration()
@@ -973,11 +1101,14 @@ class DirectorPanelWindow(QWidget):
             self._reflow_audio_grid()
 
     def _reflow_audio_grid(self):
-        """Reflows audio buttons evenly into a 2-row grid with dynamic columns."""
+        """Reflows visible audio buttons evenly into a 2-row grid with dynamic columns."""
         while self.lay_audio_grid.count():
             self.lay_audio_grid.takeAt(0)
-        cols = max(3, (len(self.audio_buttons) + 1) // 2)
-        for i, b in enumerate(self.audio_buttons):
+        visible_btns = [b for b in self.audio_buttons if not b.isHidden()]
+        if not visible_btns:
+            visible_btns = self.audio_buttons
+        cols = max(1, (len(visible_btns) + 1) // 2)
+        for i, b in enumerate(visible_btns):
             row = i // cols
             col = i % cols
             self.lay_audio_grid.addWidget(b, row, col)
@@ -1056,6 +1187,7 @@ class DirectorPanelWindow(QWidget):
                     raw_id=sc.get("id"),
                     parent=self
                 )
+                btn.scene_config = sc
                 if i == self.active_scene_index:
                     btn.set_active(True)
                 btn.clicked.connect(lambda chk, idx=i, b=btn: self._on_scene_clicked(idx, b.scene_name, b))
@@ -1067,6 +1199,7 @@ class DirectorPanelWindow(QWidget):
                 b.accent_color = sc.get("color", b.accent_color)
                 if sc.get("id"):
                     b.scene_raw_id = sc.get("id")
+                b.scene_config = sc
 
         # 2. Populate Audio Mute Toggles (Up to 8 in dynamic 2-row grid)
         audio = (audio or self.DEFAULT_AUDIO)[:8]
@@ -1116,6 +1249,12 @@ class DirectorPanelWindow(QWidget):
         self.re_evaluate_audio_states()
         self.re_evaluate_volume_states()
 
+        # 5. Trigger initial scene-aware reflow
+        cur_sc = self.scene_buttons[self.active_scene_index] if 0 <= self.active_scene_index < len(self.scene_buttons) else None
+        cur_name = cur_sc.scene_name if cur_sc else (getattr(self, "_active_scene_name", "") or "")
+        cur_id = getattr(cur_sc, "scene_raw_id", "") if cur_sc else (getattr(self, "_active_scene_id", "") or "")
+        self.reflow_for_active_scene(cur_name, cur_id)
+
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self._sync_with_slobs_state()
 
@@ -1123,6 +1262,7 @@ class DirectorPanelWindow(QWidget):
         self.active_scene_index = scene_id
         for b in self.scene_buttons:
             b.set_active(b == btn)
+        self.reflow_for_active_scene(name, getattr(btn, "scene_raw_id", ""))
         self.scene_selected.emit(scene_id, name)
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             target = getattr(btn, "scene_raw_id", None) or name
@@ -1137,6 +1277,80 @@ class DirectorPanelWindow(QWidget):
         self.volume_adjusted.emit(fid, name, val)
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self.slobs_client.set_audio_deflection(name, val / 100.0)
+
+    def _on_view_toggle_clicked(self, source_name: str, is_visible: bool):
+        self.view_visibility_toggled.emit(source_name, is_visible)
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            self.slobs_client.set_source_visibility(source_name, is_visible)
+
+    def _on_slobs_source_visibility_changed(self, source_name: str, is_visible: bool):
+        target = source_name.strip().lower()
+        for name, btn in self.view_toggle_buttons.items():
+            if name.strip().lower() == target or name.strip().lower() in target or target in name.strip().lower():
+                btn.set_visibility_state(is_visible)
+
+    def reflow_for_active_scene(self, scene_name: str, scene_id: str = ""):
+        """
+        Dynamically adjusts visible view toggles, audio mute buttons, and volume faders
+        based on the active scene's configuration.
+        """
+        sc_config = None
+        s_name_lower = (scene_name or "").strip().lower()
+        s_id_lower = (scene_id or "").strip().lower()
+
+        # Find matching scene config from scene_buttons or pool_scenes
+        for b in self.scene_buttons:
+            b_name = b.scene_name.strip().lower()
+            b_id = (getattr(b, "scene_raw_id", "") or "").strip().lower()
+            if (s_id_lower and b_id == s_id_lower) or (s_name_lower and (b_name == s_name_lower or b_name in s_name_lower or s_name_lower in b_name)):
+                sc_config = getattr(b, "scene_config", None)
+                break
+
+        if not sc_config and hasattr(self, "pool_scenes"):
+            for sc in self.pool_scenes:
+                p_name = sc.get("name", "").strip().lower()
+                p_id = (sc.get("id", "") or "").strip().lower()
+                if (s_id_lower and p_id == s_id_lower) or (s_name_lower and (p_name == s_name_lower or p_name in s_name_lower or s_name_lower in p_name)):
+                    sc_config = sc
+                    break
+
+        # 1. Scoping View Toggles (Only for In-Game scene)
+        if sc_config and "show_view_toggles" in sc_config:
+            show_views = bool(sc_config["show_view_toggles"])
+        else:
+            show_views = ("game" in s_name_lower) or ("play" in s_name_lower)
+
+        if hasattr(self, "grp_view_toggles") and self.grp_view_toggles:
+            self.grp_view_toggles.setVisible(show_views)
+
+        # 2. Scoping Audio Mute Buttons
+        allowed_audio = sc_config.get("audio_sources") if sc_config else None
+        is_break_or_start = any(k in s_name_lower for k in ["start", "brb", "break", "end", "be right"])
+
+        for b in self.audio_buttons:
+            if allowed_audio is not None and len(allowed_audio) > 0:
+                match = any(a.strip().lower() == b.audio_name.strip().lower() or a.strip().lower() in b.audio_name.strip().lower() or b.audio_name.strip().lower() in a.strip().lower() for a in allowed_audio)
+                b.setVisible(match)
+            elif is_break_or_start:
+                b.setVisible("spotify" in b.audio_name.lower() or "music" in b.audio_name.lower() or "vod" in b.audio_name.lower())
+            else:
+                b.setVisible(True)
+
+        self._reflow_audio_grid()
+
+        # 3. Scoping Volume Faders
+        allowed_faders = sc_config.get("faders") if sc_config else None
+        for f in self.volume_faders:
+            if allowed_faders is not None and len(allowed_faders) > 0:
+                match = any(a.strip().lower() == f.fader_name.strip().lower() or a.strip().lower() in f.fader_name.strip().lower() or f.fader_name.strip().lower() in a.strip().lower() for a in allowed_faders)
+                f.setVisible(match)
+            elif is_break_or_start:
+                f.setVisible("spotify" in f.fader_name.lower() or "music" in f.fader_name.lower() or "vod" in f.fader_name.lower())
+            else:
+                f.setVisible(True)
+
+        self.adjustSize()
+        self.reposition_above_taskbar()
 
     def _on_resync_clicked(self):
         """User clicked the re-sync button on the Director Panel dock."""
@@ -1161,7 +1375,7 @@ class DirectorPanelWindow(QWidget):
         self._active_scene_name = scene_name or ""
         target = (scene_name or "").strip().lower()
         target_id = (scene_id or "").strip().lower()
-        for b in self.scene_buttons:
+        for i, b in enumerate(self.scene_buttons):
             if getattr(b, "is_locked", False):
                 continue
             b_name = b.scene_name.strip().lower()
@@ -1172,6 +1386,9 @@ class DirectorPanelWindow(QWidget):
             elif b_name and target and (b_name == target or b_name in target or target in b_name):
                 is_match = True
             b.set_active(is_match)
+            if is_match:
+                self.active_scene_index = i
+        self.reflow_for_active_scene(scene_name, scene_id)
 
     def _on_slobs_audio_muted_changed(self, source_name_or_id, is_muted):
         target = source_name_or_id.strip().lower()
@@ -1205,6 +1422,11 @@ class DirectorPanelWindow(QWidget):
             vol = self.slobs_client.get_source_volume_percent(f.fader_name)
             f.set_value_silently(vol)
 
+        # 4. Sync view toggles
+        for name, btn in self.view_toggle_buttons.items():
+            vis = self.slobs_client.get_source_visibility(name)
+            btn.set_visibility_state(vis)
+
     def paintEvent(self, event):
         opt = QStyleOption()
         opt.initFrom(self)
@@ -1234,27 +1456,37 @@ class DirectorPanelWindow(QWidget):
             except Exception:
                 pass
 
-    def reposition_above_taskbar(self, monitor_index: int = 0):
+    def reposition_above_taskbar(self, monitor_index: int = -1):
         """Places the dock horizontally centered directly above the taskbar on the target screen."""
         screens = QApplication.screens()
         if not screens:
             return
-        idx = monitor_index if 0 <= monitor_index < len(screens) else 0
+        if monitor_index is not None and 0 <= monitor_index < len(screens):
+            self._current_monitor_index = monitor_index
+        idx = getattr(self, "_current_monitor_index", 0)
+        if idx < 0 or idx >= len(screens):
+            idx = 0
         screen = screens[idx]
         avail = screen.availableGeometry()
 
         self.adjustSize()
         hint = self.sizeHint()
-        dock_height = max(hint.height(), 154)
-        dock_width = min(1400, max(hint.width(), int(avail.width() * 0.96)))
-        if dock_width > avail.width():
-            dock_width = avail.width()
+        dock_height = max(hint.height(), 145)
+        
+        # Strictly clamp dock width so it never overflows the screen (especially narrow/vertical displays)
+        max_allowed_w = max(320, avail.width() - 16)
+        dock_width = min(max_allowed_w, max(hint.width(), 380))
         
         # Position X centered on that screen, Y right above the taskbar
         pos_x = avail.x() + (avail.width() - dock_width) // 2
         pos_y = avail.bottom() - dock_height + 1
 
         self.setGeometry(pos_x, pos_y, dock_width, dock_height)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "size_grip") and self.size_grip:
+            self.size_grip.move(self.width() - self.size_grip.width() - 2, self.height() - self.size_grip.height() - 2)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -1279,6 +1511,7 @@ class DirectorPanelWindow(QWidget):
                 self.slobs_client.scene_switched.disconnect(self._on_slobs_scene_switched)
                 self.slobs_client.audio_muted_changed.disconnect(self._on_slobs_audio_muted_changed)
                 self.slobs_client.audio_volume_changed.disconnect(self._on_slobs_audio_volume_changed)
+                self.slobs_client.source_visibility_changed.disconnect(self._on_slobs_source_visibility_changed)
         except Exception:
             pass
         self.panel_closed.emit()

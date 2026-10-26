@@ -31,6 +31,7 @@ class StreamlabsClient(QObject):
     audio_muted_changed = pyqtSignal(str, bool)    # (source_name_or_id, is_muted)
     audio_volume_changed = pyqtSignal(str, float)  # (source_name_or_id, deflection 0.0-1.0)
     source_updated = pyqtSignal(dict)              # source event dict
+    source_visibility_changed = pyqtSignal(str, bool) # (source_name_or_id, is_visible)
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -56,6 +57,8 @@ class StreamlabsClient(QObject):
         self._active_scene_id: Optional[str] = None
         self._active_scene_name: Optional[str] = None
         self._audio_cache: List[Dict[str, Any]] = []
+        self._scene_items_cache: List[Dict[str, Any]] = []
+        self._item_visibility_cache: Dict[str, bool] = {}
         self._pipe_unavailable_logged = False
         self._ws_unavailable_logged = False
 
@@ -264,6 +267,7 @@ class StreamlabsClient(QObject):
         self.fetch_scenes()
         self.fetch_active_scene()
         self.fetch_audio_sources()
+        self.fetch_active_scene_items()
 
         log_debug("SLOBS", "Connected to Streamlabs Desktop successfully via Named Pipe!")
         self.connected.emit()
@@ -277,6 +281,7 @@ class StreamlabsClient(QObject):
             ("sceneSwitched", "ScenesService"),
             ("sourceUpdated", "SourcesService"),
             ("audioSourceUpdated", "AudioService"),
+            ("itemUpdated", "ScenesService"),
         ]
 
         for method, resource in events:
@@ -380,6 +385,7 @@ class StreamlabsClient(QObject):
         self.fetch_scenes()
         self.fetch_active_scene()
         self.fetch_audio_sources()
+        self.fetch_active_scene_items()
 
         log_debug("SLOBS", "Connected to Streamlabs Desktop successfully via WebSocket!")
         self.connected.emit()
@@ -393,6 +399,7 @@ class StreamlabsClient(QObject):
             ("sceneSwitched", "ScenesService"),
             ("sourceUpdated", "SourcesService"),
             ("audioSourceUpdated", "AudioService"),
+            ("itemUpdated", "ScenesService"),
         ]
 
         for method, resource in events:
@@ -529,6 +536,8 @@ class StreamlabsClient(QObject):
             self._active_scene_id = sc_id
             self._active_scene_name = sc_name
             log_debug("SLOBS", f"EVENT: Scene Switched -> '{sc_name}' ({sc_id})")
+            # Refresh scene items for newly active scene
+            self.fetch_active_scene_items()
             self.scene_switched.emit(sc_id, sc_name)
 
         # 2. Source Updated (Mute or properties)
@@ -547,6 +556,24 @@ class StreamlabsClient(QObject):
             if isinstance(fader, dict) and "deflection" in fader:
                 deflection = float(fader.get("deflection", 1.0))
                 self.audio_volume_changed.emit(src_name or src_id, deflection)
+
+        # 3. Item Updated (Source visibility, etc.)
+        elif "itemUpdated" in res_id:
+            item_name = data.get("name", "")
+            item_id = data.get("id", "")
+            if "visible" in data:
+                is_vis = bool(data.get("visible"))
+                if item_name:
+                    self._item_visibility_cache[item_name] = is_vis
+                if item_id:
+                    self._item_visibility_cache[item_id] = is_vis
+                # Also update in _scene_items_cache
+                for it in self._scene_items_cache:
+                    if (item_name and it.get("name") == item_name) or (item_id and it.get("id") == item_id):
+                        it["visible"] = is_vis
+                        break
+                log_debug("SLOBS", f"EVENT: Item Visibility Updated -> '{item_name or item_id}': {is_vis}")
+                self.source_visibility_changed.emit(item_name or item_id, is_vis)
 
     def _check_watchdog(self):
         """Watchdog checks if connection is alive; if not, attempts reconnect."""
@@ -799,6 +826,92 @@ class StreamlabsClient(QObject):
                 deflection = fader.get("deflection", 0.75)
                 return int(round(deflection * 100))
         return 75
+
+    def fetch_active_scene_items(self) -> List[Dict[str, Any]]:
+        """Retrieves items in the active scene to populate scene items & visibility cache."""
+        active_sc = self._call_rpc("activeScene", "ScenesService")
+        if isinstance(active_sc, dict) and active_sc.get("resourceId"):
+            sc_res = active_sc.get("resourceId")
+            items = self._call_rpc("getItems", sc_res)
+            if isinstance(items, list):
+                self._scene_items_cache = items
+                for it in items:
+                    name = it.get("name")
+                    item_id = it.get("id")
+                    vis = bool(it.get("visible", False))
+                    if name:
+                        self._item_visibility_cache[name] = vis
+                    if item_id:
+                        self._item_visibility_cache[item_id] = vis
+                log_debug("SLOBS", f"Fetched {len(self._scene_items_cache)} items from active scene.")
+                return self._scene_items_cache
+        return []
+
+    def get_source_visibility(self, target_name_or_id: str) -> bool:
+        """Returns cached visibility state for a scene item/source."""
+        if not target_name_or_id:
+            return False
+        tgt_lower = target_name_or_id.strip().lower()
+        for k, v in self._item_visibility_cache.items():
+            if k.strip().lower() == tgt_lower:
+                return v
+        for it in self._scene_items_cache:
+            name = (it.get("name") or "").strip().lower()
+            sid = str(it.get("id") or "").strip().lower()
+            src_id = str(it.get("sourceId") or "").strip().lower()
+            if tgt_lower in (name, sid, src_id):
+                return bool(it.get("visible", False))
+        return False
+
+    def set_source_visibility(self, target_name_or_id: str, visible: bool) -> bool:
+        """Sets visibility (True/False) for a source/scene-item in Streamlabs Desktop."""
+        if not target_name_or_id:
+            return False
+
+        if self._mode == "webrtc_client":
+            if getattr(self, "_webrtc_mgr", None):
+                self._webrtc_mgr.send_command("SET_VISIBILITY", target=target_name_or_id, value=bool(visible))
+                self.source_visibility_changed.emit(target_name_or_id, bool(visible))
+                return True
+            return False
+
+        # Find matching item in scene items cache
+        item_res = None
+        tgt_lower = target_name_or_id.strip().lower()
+        for it in self._scene_items_cache:
+            name = (it.get("name") or "").strip().lower()
+            sid = str(it.get("id") or "").strip().lower()
+            src_id = str(it.get("sourceId") or "").strip().lower()
+            if tgt_lower in (name, sid, src_id):
+                item_res = it.get("resourceId")
+                break
+
+        if not item_res:
+            refreshed = self.fetch_active_scene_items()
+            for it in refreshed:
+                name = (it.get("name") or "").strip().lower()
+                sid = str(it.get("id") or "").strip().lower()
+                src_id = str(it.get("sourceId") or "").strip().lower()
+                if tgt_lower in (name, sid, src_id):
+                    item_res = it.get("resourceId")
+                    break
+
+        if not item_res:
+            log_debug("SLOBS", f"Could not find scene item matching '{target_name_or_id}' in active scene.")
+            return False
+
+        log_debug("SLOBS", f"Setting visibility={visible} on {item_res} ('{target_name_or_id}')")
+        res = self._call_rpc("setVisibility", item_res, [bool(visible)])
+        if res is not None or res is True:
+            self._item_visibility_cache[target_name_or_id] = bool(visible)
+            # Update cache entry
+            for it in self._scene_items_cache:
+                if (it.get("name") or "").strip().lower() == tgt_lower or str(it.get("id") or "").strip().lower() == tgt_lower:
+                    it["visible"] = bool(visible)
+                    break
+            self.source_visibility_changed.emit(target_name_or_id, bool(visible))
+            return True
+        return False
 
 
 # Global singleton client instance

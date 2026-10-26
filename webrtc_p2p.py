@@ -520,5 +520,7 @@ class WebRTCManager(QThread):
                 payload["volume"] = value
             elif action == "TOGGLE_MUTE":
                 payload["muted"] = value
+            elif action == "SET_VISIBILITY":
+                payload["visible"] = value
 
         self._send_on_channel(self._client_channel, payload)

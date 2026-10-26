@@ -53,13 +53,17 @@ class NoScrollComboBox(QComboBox):
         super().setCurrentText(text)
 
 class SceneEditDialog(QDialog):
-    """Dialog to add or modify a scene card with live Streamlabs scene selection."""
-    def __init__(self, name="New Scene", color_hex="#22c55e", available_scenes=None, scene_id=None, parent=None):
+    """Dialog to add or modify a scene card with live Streamlabs scene selection, view toggles, and scene audio channels."""
+    def __init__(self, name="New Scene", color_hex="#22c55e", available_scenes=None, scene_id=None,
+                 audio_sources=None, faders=None, show_view_toggles=None,
+                 available_audio=None, available_faders=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Configure Scene Card")
-        self.setFixedSize(360, 200)
+        self.setMinimumWidth(400)
         self.chosen_color = color_hex
         self.raw_id = scene_id or ""
+        self.available_audio = available_audio or []
+        self.available_faders = available_faders or []
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -97,6 +101,66 @@ class SceneEditDialog(QDialog):
         form.addRow("Border Color:", btn_row)
         layout.addLayout(form)
 
+        # In-Game View Toggles Checkbox
+        if show_view_toggles is None:
+            show_view_toggles = ("game" in name.lower()) or ("play" in name.lower())
+        self.chk_view_toggles = QCheckBox("Enable In-Game View Toggles (Legal-View / SandMan View)")
+        self.chk_view_toggles.setChecked(bool(show_view_toggles))
+        self.chk_view_toggles.setStyleSheet("font-weight: 600; color: #38bdf8; margin-top: 4px;")
+        layout.addWidget(self.chk_view_toggles)
+
+        # Scene-Aware Audio Mutes
+        grp_audio = QGroupBox("Active Audio Mutes for this Scene")
+        lay_audio_box = QVBoxLayout(grp_audio)
+        self.audio_checkboxes = {}
+        target_audios = set(audio_sources) if audio_sources is not None else None
+        
+        candidates = list(self.available_audio)
+        if not candidates:
+            candidates = ["Microphone (b1)", "Discord Audio (B2)", "Everyone (b3)", "Stopify Start & End"]
+        
+        grid_aud = QGridLayout()
+        for idx, a_name in enumerate(candidates):
+            chk = QCheckBox(a_name)
+            if target_audios is not None:
+                chk.setChecked(a_name in target_audios)
+            else:
+                is_start_brb = any(k in name.lower() for k in ["start", "brb", "break", "end", "be right"])
+                if is_start_brb:
+                    chk.setChecked("spotify" in a_name.lower() or "music" in a_name.lower() or "vod" in a_name.lower())
+                else:
+                    chk.setChecked(True)
+            self.audio_checkboxes[a_name] = chk
+            grid_aud.addWidget(chk, idx // 2, idx % 2)
+        lay_audio_box.addLayout(grid_aud)
+        layout.addWidget(grp_audio)
+
+        # Scene-Aware Volume Faders
+        grp_faders = QGroupBox("Active Volume Faders for this Scene")
+        lay_fader_box = QVBoxLayout(grp_faders)
+        self.fader_checkboxes = {}
+        target_faders = set(faders) if faders is not None else None
+        
+        f_candidates = list(self.available_faders)
+        if not f_candidates:
+            f_candidates = ["Everyone (b3)", "VOD Playlist", "Microphone (b1)", "Discord Audio (B2)", "Alerts"]
+        
+        grid_fad = QGridLayout()
+        for idx, f_name in enumerate(f_candidates):
+            chk = QCheckBox(f_name)
+            if target_faders is not None:
+                chk.setChecked(f_name in target_faders)
+            else:
+                is_start_brb = any(k in name.lower() for k in ["start", "brb", "break", "end", "be right"])
+                if is_start_brb:
+                    chk.setChecked("spotify" in f_name.lower() or "music" in f_name.lower() or "vod" in f_name.lower())
+                else:
+                    chk.setChecked(True)
+            self.fader_checkboxes[f_name] = chk
+            grid_fad.addWidget(chk, idx // 2, idx % 2)
+        lay_fader_box.addLayout(grid_fad)
+        layout.addWidget(grp_faders)
+
         btn_box = QHBoxLayout()
         btn_save = QPushButton("Save")
         btn_save.clicked.connect(self.accept)
@@ -112,6 +176,8 @@ class SceneEditDialog(QDialog):
             text = self.combo_scenes.currentText().replace("🎬 ", "")
             self.edit_name.setText(text)
             self.raw_id = self.combo_scenes.currentData() or ""
+            is_game = ("game" in text.lower()) or ("play" in text.lower())
+            self.chk_view_toggles.setChecked(is_game)
 
     def _pick_color(self):
         col = QColorDialog.getColor(QColor(self.chosen_color), self, "Select Scene Border Color")
@@ -123,7 +189,10 @@ class SceneEditDialog(QDialog):
         self.lbl_color_preview.setStyleSheet(f"background-color: {self.chosen_color}; border: 1px solid #ffffff; border-radius: 4px;")
 
     def get_data(self):
-        return self.edit_name.text().strip() or "Untitled Scene", self.chosen_color, self.raw_id
+        selected_audios = [name for name, chk in self.audio_checkboxes.items() if chk.isChecked()]
+        selected_faders = [name for name, chk in self.fader_checkboxes.items() if chk.isChecked()]
+        show_views = self.chk_view_toggles.isChecked()
+        return self.edit_name.text().strip() or "Untitled Scene", self.chosen_color, self.raw_id, selected_audios, selected_faders, show_views
 
 
 class AudioEditDialog(QDialog):
@@ -250,6 +319,7 @@ class DirectorTab(QWidget):
         self.slobs_client.audio_volume_changed.connect(self._broadcast_host_state_update)
         self.slobs_client.scenes_updated.connect(self._on_slobs_scenes_updated)
         self.slobs_client.audio_sources_updated.connect(self._on_slobs_audio_updated)
+        self.slobs_client.source_visibility_changed.connect(self._broadcast_host_state_update)
 
         self._is_loading = True
         self._build_ui()
@@ -1450,11 +1520,19 @@ class DirectorTab(QWidget):
 
         palette = ["#22c55e", "#0284c7", "#ea580c", "#a855f7", "#ef4444", "#eab308", "#06b6d4", "#ec4899"]
         self.scenes = []
+        avail_aud = [a.get("name") for a in self.audio_toggles]
+        avail_fad = [f.get("name") for f in self._get_fader_data()]
         for i, sc in enumerate(scenes[:8]):
+            s_name = sc.get("name", f"Scene {i+1}")
+            is_game = ("game" in s_name.lower()) or ("play" in s_name.lower())
+            is_start_brb = any(k in s_name.lower() for k in ["start", "brb", "break", "end", "be right"])
             self.scenes.append({
-                "name": sc.get("name", f"Scene {i+1}"),
+                "name": s_name,
                 "id": sc.get("id", ""),
-                "color": palette[i % len(palette)]
+                "color": palette[i % len(palette)],
+                "show_view_toggles": is_game,
+                "audio_sources": [a for a in avail_aud if "spotify" in a.lower() or "music" in a.lower() or "vod" in a.lower()] if is_start_brb else avail_aud,
+                "faders": [f for f in avail_fad if "spotify" in f.lower() or "music" in f.lower() or "vod" in f.lower()] if is_start_brb else avail_fad
             })
         self._refresh_scene_list_ui()
         self._on_settings_changed()
@@ -1525,10 +1603,30 @@ class DirectorTab(QWidget):
         avail = self.slobs_client.get_cached_scenes() if self.slobs_client else []
         palette = ["#22c55e", "#0284c7", "#ea580c", "#a855f7", "#ef4444", "#eab308", "#06b6d4", "#ec4899"]
         def_col = palette[len(self.scenes) % len(palette)]
-        dlg = SceneEditDialog(f"Scene {len(self.scenes)+1}", def_col, available_scenes=avail, parent=self)
+        avail_aud = [a.get("name") for a in self.audio_toggles]
+        avail_fad = [f.get("name") for f in self._get_fader_data()]
+        dlg = SceneEditDialog(
+            f"Scene {len(self.scenes)+1}", 
+            def_col, 
+            available_scenes=avail, 
+            available_audio=avail_aud,
+            available_faders=avail_fad,
+            parent=self
+        )
         if dlg.exec():
-            n, c, raw_id = dlg.get_data()
-            self.scenes.append({"name": n, "color": c, "id": raw_id})
+            data = dlg.get_data()
+            n, c, raw_id = data[0], data[1], data[2]
+            aud = data[3] if len(data) > 3 else []
+            fads = data[4] if len(data) > 4 else []
+            show_v = data[5] if len(data) > 5 else False
+            self.scenes.append({
+                "name": n, 
+                "color": c, 
+                "id": raw_id,
+                "audio_sources": aud,
+                "faders": fads,
+                "show_view_toggles": show_v
+            })
             self._refresh_scene_list_ui()
             self._on_settings_changed()
             if self.is_panel_open():
@@ -1547,10 +1645,34 @@ class DirectorTab(QWidget):
         if 0 <= row < len(self.scenes):
             sc = self.scenes[row]
             avail = self.slobs_client.get_cached_scenes() if self.slobs_client else []
-            dlg = SceneEditDialog(sc["name"], sc.get("color", "#22c55e"), available_scenes=avail, scene_id=sc.get("id"), parent=self)
+            avail_aud = [a.get("name") for a in self.audio_toggles]
+            avail_fad = [f.get("name") for f in self._get_fader_data()]
+            dlg = SceneEditDialog(
+                sc["name"], 
+                sc.get("color", "#22c55e"), 
+                available_scenes=avail, 
+                scene_id=sc.get("id"),
+                audio_sources=sc.get("audio_sources"),
+                faders=sc.get("faders"),
+                show_view_toggles=sc.get("show_view_toggles"),
+                available_audio=avail_aud,
+                available_faders=avail_fad,
+                parent=self
+            )
             if dlg.exec():
-                n, c, raw_id = dlg.get_data()
-                self.scenes[row] = {"name": n, "color": c, "id": raw_id}
+                data = dlg.get_data()
+                n, c, raw_id = data[0], data[1], data[2]
+                aud = data[3] if len(data) > 3 else []
+                fads = data[4] if len(data) > 4 else []
+                show_v = data[5] if len(data) > 5 else False
+                self.scenes[row] = {
+                    "name": n, 
+                    "color": c, 
+                    "id": raw_id,
+                    "audio_sources": aud,
+                    "faders": fads,
+                    "show_view_toggles": show_v
+                }
                 self._refresh_scene_list_ui()
                 self._on_settings_changed()
                 if self.is_panel_open():
@@ -1715,6 +1837,7 @@ class DirectorTab(QWidget):
             self.panel_window.panel_closed.connect(self._on_panel_closed)
             self.panel_window.settings_requested.connect(self._open_settings_from_panel)
             self.panel_window.resync_requested.connect(self._on_panel_resync_requested)
+            self.panel_window.view_visibility_toggled.connect(self._on_panel_view_visibility_toggled)
 
         fader_data = self._get_fader_data()
         perms = getattr(self, "_cached_client_permissions", None)
@@ -1839,6 +1962,11 @@ class DirectorTab(QWidget):
         log_debug("DIRECTOR", "Director Panel closed event received")
         self._set_launch_button_state(is_open=False)
         self.panel_window = None
+
+    def _on_panel_view_visibility_toggled(self, source_name: str, is_visible: bool):
+        log_debug("DIRECTOR", f"Panel view visibility toggled: {source_name} -> {is_visible}")
+        if self.client_webrtc and self.client_webrtc.isRunning():
+            self.client_webrtc.send_command("SET_VISIBILITY", source_name, is_visible)
 
     def _on_settings_changed(self):
         if getattr(self, "_is_loading", False):
@@ -2298,6 +2426,10 @@ class DirectorTab(QWidget):
             log_debug("HOST_BOUNCER", f"Executing validated SET_VOLUME -> '{target}' ({sanitized.get('volume')})")
             self.slobs_client.set_audio_deflection(target, sanitized.get("volume", 0.75))
             QTimer.singleShot(300, self._broadcast_host_state_update)
+        elif cmd_act == "SET_VISIBILITY":
+            log_debug("HOST_BOUNCER", f"Executing validated SET_VISIBILITY -> '{target}' ({sanitized.get('visible')})")
+            self.slobs_client.set_source_visibility(target, sanitized.get("visible", True))
+            QTimer.singleShot(300, self._broadcast_host_state_update)
         elif cmd_act == "REQUEST_STATE":
             log_debug("HOST_BOUNCER", f"Executing validated REQUEST_STATE from client {client_id}")
             self._broadcast_host_state_update()
@@ -2339,6 +2471,10 @@ class DirectorTab(QWidget):
                 "pool_audio": live_toggles,
                 "pool_faders": active_pool,
                 "audio_sources": self.slobs_client.get_cached_audio_sources(),
+                "view_toggles": {
+                    "Legal-View": self.slobs_client.get_source_visibility("Legal-View"),
+                    "SandMan View": self.slobs_client.get_source_visibility("SandMan View"),
+                },
                 "user_permissions": self.user_permissions
             }
             if self.bouncer:
@@ -2468,6 +2604,12 @@ class DirectorTab(QWidget):
             active_sc_id = state.get("active_scene_id", "")
             if active_sc or active_sc_id:
                 self.panel_window._on_slobs_scene_switched(active_sc_id, active_sc)
+
+            view_toggles = state.get("view_toggles", {})
+            if view_toggles:
+                for v_name, vis in view_toggles.items():
+                    if v_name in self.panel_window.view_toggle_buttons:
+                        self.panel_window.view_toggle_buttons[v_name].set_visibility_state(vis)
 
         self._update_slobs_status_ui()
 
