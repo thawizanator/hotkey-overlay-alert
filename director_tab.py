@@ -1520,8 +1520,9 @@ class DirectorTab(QWidget):
 
         palette = ["#22c55e", "#0284c7", "#ea580c", "#a855f7", "#ef4444", "#eab308", "#06b6d4", "#ec4899"]
         self.scenes = []
-        avail_aud = [a.get("name") for a in self.audio_toggles]
-        avail_fad = [f.get("name") for f in self._get_fader_data()]
+        view_names = {"legal-view", "sandman view"}
+        avail_aud = [a.get("name") for a in self.audio_toggles if a.get("name") and a.get("name").strip().lower() not in view_names]
+        avail_fad = [f.get("name") for f in self._get_fader_data() if f.get("name") and f.get("name").strip().lower() not in view_names]
         for i, sc in enumerate(scenes[:8]):
             s_name = sc.get("name", f"Scene {i+1}")
             is_game = ("game" in s_name.lower()) or ("play" in s_name.lower())
@@ -1568,7 +1569,7 @@ class DirectorTab(QWidget):
         cleaned_sources = []
         for s in sources:
             n = s.get("name", "").strip()
-            if n and n not in unique_names:
+            if n and n.lower() not in ("legal-view", "sandman view") and n not in unique_names:
                 unique_names.add(n)
                 cleaned_sources.append(s)
 

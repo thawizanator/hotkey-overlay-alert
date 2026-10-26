@@ -22,8 +22,8 @@ class SceneCardButton(QPushButton):
         self.is_locked = False
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(42)
-        self.setMinimumWidth(76)
+        self.setFixedHeight(34)
+        self.setMinimumWidth(68)
         self._update_style()
 
     def set_active(self, active: bool):
@@ -120,6 +120,22 @@ class SceneCardButton(QPushButton):
         if hasattr(panel, "_sync_with_slobs_state"):
             panel._sync_with_slobs_state()
 
+    @staticmethod
+    def _get_contrast_color(hex_color: str) -> str:
+        """Returns high-contrast text color ('#09090b' or '#ffffff') for a given background hex color."""
+        try:
+            c = hex_color.lstrip('#')
+            if len(c) == 6:
+                r = int(c[0:2], 16)
+                g = int(c[2:4], 16)
+                b = int(c[4:6], 16)
+                luminance = (r * 299 + g * 587 + b * 114) / 1000
+                if luminance > 160:
+                    return "#09090b"
+        except Exception:
+            pass
+        return "#ffffff"
+
     def _update_style(self):
         disp_name = self.scene_name
         if len(disp_name) > 13:
@@ -132,7 +148,7 @@ class SceneCardButton(QPushButton):
                     color: #52525b;
                     border: 1px dashed #3f3f46;
                     border-radius: 6px;
-                    padding: 2px 6px;
+                    padding: 2px 4px;
                     text-align: center;
                     font-weight: bold;
                     font-size: 11px;
@@ -143,24 +159,34 @@ class SceneCardButton(QPushButton):
 
         self.setToolTip(f"{self.scene_name}\n(Click to switch | Right-click to swap)")
 
-        bg = "#22222a" if self.is_active else "#141418"
-        border_width = "3px" if self.is_active else "2px"
-        border_color = self.accent_color
-        status_dot = "● " if self.is_active else "🎬 "
+        if self.is_active:
+            # Solid vibrant fill with the configured scene accent color and dynamic contrast text
+            bg = self.accent_color
+            border = "2px solid #ffffff"
+            text_color = self._get_contrast_color(self.accent_color)
+            status_dot = "● "
+            hover_bg = self.accent_color
+        else:
+            # Clean dark button with accent border
+            bg = "#141418"
+            border = f"2px solid {self.accent_color}"
+            text_color = "#e4e4e7"
+            status_dot = "🎬 "
+            hover_bg = "#22222a"
         
         self.setStyleSheet(f"""
             QPushButton {{
                 background-color: {bg};
-                color: #ffffff;
-                border: {border_width} solid {border_color};
+                color: {text_color};
+                border: {border};
                 border-radius: 6px;
-                padding: 2px 6px;
+                padding: 2px 4px;
                 text-align: center;
                 font-weight: bold;
                 font-size: 11px;
             }}
             QPushButton:hover {{
-                background-color: #2b2b36;
+                background-color: {hover_bg};
                 border-color: #ffffff;
             }}
         """)
@@ -171,10 +197,11 @@ class AudioMuteButton(QPushButton):
     """Toggle button for audio muting with red muted badge."""
     toggled_mute = pyqtSignal(int, bool)  # (audio_id, is_muted)
 
-    def __init__(self, audio_id, name, is_muted=False, parent=None):
+    def __init__(self, audio_id, name, is_muted=False, parent=None, raw_id=None):
         super().__init__(parent)
         self.audio_id = audio_id
         self.audio_name = name
+        self.audio_raw_id = raw_id
         self.is_muted = is_muted
         self.is_locked = False
         self.setCheckable(True)
@@ -846,9 +873,10 @@ class DirectorPanelWindow(QWidget):
         lbl_sec_scenes.setStyleSheet("font-size: 9px; font-weight: bold; color: #71717a; letter-spacing: 0.5px;")
         lay_scenes_box.addWidget(lbl_sec_scenes)
 
-        self.lay_scenes_row = QHBoxLayout()
-        self.lay_scenes_row.setSpacing(6)
-        lay_scenes_box.addLayout(self.lay_scenes_row)
+        self.lay_scenes_grid = QGridLayout()
+        self.lay_scenes_grid.setContentsMargins(0, 0, 0, 0)
+        self.lay_scenes_grid.setSpacing(4)
+        lay_scenes_box.addLayout(self.lay_scenes_grid)
         content_row.addWidget(self.grp_scenes, 4)
 
         # SECTION 2: IN-GAME VIEW TOGGLES (SLOBS Source Visibility)
@@ -1049,8 +1077,8 @@ class DirectorPanelWindow(QWidget):
             parent=self
         )
         btn.clicked.connect(lambda chk, i=idx, b=btn: self._on_scene_clicked(i, b.scene_name, b))
-        self.lay_scenes_row.addWidget(btn)
         self.scene_buttons.append(btn)
+        self._reflow_scenes_grid()
         self.re_evaluate_scene_states()
         if hasattr(self, "_active_scene_name") and self._active_scene_name:
             self._on_slobs_scene_switched(self._active_scene_id, self._active_scene_name)
@@ -1061,12 +1089,26 @@ class DirectorPanelWindow(QWidget):
             return
         if btn in self.scene_buttons:
             self.scene_buttons.remove(btn)
-            self.lay_scenes_row.removeWidget(btn)
+            self.lay_scenes_grid.removeWidget(btn)
             btn.hide()
             btn.setParent(None)
             btn.deleteLater()
             for i, b in enumerate(self.scene_buttons):
                 b.scene_id = i
+            self._reflow_scenes_grid()
+
+    def _reflow_scenes_grid(self):
+        """Reflows visible scene buttons evenly into a 2-row grid with dynamic columns."""
+        while self.lay_scenes_grid.count():
+            self.lay_scenes_grid.takeAt(0)
+        visible_btns = [b for b in self.scene_buttons if not b.isHidden()]
+        if not visible_btns:
+            visible_btns = self.scene_buttons
+        cols = max(2, (len(visible_btns) + 1) // 2)
+        for i, b in enumerate(visible_btns):
+            row = i // cols
+            col = i % cols
+            self.lay_scenes_grid.addWidget(b, row, col)
 
     def add_audio_slot(self):
         """Adds another audio mute slot (up to 8) populated from pool_audio."""
@@ -1077,7 +1119,7 @@ class DirectorPanelWindow(QWidget):
         candidate = next((a for a in self.pool_audio if a.get("name") not in active_names), None)
         if not candidate:
             candidate = {"name": f"Audio {idx+1}", "muted": False}
-        btn = AudioMuteButton(idx, candidate.get("name", f"Audio {idx+1}"), candidate.get("muted", False), self)
+        btn = AudioMuteButton(idx, candidate.get("name", f"Audio {idx+1}"), candidate.get("muted", False), self, raw_id=candidate.get("id"))
         btn.toggled_mute.connect(lambda aid, m, b=btn: self._on_audio_toggled(aid, b.audio_name, m))
         self.audio_buttons.append(btn)
         self._reflow_audio_grid()
@@ -1177,7 +1219,7 @@ class DirectorPanelWindow(QWidget):
             )
         )
         if not scenes_match:
-            self._clear_layout(self.lay_scenes_row)
+            self._clear_layout(self.lay_scenes_grid)
             self.scene_buttons.clear()
             for i, sc in enumerate(scenes):
                 btn = SceneCardButton(
@@ -1191,8 +1233,8 @@ class DirectorPanelWindow(QWidget):
                 if i == self.active_scene_index:
                     btn.set_active(True)
                 btn.clicked.connect(lambda chk, idx=i, b=btn: self._on_scene_clicked(idx, b.scene_name, b))
-                self.lay_scenes_row.addWidget(btn)
                 self.scene_buttons.append(btn)
+            self._reflow_scenes_grid()
         else:
             for i, sc in enumerate(scenes):
                 b = self.scene_buttons[i]
@@ -1214,7 +1256,7 @@ class DirectorPanelWindow(QWidget):
             self._clear_layout(self.lay_audio_grid)
             self.audio_buttons.clear()
             for i, a in enumerate(audio):
-                btn = AudioMuteButton(i, a.get("name", f"Audio {i+1}"), a.get("muted", False), self)
+                btn = AudioMuteButton(i, a.get("name", f"Audio {i+1}"), a.get("muted", False), self, raw_id=a.get("id"))
                 btn.toggled_mute.connect(lambda aid, m, b=btn: self._on_audio_toggled(aid, b.audio_name, m))
                 self.audio_buttons.append(btn)
             self._reflow_audio_grid()
@@ -1297,6 +1339,7 @@ class DirectorPanelWindow(QWidget):
         sc_config = None
         s_name_lower = (scene_name or "").strip().lower()
         s_id_lower = (scene_id or "").strip().lower()
+        sc_id_target = s_id_lower
 
         # Find matching scene config from scene_buttons or pool_scenes
         for b in self.scene_buttons:
@@ -1304,6 +1347,8 @@ class DirectorPanelWindow(QWidget):
             b_id = (getattr(b, "scene_raw_id", "") or "").strip().lower()
             if (s_id_lower and b_id == s_id_lower) or (s_name_lower and (b_name == s_name_lower or b_name in s_name_lower or s_name_lower in b_name)):
                 sc_config = getattr(b, "scene_config", None)
+                if not sc_id_target and b_id:
+                    sc_id_target = b_id
                 break
 
         if not sc_config and hasattr(self, "pool_scenes"):
@@ -1312,6 +1357,8 @@ class DirectorPanelWindow(QWidget):
                 p_id = (sc.get("id", "") or "").strip().lower()
                 if (s_id_lower and p_id == s_id_lower) or (s_name_lower and (p_name == s_name_lower or p_name in s_name_lower or s_name_lower in p_name)):
                     sc_config = sc
+                    if not sc_id_target and p_id:
+                        sc_id_target = p_id
                     break
 
         # 1. Scoping View Toggles (Only for In-Game scene)
@@ -1323,29 +1370,53 @@ class DirectorPanelWindow(QWidget):
         if hasattr(self, "grp_view_toggles") and self.grp_view_toggles:
             self.grp_view_toggles.setVisible(show_views)
 
-        # 2. Scoping Audio Mute Buttons
+        # 2. View Toggle Names that should NEVER be shown in audio buttons or faders
+        view_names = {"legal-view", "sandman view"}
+        if hasattr(self, "view_toggle_buttons"):
+            for vn in self.view_toggle_buttons.keys():
+                view_names.add(vn.strip().lower())
+
+        # 3. Scoping Audio Mute Buttons
         allowed_audio = sc_config.get("audio_sources") if sc_config else None
         is_break_or_start = any(k in s_name_lower for k in ["start", "brb", "break", "end", "be right"])
 
         for b in self.audio_buttons:
+            bn_lower = b.audio_name.strip().lower()
+            if bn_lower in view_names:
+                b.setVisible(False)
+                continue
+
             if allowed_audio is not None and len(allowed_audio) > 0:
-                match = any(a.strip().lower() == b.audio_name.strip().lower() or a.strip().lower() in b.audio_name.strip().lower() or b.audio_name.strip().lower() in a.strip().lower() for a in allowed_audio)
+                match = any(a.strip().lower() == bn_lower or a.strip().lower() in bn_lower or bn_lower in a.strip().lower() for a in allowed_audio)
                 b.setVisible(match)
             elif is_break_or_start:
-                b.setVisible("spotify" in b.audio_name.lower() or "music" in b.audio_name.lower() or "vod" in b.audio_name.lower())
+                b.setVisible("spotify" in bn_lower or "music" in bn_lower or "vod" in bn_lower)
+            elif hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+                target_sc_id = sc_id_target or getattr(self, "_active_scene_id", "")
+                in_scene = self.slobs_client.is_source_in_scene(b.audio_name, getattr(b, "audio_raw_id", ""), scene_id=target_sc_id)
+                b.setVisible(in_scene)
             else:
                 b.setVisible(True)
 
         self._reflow_audio_grid()
 
-        # 3. Scoping Volume Faders
+        # 4. Scoping Volume Faders
         allowed_faders = sc_config.get("faders") if sc_config else None
         for f in self.volume_faders:
+            fn_lower = f.fader_name.strip().lower()
+            if fn_lower in view_names:
+                f.setVisible(False)
+                continue
+
             if allowed_faders is not None and len(allowed_faders) > 0:
-                match = any(a.strip().lower() == f.fader_name.strip().lower() or a.strip().lower() in f.fader_name.strip().lower() or f.fader_name.strip().lower() in a.strip().lower() for a in allowed_faders)
+                match = any(a.strip().lower() == fn_lower or a.strip().lower() in fn_lower or fn_lower in a.strip().lower() for a in allowed_faders)
                 f.setVisible(match)
             elif is_break_or_start:
-                f.setVisible("spotify" in f.fader_name.lower() or "music" in f.fader_name.lower() or "vod" in f.fader_name.lower())
+                f.setVisible("spotify" in fn_lower or "music" in fn_lower or "vod" in fn_lower)
+            elif hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+                target_sc_id = sc_id_target or getattr(self, "_active_scene_id", "")
+                in_scene = self.slobs_client.is_source_in_scene(f.fader_name, scene_id=target_sc_id)
+                f.setVisible(in_scene)
             else:
                 f.setVisible(True)
 

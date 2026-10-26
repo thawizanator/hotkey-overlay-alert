@@ -59,6 +59,7 @@ class StreamlabsClient(QObject):
         self._audio_cache: List[Dict[str, Any]] = []
         self._scene_items_cache: List[Dict[str, Any]] = []
         self._item_visibility_cache: Dict[str, bool] = {}
+        self._scene_items_by_scene: Dict[str, List[Dict[str, Any]]] = {}
         self._pipe_unavailable_logged = False
         self._ws_unavailable_logged = False
 
@@ -832,9 +833,12 @@ class StreamlabsClient(QObject):
         active_sc = self._call_rpc("activeScene", "ScenesService")
         if isinstance(active_sc, dict) and active_sc.get("resourceId"):
             sc_res = active_sc.get("resourceId")
+            sc_id = active_sc.get("id") or self._active_scene_id or ""
             items = self._call_rpc("getItems", sc_res)
             if isinstance(items, list):
                 self._scene_items_cache = items
+                if sc_id:
+                    self._scene_items_by_scene[sc_id] = items
                 for it in items:
                     name = it.get("name")
                     item_id = it.get("id")
@@ -846,6 +850,52 @@ class StreamlabsClient(QObject):
                 log_debug("SLOBS", f"Fetched {len(self._scene_items_cache)} items from active scene.")
                 return self._scene_items_cache
         return []
+
+    def get_scene_items(self, scene_id: str = "") -> List[Dict[str, Any]]:
+        """Retrieves or returns cached items for a given scene ID (or active scene)."""
+        if not scene_id or scene_id == self._active_scene_id:
+            if not self._scene_items_cache:
+                self.fetch_active_scene_items()
+            return self._scene_items_cache
+
+        if hasattr(self, "_scene_items_by_scene") and scene_id in self._scene_items_by_scene:
+            return self._scene_items_by_scene[scene_id]
+
+        if not hasattr(self, "_scene_items_by_scene"):
+            self._scene_items_by_scene = {}
+
+        res_id = f'Scene["{scene_id}"]' if not scene_id.startswith("Scene[") else scene_id
+        items = self._call_rpc("getItems", res_id)
+        if isinstance(items, list):
+            self._scene_items_by_scene[scene_id] = items
+            return items
+        return []
+
+    def is_source_in_scene(self, target_name: str, target_id: str = "", scene_id: str = "") -> bool:
+        """Returns True if a source with matching name or ID exists in the given scene (or active scene)."""
+        items = self.get_scene_items(scene_id)
+        if not items:
+            return False
+        tgt_name_lower = (target_name or "").strip().lower()
+        tgt_id_lower = str(target_id or "").strip().lower()
+
+        scene_source_ids = {str(it.get("sourceId") or "").strip().lower() for it in items if it.get("sourceId")}
+        scene_item_ids = {str(it.get("id") or "").strip().lower() for it in items if it.get("id")}
+        scene_names = {(it.get("name") or "").strip().lower() for it in items if it.get("name")}
+
+        if tgt_id_lower and (tgt_id_lower in scene_source_ids or tgt_id_lower in scene_item_ids):
+            return True
+
+        if tgt_name_lower:
+            for sn in scene_names:
+                if tgt_name_lower == sn or tgt_name_lower in sn or sn in tgt_name_lower:
+                    return True
+
+        return False
+
+    def is_source_in_active_scene(self, target_name: str, target_id: str = "") -> bool:
+        """Helper to check if a source exists in the currently active scene."""
+        return self.is_source_in_scene(target_name, target_id, scene_id=self._active_scene_id or "")
 
     def get_source_visibility(self, target_name_or_id: str) -> bool:
         """Returns cached visibility state for a scene item/source."""
