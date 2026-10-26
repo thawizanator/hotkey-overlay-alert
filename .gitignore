@@ -17,6 +17,7 @@ ENV/
 # Local sensitive configuration & lock files
 config.json
 director_permissions.json
+soundboard_config.json
 app.lock
 *.lock
 

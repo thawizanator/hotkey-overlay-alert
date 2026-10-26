@@ -26,6 +26,8 @@ from chronos_tab import ChronosTab
 from cycler_tab import CyclerTab
 from director_tab import DirectorTab
 from hotkey_tab import HotkeysTab
+from soundboard_tab import SoundboardTab
+from soundboard_engine import SoundboardEngine
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -1439,7 +1441,8 @@ PAGE_TITLES = {
     5: "⏱️  Chronos Live Stream Timers",
     6: "📜  Rotating Text & Trivia Cycler",
     7: "🎬  Stream Director Panel",
-    8: "🎮  Unified Hotkeys & Peripherals"
+    8: "🎮  Unified Hotkeys & Peripherals",
+    9: "🔊  Soundboard & Audio Cues"
 }
 
 
@@ -1502,10 +1505,12 @@ class SettingsWindow(QWidget):
         self.btn_nav_chronos = self._create_nav_btn("⏱️  Chronos Timers", 5)
         self.btn_nav_trivia = self._create_nav_btn("📜  Rotating Text", 6)
         self.btn_nav_director = self._create_nav_btn("🎬  Stream Director", 7)
+        self.btn_nav_soundboard = self._create_nav_btn("🔊  Soundboard", 9)
         sidebar_layout.addWidget(self.btn_nav_twitch)
         sidebar_layout.addWidget(self.btn_nav_chronos)
         sidebar_layout.addWidget(self.btn_nav_trivia)
         sidebar_layout.addWidget(self.btn_nav_director)
+        sidebar_layout.addWidget(self.btn_nav_soundboard)
 
         # Category 3: SYSTEM & CONFIG
         lbl_cat_sys = QLabel("APP & CONFIG")
@@ -1613,6 +1618,13 @@ class SettingsWindow(QWidget):
         # Initialize Unified Hotkeys & Peripherals (Phase 5)
         self.tab_hotkeys = HotkeysTab(self)
         self.stacked_pages.addWidget(self.tab_hotkeys)           # 8
+
+        # Initialize Soundboard Suite (Phase 6)
+        soundboard_eng = getattr(self.overlay, "soundboard_engine", None)
+        if soundboard_eng is None:
+            soundboard_eng = SoundboardEngine(self)
+        self.tab_soundboard = SoundboardTab(self, soundboard_eng)
+        self.stacked_pages.addWidget(self.tab_soundboard)        # 9
 
         content_layout.addWidget(self.stacked_pages)
 

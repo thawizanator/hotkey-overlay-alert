@@ -63,6 +63,7 @@ from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_
 import theme_manager
 from chronos_engine import ChronosEngine
 from cycler_engine import CyclerEngine
+from soundboard_engine import SoundboardEngine
 from input_manager import InputManager
 
 def get_app_directory():
@@ -500,6 +501,7 @@ class RedBorderOverlay(QMainWindow):
         
         self.chronos_engine = ChronosEngine(self)
         self.cycler_engine = CyclerEngine(self)
+        self.soundboard_engine = SoundboardEngine(self)
         self.input_manager = InputManager(overlay=self, parent=self)
         self.input_manager.trigger_action.connect(self._handle_input_action)
         self.load_settings()
@@ -980,6 +982,15 @@ class RedBorderOverlay(QMainWindow):
                         log_debug("DIRECTOR", f"Toggled audio mute {aud_idx + 1} ({target} -> {new_state}) via hotkey/peripheral")
             except Exception as e:
                 log_debug("INPUT_ERR", f"Error dispatching audio mute {action_id}: {e}")
+        elif action_id == "soundboard_stop_all":
+            if hasattr(self, "soundboard_engine") and self.soundboard_engine:
+                self.soundboard_engine.stop_all()
+                log_debug("SOUNDBOARD", "Emergency silence: stopped all soundboard playback via hotkey/peripheral")
+        elif action_id.startswith("soundboard_clip_"):
+            clip_id = action_id.replace("soundboard_clip_", "")
+            if hasattr(self, "soundboard_engine") and self.soundboard_engine:
+                self.soundboard_engine.play_clip(clip_id)
+                log_debug("SOUNDBOARD", f"Played soundboard clip {clip_id} via hotkey/peripheral")
 
     def evaluate_macro_trigger(self, slot_index):
         if slot_index >= len(self.twitch_macros): return
