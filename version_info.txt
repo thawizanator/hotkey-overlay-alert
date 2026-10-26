@@ -1,8 +1,8 @@
 # UTF-8
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(3, 0, 0, 41),
-    prodvers=(3, 0, 0, 41),
+    filevers=(3, 0, 0, 42),
+    prodvers=(3, 0, 0, 42),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -18,13 +18,13 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'ThaWizanator'),
             StringStruct('FileDescription', 'Streamer Calyx'),
-            StringStruct('FileVersion', '3.0.0.41'),
+            StringStruct('FileVersion', '3.0.0.42'),
             StringStruct('InternalName', 'StreamerCalyx'),
             StringStruct('LegalCopyright', 'Copyright (c) 2026 ThaWizanator. All rights reserved.'),
             StringStruct('OriginalFilename', 'StreamerCalyx.exe'),
             StringStruct('ProductName', 'Streamer Calyx'),
-            StringStruct('ProductVersion', '3.0.0-beta.4.1 (d8a713d)'),
-            StringStruct('SpecialBuild', 'Commit d8a713d')
+            StringStruct('ProductVersion', '3.0.0-beta.4.2 (da6d655)'),
+            StringStruct('SpecialBuild', 'Commit da6d655')
           ]
         )
       ]
