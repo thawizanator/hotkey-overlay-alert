@@ -917,6 +917,12 @@ class StreamlabsClient(QObject):
                     return True
         return False
 
+    def get_cached_active_scene_items(self) -> List[dict]:
+        """Returns the cached scene items from the active scene, fetching if empty."""
+        if not self._scene_items_cache:
+            return self.fetch_active_scene_items()
+        return list(self._scene_items_cache)
+
     def set_source_visibility(self, target_name_or_id: str, visible: bool) -> bool:
         """Sets visibility (True/False) for all matching scene items/sources in Streamlabs Desktop."""
         if not target_name_or_id:

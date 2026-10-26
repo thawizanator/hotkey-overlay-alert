@@ -359,13 +359,14 @@ class AudioMuteButton(QPushButton):
 
 
 class ViewToggleButton(QPushButton):
-    """Toggle button for live scene source visibility (e.g., SandMan View, Legal-View)."""
+    """Toggle button for live scene source visibility & shortcuts (e.g., SandMan View, Legal-View)."""
     toggled_visibility = pyqtSignal(str, bool)
 
-    def __init__(self, name: str, is_visible: bool = False, hotkey_hint: str = "", parent=None):
+    def __init__(self, name: str, is_visible: bool = False, hotkey_hint: str = "", target_source: str = "", parent=None):
         super().__init__(parent)
         self.source_name = name
         self.hotkey_hint = hotkey_hint
+        self.target_source = target_source or name
         self.is_visible = is_visible
         self.is_locked = False
         self.setCheckable(True)
@@ -443,10 +444,11 @@ class ViewToggleButton(QPushButton):
         """)
         hint_label = f" · {self.hotkey_hint}" if getattr(self, "hotkey_hint", "") else ""
         self.setText(f"👁️ {disp_name}\n[{status}{hint_label}]")
+        src_info = f"\nTarget SLOBS Source: {self.target_source}" if getattr(self, "target_source", "") else ""
         if getattr(self, "hotkey_hint", ""):
-            self.setToolTip(f"{self.source_name} ({self.hotkey_hint})\nClick to fire hotkey & toggle visibility in SLOBS")
+            self.setToolTip(f"{self.source_name} ({self.hotkey_hint}){src_info}\nClick to fire hotkey & toggle visibility in SLOBS")
         else:
-            self.setToolTip(f"{self.source_name}\nClick to toggle visibility in SLOBS")
+            self.setToolTip(f"{self.source_name}{src_info}\nClick to toggle visibility in SLOBS")
 
 
 class SmoothSlider(QSlider):
@@ -989,7 +991,7 @@ class DirectorPanelWindow(QWidget):
 
     def _clear_layout(self, layout):
         """Safely removes and deletes all child widgets and items from a layout."""
-        if not layout:
+        if layout is None:
             return
         while layout.count():
             item = layout.takeAt(0)
@@ -1326,33 +1328,74 @@ class DirectorPanelWindow(QWidget):
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self.slobs_client.set_audio_deflection(name, val / 100.0)
 
-    def _fire_view_hotkey(self, source_name: str):
-        """Simulates the hotkey sequence configured in Streamlabs Desktop for the view."""
-        sn_lower = (source_name or "").strip().lower()
-        hotkey_str = None
+    def _fire_hotkey(self, hotkey_str: str, source_name: str = ""):
+        """Parses and simulates any hotkey combination (Ctrl, Alt, Shift, Win, Numpad, F-keys, letters, numbers)."""
+        if not hotkey_str:
+            return
+
+        hk_clean = hotkey_str.strip().lower().replace(' ', '').replace('+', ' ').split()
+        mods = []
+        main_key = None
+
+        for part in hk_clean:
+            if part in ('ctrl', 'control', 'lctrl', 'rctrl'):
+                mods.append(('ctrl', 0x11, 0x1D))
+            elif part in ('alt', 'lalt', 'ralt', 'menu'):
+                mods.append(('alt', 0x12, 0x38))
+            elif part in ('shift', 'lshift', 'rshift'):
+                mods.append(('shift', 0x10, 0x2A))
+            elif part in ('win', 'windows', 'lwin', 'rwin'):
+                mods.append(('win', 0x5B, 0x5B))
+            else:
+                main_key = part
+
         vk_code = None
         scan_code = None
 
-        if "sandman" in sn_lower:
-            hotkey_str = "ctrl+num 6"
-            vk_code = 0x66  # VK_NUMPAD6
-            scan_code = 0x4D  # Scan code for Numpad 6
-        elif "legal" in sn_lower:
-            hotkey_str = "ctrl+num 7"
-            vk_code = 0x67  # VK_NUMPAD7
-            scan_code = 0x47  # Scan code for Numpad 7
+        numpad_map = {
+            'num0': (0x60, 0x52), 'numpad0': (0x60, 0x52),
+            'num1': (0x61, 0x4F), 'numpad1': (0x61, 0x4F),
+            'num2': (0x62, 0x50), 'numpad2': (0x62, 0x50),
+            'num3': (0x63, 0x51), 'numpad3': (0x63, 0x51),
+            'num4': (0x64, 0x4B), 'numpad4': (0x64, 0x4B),
+            'num5': (0x65, 0x4C), 'numpad5': (0x65, 0x4C),
+            'num6': (0x66, 0x4D), 'numpad6': (0x66, 0x4D),
+            'num7': (0x67, 0x47), 'numpad7': (0x67, 0x47),
+            'num8': (0x68, 0x48), 'numpad8': (0x68, 0x48),
+            'num9': (0x69, 0x49), 'numpad9': (0x69, 0x49),
+        }
 
-        if not vk_code:
-            return
+        if main_key in numpad_map:
+            vk_code, scan_code = numpad_map[main_key]
+        elif sys.platform == "win32" and main_key:
+            try:
+                import ctypes
+                u = ctypes.windll.user32
+                if len(main_key) == 1 and 'a' <= main_key <= 'z':
+                    vk_code = ord(main_key.upper())
+                    scan_code = u.MapVirtualKeyW(vk_code, 0)
+                elif len(main_key) == 1 and '0' <= main_key <= '9':
+                    vk_code = ord(main_key)
+                    scan_code = u.MapVirtualKeyW(vk_code, 0)
+                elif main_key.startswith('f') and main_key[1:].isdigit():
+                    f_num = int(main_key[1:])
+                    if 1 <= f_num <= 24:
+                        vk_code = 0x70 + (f_num - 1)
+                        scan_code = u.MapVirtualKeyW(vk_code, 0)
+            except Exception:
+                pass
 
-        # 1. Fire via python keyboard library using hardware scan codes (LCTRL=29, Numpad=77 or 71)
+        # 1. Fire via python keyboard library
         try:
             import keyboard
-            keyboard.press(29)  # LCTRL scan code
-            keyboard.press(scan_code)
-            time.sleep(0.02)
-            keyboard.release(scan_code)
-            keyboard.release(29)
+            for m_name, m_vk, m_scan in mods:
+                keyboard.press(m_scan)
+            if scan_code:
+                keyboard.press(scan_code)
+                time.sleep(0.02)
+                keyboard.release(scan_code)
+            for m_name, m_vk, m_scan in reversed(mods):
+                keyboard.release(m_scan)
         except Exception:
             try:
                 import keyboard
@@ -1360,45 +1403,65 @@ class DirectorPanelWindow(QWidget):
             except Exception:
                 pass
 
-        # 2. Also simulate via Windows Win32 API keybd_event with scan codes and virtual keys
-        if sys.platform == "win32" and vk_code:
+        # 2. Fire via Windows Win32 API keybd_event
+        if sys.platform == "win32":
             try:
                 import ctypes
                 user32 = ctypes.windll.user32
-                VK_CONTROL = 0x11
                 KEYEVENTF_KEYUP = 0x0002
-                scan_ctrl = 0x1D
 
-                # Press Ctrl + Numpad
-                user32.keybd_event(VK_CONTROL, scan_ctrl, 0, 0)
-                time.sleep(0.01)
-                user32.keybd_event(vk_code, scan_code, 0, 0)
-                time.sleep(0.02)
-                # Release Numpad + Ctrl
-                user32.keybd_event(vk_code, scan_code, KEYEVENTF_KEYUP, 0)
-                time.sleep(0.01)
-                user32.keybd_event(VK_CONTROL, scan_ctrl, KEYEVENTF_KEYUP, 0)
+                for m_name, m_vk, m_scan in mods:
+                    user32.keybd_event(m_vk, m_scan, 0, 0)
+                    time.sleep(0.005)
+
+                if vk_code and scan_code:
+                    user32.keybd_event(vk_code, scan_code, 0, 0)
+                    time.sleep(0.02)
+                    user32.keybd_event(vk_code, scan_code, KEYEVENTF_KEYUP, 0)
+                    time.sleep(0.005)
+
+                for m_name, m_vk, m_scan in reversed(mods):
+                    user32.keybd_event(m_vk, m_scan, KEYEVENTF_KEYUP, 0)
+                    time.sleep(0.005)
             except Exception:
                 pass
 
+    def _fire_view_hotkey(self, source_name: str):
+        """Simulates the hotkey sequence configured in Streamlabs Desktop for the view."""
+        sn_lower = (source_name or "").strip().lower()
+        if "sandman" in sn_lower:
+            self._fire_hotkey("ctrl+num 6", source_name)
+        elif "legal" in sn_lower:
+            self._fire_hotkey("ctrl+num 7", source_name)
+
     def _on_view_toggle_clicked(self, source_name: str, is_visible: bool):
+        btn = self.view_toggle_buttons.get(source_name)
+        hotkey_hint = getattr(btn, "hotkey_hint", "") if btn else ""
+        target_source = getattr(btn, "target_source", source_name) if btn else source_name
+
         self.view_visibility_toggled.emit(source_name, is_visible)
-        # 1. Fire the configured hotkey sequence (Ctrl + Num6 / Ctrl + Num7)
-        self._fire_view_hotkey(source_name)
-        # 2. Also set visibility directly via live SLOBS RPC for all matching view items
-        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
-            self.slobs_client.set_source_visibility(source_name, is_visible)
+
+        # 1. Fire the configured hotkey sequence
+        if hotkey_hint:
+            self._fire_hotkey(hotkey_hint, target_source)
+        else:
+            self._fire_view_hotkey(source_name)
+
+        # 2. Also set visibility directly via live SLOBS RPC for target source
+        if target_source and hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            self.slobs_client.set_source_visibility(target_source, is_visible)
 
     def _on_slobs_source_visibility_changed(self, source_name: str, is_visible: bool):
         target = source_name.strip().lower()
         for name, btn in self.view_toggle_buttons.items():
             btn_lower = name.strip().lower()
+            src_target = getattr(btn, "target_source", "").strip().lower()
             is_match = False
-            if btn_lower == target or btn_lower in target or target in btn_lower:
+            if target in (btn_lower, src_target) or (src_target and (src_target in target or target in src_target)):
                 is_match = True
-            elif "legal" in btn_lower and "legal" in target:
+            elif "legal" in target and ("legal" in btn_lower or "legal" in src_target):
                 is_match = True
-            elif "sandman" in btn_lower and "sandman" in target:
+            elif "sandman" in target and ("sandman" in btn_lower or "sandman" in src_target):
                 is_match = True
 
             if is_match:
@@ -1434,20 +1497,61 @@ class DirectorPanelWindow(QWidget):
                         sc_id_target = p_id
                     break
 
-        # 1. Scoping View Toggles (Only for In-Game scene)
-        if sc_config and "show_view_toggles" in sc_config:
-            show_views = bool(sc_config["show_view_toggles"])
-        else:
-            show_views = ("game" in s_name_lower) or ("play" in s_name_lower)
+        # 1. Scoping View Toggles & Dynamic Scene Hotkeys
+        scene_hotkeys = sc_config.get("hotkeys") if sc_config else None
+        if scene_hotkeys is None:
+            # Backwards compatibility fallback for in-game scenes
+            if sc_config and sc_config.get("show_view_toggles"):
+                scene_hotkeys = [
+                    {"name": "SandMan View", "hotkey": "Ctrl+Num6", "source": "SandMan View"},
+                    {"name": "Legal-View", "hotkey": "Ctrl+Num7", "source": "Legal-View"}
+                ]
+            elif ("game" in s_name_lower) or ("play" in s_name_lower):
+                scene_hotkeys = [
+                    {"name": "SandMan View", "hotkey": "Ctrl+Num6", "source": "SandMan View"},
+                    {"name": "Legal-View", "hotkey": "Ctrl+Num7", "source": "Legal-View"}
+                ]
+            else:
+                scene_hotkeys = []
 
+        show_views = len(scene_hotkeys) > 0
         if hasattr(self, "grp_view_toggles") and self.grp_view_toggles:
             self.grp_view_toggles.setVisible(show_views)
+
+        # Dynamically synchronize buttons in self.lay_views_row
+        if hasattr(self, "lay_views_row") and self.lay_views_row is not None:
+            current_keys = [
+                (b.source_name, getattr(b, "hotkey_hint", ""), getattr(b, "target_source", ""))
+                for b in self.view_toggle_buttons.values()
+            ]
+            target_keys = [
+                (hk.get("name", "Shortcut"), hk.get("hotkey", ""), hk.get("source", hk.get("name", "Shortcut")))
+                for hk in scene_hotkeys
+            ]
+            if current_keys != target_keys:
+                self._clear_layout(self.lay_views_row)
+                self.view_toggle_buttons.clear()
+                for hk in scene_hotkeys:
+                    v_name = hk.get("name", "Shortcut")
+                    v_hint = hk.get("hotkey", "")
+                    v_source = hk.get("source", v_name)
+                    btn_v = ViewToggleButton(v_name, is_visible=False, hotkey_hint=v_hint, target_source=v_source, parent=self)
+                    btn_v.toggled_visibility.connect(self._on_view_toggle_clicked)
+                    self.lay_views_row.addWidget(btn_v)
+                    self.view_toggle_buttons[v_name] = btn_v
+                    if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected() and v_source:
+                        vis = self.slobs_client.get_source_visibility(v_source)
+                        btn_v.set_visibility_state(vis)
 
         # 2. View Toggle Names that should NEVER be shown in audio buttons or faders
         view_names = {"legal-view", "sandman view"}
         if hasattr(self, "view_toggle_buttons"):
             for vn in self.view_toggle_buttons.keys():
                 view_names.add(vn.strip().lower())
+                btn_obj = self.view_toggle_buttons[vn]
+                ts = getattr(btn_obj, "target_source", "")
+                if ts:
+                    view_names.add(ts.strip().lower())
 
         # 3. Scoping Audio Mute Buttons
         allowed_audio = sc_config.get("audio_sources") if sc_config else None
@@ -1568,8 +1672,10 @@ class DirectorPanelWindow(QWidget):
 
         # 4. Sync view toggles
         for name, btn in self.view_toggle_buttons.items():
-            vis = self.slobs_client.get_source_visibility(name)
-            btn.set_visibility_state(vis)
+            target_src = getattr(btn, "target_source", "") or name
+            if target_src:
+                vis = self.slobs_client.get_source_visibility(target_src)
+                btn.set_visibility_state(vis)
 
     def paintEvent(self, event):
         opt = QStyleOption()

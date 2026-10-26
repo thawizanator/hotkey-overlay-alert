@@ -52,18 +52,199 @@ class NoScrollComboBox(QComboBox):
             self.insertItem(insert_idx, text)
         super().setCurrentText(text)
 
+class SceneHotkeyEditDialog(QDialog):
+    """Dialog to create or edit a per-scene shortcut / hotkey toggle for the Director Panel."""
+    def __init__(self, name="New Shortcut", hotkey="Ctrl+Num1", target_source="", available_sources=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure Scene Shortcut")
+        self.setMinimumWidth(380)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        form = QFormLayout()
+
+        self.edit_name = QLineEdit(name)
+        self.edit_name.setPlaceholderText("e.g. SandMan View, Cam 2, Meme Overlay")
+        form.addRow("Button Name:", self.edit_name)
+
+        self.edit_hotkey = QLineEdit(hotkey)
+        self.edit_hotkey.setPlaceholderText("e.g. Ctrl+Num6, Ctrl+Num7, Alt+F1")
+        form.addRow("Hotkey Sequence:", self.edit_hotkey)
+
+        self.combo_source = NoScrollComboBox()
+        self.combo_source.setEditable(True)
+        self.combo_source.addItem("-- Pure Hotkey Only (No SLOBS Source) --", "")
+        if available_sources:
+            for s in available_sources:
+                s_name = s if isinstance(s, str) else s.get("name", "")
+                if s_name:
+                    self.combo_source.addItem(f"👁️ {s_name}", s_name)
+        if target_source:
+            idx = -1
+            for i in range(self.combo_source.count()):
+                if self.combo_source.itemData(i) == target_source or self.combo_source.itemText(i).replace("👁️ ", "") == target_source:
+                    idx = i
+                    break
+            if idx >= 0:
+                self.combo_source.setCurrentIndex(idx)
+            else:
+                self.combo_source.setEditText(target_source)
+        form.addRow("SLOBS Source (Optional):", self.combo_source)
+
+        layout.addLayout(form)
+
+        lbl_hint = QLabel("💡 <i>If SLOBS Source is set, clicking this button in the dock toggles visibility of that source in Streamlabs Desktop while also simulating the hotkey.</i>")
+        lbl_hint.setStyleSheet("font-size: 10px; color: #a1a1aa;")
+        lbl_hint.setWordWrap(True)
+        layout.addWidget(lbl_hint)
+
+        btn_box = QHBoxLayout()
+        btn_save = QPushButton("Save")
+        btn_save.clicked.connect(self.accept)
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(self.reject)
+        btn_box.addStretch()
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_save)
+        layout.addLayout(btn_box)
+
+    def get_data(self):
+        name = self.edit_name.text().strip() or "Shortcut"
+        hotkey = self.edit_hotkey.text().strip() or "Ctrl+Num1"
+        src_raw = self.combo_source.currentData()
+        if src_raw is None or src_raw == "":
+            src_text = self.combo_source.currentText().replace("👁️ ", "").strip()
+            if "-- Pure Hotkey" in src_text:
+                target_source = ""
+            else:
+                target_source = src_text
+        else:
+            target_source = str(src_raw)
+        return {
+            "name": name,
+            "hotkey": hotkey,
+            "source": target_source
+        }
+
+
+class GlobalSceneHotkeyEditDialog(QDialog):
+    """Dialog to create or edit a shortcut and choose which Scene it belongs to."""
+    def __init__(self, scenes=None, selected_scene_idx=0, name="New Shortcut", hotkey="Ctrl+Num1", target_source="", available_sources=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure Scene Shortcut")
+        self.setMinimumWidth(380)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        form = QFormLayout()
+
+        self.combo_scene = NoScrollComboBox()
+        for idx, sc in enumerate(scenes or []):
+            sc_name = sc.get("name", f"Scene {idx+1}")
+            self.combo_scene.addItem(f"🎬 {sc_name}", idx)
+        if 0 <= selected_scene_idx < self.combo_scene.count():
+            self.combo_scene.setCurrentIndex(selected_scene_idx)
+        form.addRow("Belongs to Scene:", self.combo_scene)
+
+        self.edit_name = QLineEdit(name)
+        self.edit_name.setPlaceholderText("e.g. SandMan View, Cam 2, Meme Overlay")
+        form.addRow("Button Name:", self.edit_name)
+
+        self.edit_hotkey = QLineEdit(hotkey)
+        self.edit_hotkey.setPlaceholderText("e.g. Ctrl+Num6, Ctrl+Num7, Alt+F1")
+        form.addRow("Hotkey Sequence:", self.edit_hotkey)
+
+        self.combo_source = NoScrollComboBox()
+        self.combo_source.setEditable(True)
+        self.combo_source.addItem("-- Pure Hotkey Only (No SLOBS Source) --", "")
+        if available_sources:
+            for s in available_sources:
+                s_name = s if isinstance(s, str) else s.get("name", "")
+                if s_name:
+                    self.combo_source.addItem(f"👁️ {s_name}", s_name)
+        if target_source:
+            idx = -1
+            for i in range(self.combo_source.count()):
+                if self.combo_source.itemData(i) == target_source or self.combo_source.itemText(i).replace("👁️ ", "") == target_source:
+                    idx = i
+                    break
+            if idx >= 0:
+                self.combo_source.setCurrentIndex(idx)
+            else:
+                self.combo_source.setEditText(target_source)
+        form.addRow("SLOBS Source (Optional):", self.combo_source)
+
+        layout.addLayout(form)
+
+        lbl_hint = QLabel("💡 <i>When this scene is active on the Director Dock, this shortcut button will appear. Clicking it fires the hotkey and toggles the source.</i>")
+        lbl_hint.setStyleSheet("font-size: 10px; color: #a1a1aa;")
+        lbl_hint.setWordWrap(True)
+        layout.addWidget(lbl_hint)
+
+        btn_box = QHBoxLayout()
+        btn_save = QPushButton("Save")
+        btn_save.clicked.connect(self.accept)
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(self.reject)
+        btn_box.addStretch()
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_save)
+        layout.addLayout(btn_box)
+
+    def get_data(self):
+        scene_idx = self.combo_scene.currentData()
+        name = self.edit_name.text().strip() or "Shortcut"
+        hotkey = self.edit_hotkey.text().strip() or "Ctrl+Num1"
+        src_raw = self.combo_source.currentData()
+        if src_raw is None or src_raw == "":
+            src_text = self.combo_source.currentText().replace("👁️ ", "").strip()
+            if "-- Pure Hotkey" in src_text:
+                target_source = ""
+            else:
+                target_source = src_text
+        else:
+            target_source = str(src_raw)
+        return scene_idx, {
+            "name": name,
+            "hotkey": hotkey,
+            "source": target_source
+        }
+
+
 class SceneEditDialog(QDialog):
-    """Dialog to add or modify a scene card with live Streamlabs scene selection, view toggles, and scene audio channels."""
+    """Dialog to add or modify a scene card with live Streamlabs scene selection, view toggles, scene audio channels, and per-scene hotkeys."""
     def __init__(self, name="New Scene", color_hex="#22c55e", available_scenes=None, scene_id=None,
                  audio_sources=None, faders=None, show_view_toggles=None,
-                 available_audio=None, available_faders=None, parent=None):
+                 available_audio=None, available_faders=None, hotkeys=None,
+                 available_sources=None, parent=None):
         super().__init__(parent)
+        if isinstance(name, dict):
+            sc_data = name
+            name = sc_data.get("name", "New Scene")
+            color_hex = sc_data.get("color", color_hex)
+            scene_id = sc_data.get("id", scene_id)
+            audio_sources = sc_data.get("audio_sources", audio_sources)
+            faders = sc_data.get("faders", faders)
+            show_view_toggles = sc_data.get("show_view_toggles", show_view_toggles)
+            hotkeys = sc_data.get("hotkeys", hotkeys)
+
         self.setWindowTitle("Configure Scene Card")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(440)
         self.chosen_color = color_hex
         self.raw_id = scene_id or ""
         self.available_audio = available_audio or []
         self.available_faders = available_faders or []
+        self.available_sources = available_sources or []
+        self.hotkeys = [dict(hk) for hk in hotkeys] if hotkeys is not None else []
+
+        s_name_str = str(name or "")
+        if not self.hotkeys and (show_view_toggles or ("game" in s_name_str.lower()) or ("play" in s_name_str.lower())):
+            self.hotkeys = [
+                {"name": "SandMan View", "hotkey": "Ctrl+Num6", "source": "SandMan View"},
+                {"name": "Legal-View", "hotkey": "Ctrl+Num7", "source": "Legal-View"}
+            ]
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -101,13 +282,42 @@ class SceneEditDialog(QDialog):
         form.addRow("Border Color:", btn_row)
         layout.addLayout(form)
 
-        # In-Game View Toggles Checkbox
-        if show_view_toggles is None:
-            show_view_toggles = ("game" in name.lower()) or ("play" in name.lower())
-        self.chk_view_toggles = QCheckBox("Enable In-Game View Toggles (Legal-View / SandMan View)")
-        self.chk_view_toggles.setChecked(bool(show_view_toggles))
-        self.chk_view_toggles.setStyleSheet("font-weight: 600; color: #38bdf8; margin-top: 4px;")
-        layout.addWidget(self.chk_view_toggles)
+        # Scene Shortcuts & SLOBS Hotkeys (Dock Buttons)
+        grp_hk = QGroupBox("Scene Shortcuts & SLOBS Hotkeys (Dock Buttons)")
+        lay_hk_box = QVBoxLayout(grp_hk)
+        lay_hk_box.setSpacing(4)
+        self.list_scene_hotkeys = QListWidget()
+        self.list_scene_hotkeys.setFixedHeight(75)
+        self.list_scene_hotkeys.setStyleSheet("""
+            QListWidget {
+                font-size: 11px;
+                border: 1px solid #27272a;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 2px 4px;
+            }
+        """)
+        lay_hk_box.addWidget(self.list_scene_hotkeys)
+        self._refresh_hotkeys_list()
+
+        hk_btn_row = QHBoxLayout()
+        hk_btn_row.setSpacing(6)
+        btn_add_hk = QPushButton("➕ Add Shortcut")
+        btn_add_hk.setStyleSheet("font-size: 10px; padding: 2px 6px; font-weight: 500;")
+        btn_add_hk.clicked.connect(self._add_scene_hotkey)
+        btn_edit_hk = QPushButton("✏️ Edit")
+        btn_edit_hk.setStyleSheet("font-size: 10px; padding: 2px 6px;")
+        btn_edit_hk.clicked.connect(self._edit_scene_hotkey)
+        btn_rem_hk = QPushButton("🗑️ Remove")
+        btn_rem_hk.setStyleSheet("font-size: 10px; padding: 2px 6px;")
+        btn_rem_hk.clicked.connect(self._remove_scene_hotkey)
+        hk_btn_row.addWidget(btn_add_hk)
+        hk_btn_row.addWidget(btn_edit_hk)
+        hk_btn_row.addWidget(btn_rem_hk)
+        hk_btn_row.addStretch()
+        lay_hk_box.addLayout(hk_btn_row)
+        layout.addWidget(grp_hk)
 
         # Scene-Aware Audio Mutes
         grp_audio = QGroupBox("Active Audio Mutes for this Scene")
@@ -171,13 +381,62 @@ class SceneEditDialog(QDialog):
         btn_box.addWidget(btn_save)
         layout.addLayout(btn_box)
 
+    def _refresh_hotkeys_list(self):
+        self.list_scene_hotkeys.clear()
+        for hk in self.hotkeys:
+            n = hk.get("name", "Shortcut")
+            seq = hk.get("hotkey", "")
+            src = hk.get("source", "")
+            src_desc = f" ➔ {src}" if src else " (pure hotkey)"
+            self.list_scene_hotkeys.addItem(f"👁️ {n} [{seq}]{src_desc}")
+
+    def _add_scene_hotkey(self):
+        if len(self.hotkeys) >= 4:
+            QMessageBox.information(self, "Limit Reached", "A maximum of 4 shortcuts can be configured per scene.")
+            return
+        dlg = SceneHotkeyEditDialog(
+            name=f"Shortcut {len(self.hotkeys)+1}",
+            hotkey="Ctrl+Num1",
+            available_sources=self.available_sources,
+            parent=self
+        )
+        if dlg.exec():
+            self.hotkeys.append(dlg.get_data())
+            self._refresh_hotkeys_list()
+
+    def _edit_scene_hotkey(self):
+        row = self.list_scene_hotkeys.currentRow()
+        if 0 <= row < len(self.hotkeys):
+            hk = self.hotkeys[row]
+            dlg = SceneHotkeyEditDialog(
+                name=hk.get("name", "Shortcut"),
+                hotkey=hk.get("hotkey", "Ctrl+Num1"),
+                target_source=hk.get("source", ""),
+                available_sources=self.available_sources,
+                parent=self
+            )
+            if dlg.exec():
+                self.hotkeys[row] = dlg.get_data()
+                self._refresh_hotkeys_list()
+
+    def _remove_scene_hotkey(self):
+        row = self.list_scene_hotkeys.currentRow()
+        if 0 <= row < len(self.hotkeys):
+            self.hotkeys.pop(row)
+            self._refresh_hotkeys_list()
+
     def _on_scene_combo_changed(self, idx):
         if idx > 0:
             text = self.combo_scenes.currentText().replace("🎬 ", "")
             self.edit_name.setText(text)
             self.raw_id = self.combo_scenes.currentData() or ""
             is_game = ("game" in text.lower()) or ("play" in text.lower())
-            self.chk_view_toggles.setChecked(is_game)
+            if is_game and not self.hotkeys:
+                self.hotkeys = [
+                    {"name": "SandMan View", "hotkey": "Ctrl+Num6", "source": "SandMan View"},
+                    {"name": "Legal-View", "hotkey": "Ctrl+Num7", "source": "Legal-View"}
+                ]
+                self._refresh_hotkeys_list()
 
     def _pick_color(self):
         col = QColorDialog.getColor(QColor(self.chosen_color), self, "Select Scene Border Color")
@@ -191,8 +450,16 @@ class SceneEditDialog(QDialog):
     def get_data(self):
         selected_audios = [name for name, chk in self.audio_checkboxes.items() if chk.isChecked()]
         selected_faders = [name for name, chk in self.fader_checkboxes.items() if chk.isChecked()]
-        show_views = self.chk_view_toggles.isChecked()
-        return self.edit_name.text().strip() or "Untitled Scene", self.chosen_color, self.raw_id, selected_audios, selected_faders, show_views
+        show_views = len(self.hotkeys) > 0
+        return (
+            self.edit_name.text().strip() or "Untitled Scene",
+            self.chosen_color,
+            self.raw_id,
+            selected_audios,
+            selected_faders,
+            show_views,
+            self.hotkeys
+        )
 
 
 class AudioEditDialog(QDialog):
@@ -731,6 +998,42 @@ class DirectorTab(QWidget):
         lay_fd.setColumnStretch(3, 1)
         lay_toggles_content.addWidget(grp_faders)
 
+        # ------------------ GROUP 5: SCENE SHORTCUTS & SLOBS HOTKEYS ------------------
+        grp_scene_hotkeys = QGroupBox("Scene Shortcuts & SLOBS Hotkeys (Dock Buttons)")
+        lay_shk = QVBoxLayout(grp_scene_hotkeys)
+        lay_shk.setSpacing(4)
+
+        self.list_all_scene_hotkeys = QListWidget()
+        self.list_all_scene_hotkeys.setFixedHeight(110)
+        self.list_all_scene_hotkeys.setStyleSheet(slim_list_qss)
+        lay_shk.addWidget(self.list_all_scene_hotkeys)
+
+        shk_actions_row = QHBoxLayout()
+        shk_actions_row.setSpacing(6)
+        self.btn_add_scene_hotkey = QPushButton("➕ Add Shortcut")
+        self.btn_add_scene_hotkey.setStyleSheet("font-size: 11px; padding: 2px 8px; font-weight: 500;")
+        self.btn_add_scene_hotkey.clicked.connect(self._add_global_scene_hotkey)
+        shk_actions_row.addWidget(self.btn_add_scene_hotkey)
+
+        self.btn_edit_scene_hotkey = QPushButton("✏️ Edit")
+        self.btn_edit_scene_hotkey.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_edit_scene_hotkey.clicked.connect(self._edit_global_scene_hotkey)
+        shk_actions_row.addWidget(self.btn_edit_scene_hotkey)
+
+        self.btn_rem_scene_hotkey = QPushButton("🗑️ Remove")
+        self.btn_rem_scene_hotkey.setStyleSheet("font-size: 11px; padding: 2px 8px;")
+        self.btn_rem_scene_hotkey.clicked.connect(self._remove_global_scene_hotkey)
+        shk_actions_row.addWidget(self.btn_rem_scene_hotkey)
+        shk_actions_row.addStretch()
+        lay_shk.addLayout(shk_actions_row)
+
+        lbl_shk_hint = QLabel("💡 <i>Configure custom hotkeys & source toggles per scene. When switching scenes on the dock, only the shortcuts for that scene will appear!</i>")
+        lbl_shk_hint.setStyleSheet("font-size: 10px; color: #a1a1aa;")
+        lbl_shk_hint.setWordWrap(True)
+        lay_shk.addWidget(lbl_shk_hint)
+
+        lay_toggles_content.addWidget(grp_scene_hotkeys)
+
         lay_toggles_content.addStretch()
         scroll_toggles.setWidget(scroll_toggles_content)
         lay_tab_toggles.addWidget(scroll_toggles)
@@ -955,6 +1258,123 @@ class DirectorTab(QWidget):
         self.btn_add_scene.setEnabled(count < 8)
         if hasattr(self, "lay_matrix_items"):
             self._refresh_permissions_matrix_items()
+        self._refresh_all_scene_hotkeys_ui()
+
+    def _refresh_all_scene_hotkeys_ui(self):
+        if not hasattr(self, "list_all_scene_hotkeys"):
+            return
+        self.list_all_scene_hotkeys.clear()
+        for s_idx, sc in enumerate(self.scenes):
+            sc_name = sc.get("name", f"Scene {s_idx+1}")
+            hotkeys = sc.get("hotkeys", [])
+            for hk_idx, hk in enumerate(hotkeys):
+                n = hk.get("name", "Shortcut")
+                seq = hk.get("hotkey", "")
+                src = hk.get("source", "")
+                src_desc = f" ➔ {src}" if src else " (pure hotkey)"
+                item = QListWidgetItem(f"[🎬 {sc_name}] 👁️ {n} [{seq}]{src_desc}")
+                item.setData(Qt.ItemDataRole.UserRole, (s_idx, hk_idx))
+                self.list_all_scene_hotkeys.addItem(item)
+
+    def _add_global_scene_hotkey(self):
+        if not self.scenes:
+            QMessageBox.information(self, "No Scenes", "Please configure at least one scene before adding shortcuts.")
+            return
+        avail_src = [it.get("name") for it in (self.slobs_client.get_cached_active_scene_items() if self.slobs_client else []) if it.get("name")]
+        dlg = GlobalSceneHotkeyEditDialog(
+            scenes=self.scenes,
+            selected_scene_idx=0,
+            available_sources=avail_src,
+            parent=self
+        )
+        if dlg.exec():
+            s_idx, hk_data = dlg.get_data()
+            if 0 <= s_idx < len(self.scenes):
+                if "hotkeys" not in self.scenes[s_idx]:
+                    self.scenes[s_idx]["hotkeys"] = []
+                if len(self.scenes[s_idx]["hotkeys"]) >= 4:
+                    QMessageBox.information(self, "Limit Reached", f"A maximum of 4 shortcuts can be configured for {self.scenes[s_idx].get('name')}.")
+                    return
+                self.scenes[s_idx]["hotkeys"].append(hk_data)
+                self.scenes[s_idx]["show_view_toggles"] = True
+                self._refresh_all_scene_hotkeys_ui()
+                self._on_settings_changed()
+                if self.is_panel_open():
+                    self.panel_window.load_configuration(
+                        self.scenes, 
+                        self._get_live_audio_toggles(), 
+                        self._get_fader_data(), 
+                        permissions=getattr(self, "_cached_client_permissions", None),
+                        pool_scenes=self.scenes,
+                        pool_audio=self._get_live_audio_toggles(),
+                        pool_faders=self._get_active_fader_pool()
+                    )
+
+    def _edit_global_scene_hotkey(self):
+        item = self.list_all_scene_hotkeys.currentItem()
+        if not item:
+            return
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        s_idx, hk_idx = data
+        if 0 <= s_idx < len(self.scenes) and 0 <= hk_idx < len(self.scenes[s_idx].get("hotkeys", [])):
+            hk = self.scenes[s_idx]["hotkeys"][hk_idx]
+            avail_src = [it.get("name") for it in (self.slobs_client.get_cached_active_scene_items() if self.slobs_client else []) if it.get("name")]
+            dlg = GlobalSceneHotkeyEditDialog(
+                scenes=self.scenes,
+                selected_scene_idx=s_idx,
+                name=hk.get("name", "Shortcut"),
+                hotkey=hk.get("hotkey", "Ctrl+Num1"),
+                target_source=hk.get("source", ""),
+                available_sources=avail_src,
+                parent=self
+            )
+            if dlg.exec():
+                new_s_idx, new_hk_data = dlg.get_data()
+                if new_s_idx == s_idx:
+                    self.scenes[s_idx]["hotkeys"][hk_idx] = new_hk_data
+                else:
+                    self.scenes[s_idx]["hotkeys"].pop(hk_idx)
+                    if "hotkeys" not in self.scenes[new_s_idx]:
+                        self.scenes[new_s_idx]["hotkeys"] = []
+                    self.scenes[new_s_idx]["hotkeys"].append(new_hk_data)
+                    self.scenes[new_s_idx]["show_view_toggles"] = True
+                self._refresh_all_scene_hotkeys_ui()
+                self._on_settings_changed()
+                if self.is_panel_open():
+                    self.panel_window.load_configuration(
+                        self.scenes, 
+                        self._get_live_audio_toggles(), 
+                        self._get_fader_data(), 
+                        permissions=getattr(self, "_cached_client_permissions", None),
+                        pool_scenes=self.scenes,
+                        pool_audio=self._get_live_audio_toggles(),
+                        pool_faders=self._get_active_fader_pool()
+                    )
+
+    def _remove_global_scene_hotkey(self):
+        item = self.list_all_scene_hotkeys.currentItem()
+        if not item:
+            return
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        s_idx, hk_idx = data
+        if 0 <= s_idx < len(self.scenes) and 0 <= hk_idx < len(self.scenes[s_idx].get("hotkeys", [])):
+            self.scenes[s_idx]["hotkeys"].pop(hk_idx)
+            self._refresh_all_scene_hotkeys_ui()
+            self._on_settings_changed()
+            if self.is_panel_open():
+                self.panel_window.load_configuration(
+                    self.scenes, 
+                    self._get_live_audio_toggles(), 
+                    self._get_fader_data(), 
+                    permissions=getattr(self, "_cached_client_permissions", None),
+                    pool_scenes=self.scenes,
+                    pool_audio=self._get_live_audio_toggles(),
+                    pool_faders=self._get_active_fader_pool()
+                )
 
     def _refresh_audio_list_ui(self):
         self.list_audio.clear()
@@ -1606,12 +2026,14 @@ class DirectorTab(QWidget):
         def_col = palette[len(self.scenes) % len(palette)]
         avail_aud = [a.get("name") for a in self.audio_toggles]
         avail_fad = [f.get("name") for f in self._get_fader_data()]
+        avail_src = [it.get("name") for it in (self.slobs_client.get_cached_active_scene_items() if self.slobs_client else []) if it.get("name")]
         dlg = SceneEditDialog(
             f"Scene {len(self.scenes)+1}", 
             def_col, 
             available_scenes=avail, 
             available_audio=avail_aud,
             available_faders=avail_fad,
+            available_sources=avail_src,
             parent=self
         )
         if dlg.exec():
@@ -1620,13 +2042,15 @@ class DirectorTab(QWidget):
             aud = data[3] if len(data) > 3 else []
             fads = data[4] if len(data) > 4 else []
             show_v = data[5] if len(data) > 5 else False
+            hks = data[6] if len(data) > 6 else []
             self.scenes.append({
                 "name": n, 
                 "color": c, 
                 "id": raw_id,
                 "audio_sources": aud,
                 "faders": fads,
-                "show_view_toggles": show_v
+                "show_view_toggles": show_v,
+                "hotkeys": hks
             })
             self._refresh_scene_list_ui()
             self._on_settings_changed()
@@ -1648,6 +2072,7 @@ class DirectorTab(QWidget):
             avail = self.slobs_client.get_cached_scenes() if self.slobs_client else []
             avail_aud = [a.get("name") for a in self.audio_toggles]
             avail_fad = [f.get("name") for f in self._get_fader_data()]
+            avail_src = [it.get("name") for it in (self.slobs_client.get_cached_active_scene_items() if self.slobs_client else []) if it.get("name")]
             dlg = SceneEditDialog(
                 sc["name"], 
                 sc.get("color", "#22c55e"), 
@@ -1658,6 +2083,8 @@ class DirectorTab(QWidget):
                 show_view_toggles=sc.get("show_view_toggles"),
                 available_audio=avail_aud,
                 available_faders=avail_fad,
+                hotkeys=sc.get("hotkeys"),
+                available_sources=avail_src,
                 parent=self
             )
             if dlg.exec():
@@ -1666,13 +2093,15 @@ class DirectorTab(QWidget):
                 aud = data[3] if len(data) > 3 else []
                 fads = data[4] if len(data) > 4 else []
                 show_v = data[5] if len(data) > 5 else False
+                hks = data[6] if len(data) > 6 else sc.get("hotkeys", [])
                 self.scenes[row] = {
                     "name": n, 
                     "color": c, 
                     "id": raw_id,
                     "audio_sources": aud,
                     "faders": fads,
-                    "show_view_toggles": show_v
+                    "show_view_toggles": show_v,
+                    "hotkeys": hks
                 }
                 self._refresh_scene_list_ui()
                 self._on_settings_changed()
