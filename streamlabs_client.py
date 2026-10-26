@@ -902,19 +902,23 @@ class StreamlabsClient(QObject):
         if not target_name_or_id:
             return False
         tgt_lower = target_name_or_id.strip().lower()
+        prefix = "legal" if "legal" in tgt_lower else ("sandman" if "sandman" in tgt_lower else "")
         for k, v in self._item_visibility_cache.items():
-            if k.strip().lower() == tgt_lower:
-                return v
+            k_lower = k.strip().lower()
+            if k_lower == tgt_lower or (prefix and prefix in k_lower):
+                if v:
+                    return True
         for it in self._scene_items_cache:
             name = (it.get("name") or "").strip().lower()
             sid = str(it.get("id") or "").strip().lower()
             src_id = str(it.get("sourceId") or "").strip().lower()
-            if tgt_lower in (name, sid, src_id):
-                return bool(it.get("visible", False))
+            if tgt_lower in (name, sid, src_id) or (prefix and prefix in name):
+                if bool(it.get("visible", False)):
+                    return True
         return False
 
     def set_source_visibility(self, target_name_or_id: str, visible: bool) -> bool:
-        """Sets visibility (True/False) for a source/scene-item in Streamlabs Desktop."""
+        """Sets visibility (True/False) for all matching scene items/sources in Streamlabs Desktop."""
         if not target_name_or_id:
             return False
 
@@ -925,43 +929,49 @@ class StreamlabsClient(QObject):
                 return True
             return False
 
-        # Find matching item in scene items cache
-        item_res = None
+        if not self._scene_items_cache:
+            self.fetch_active_scene_items()
+
         tgt_lower = target_name_or_id.strip().lower()
+        prefix = "legal" if "legal" in tgt_lower else ("sandman" if "sandman" in tgt_lower else "")
+
+        matching_items = []
         for it in self._scene_items_cache:
             name = (it.get("name") or "").strip().lower()
             sid = str(it.get("id") or "").strip().lower()
             src_id = str(it.get("sourceId") or "").strip().lower()
-            if tgt_lower in (name, sid, src_id):
-                item_res = it.get("resourceId")
-                break
+            if tgt_lower in (name, sid, src_id) or (prefix and prefix in name):
+                if it.get("resourceId"):
+                    matching_items.append(it)
 
-        if not item_res:
+        if not matching_items:
             refreshed = self.fetch_active_scene_items()
             for it in refreshed:
                 name = (it.get("name") or "").strip().lower()
                 sid = str(it.get("id") or "").strip().lower()
                 src_id = str(it.get("sourceId") or "").strip().lower()
-                if tgt_lower in (name, sid, src_id):
-                    item_res = it.get("resourceId")
-                    break
+                if tgt_lower in (name, sid, src_id) or (prefix and prefix in name):
+                    if it.get("resourceId"):
+                        matching_items.append(it)
 
-        if not item_res:
-            log_debug("SLOBS", f"Could not find scene item matching '{target_name_or_id}' in active scene.")
+        if not matching_items:
+            log_debug("SLOBS", f"Could not find any scene items matching '{target_name_or_id}' in active scene.")
             return False
 
-        log_debug("SLOBS", f"Setting visibility={visible} on {item_res} ('{target_name_or_id}')")
-        res = self._call_rpc("setVisibility", item_res, [bool(visible)])
-        if res is not None or res is True:
-            self._item_visibility_cache[target_name_or_id] = bool(visible)
-            # Update cache entry
-            for it in self._scene_items_cache:
-                if (it.get("name") or "").strip().lower() == tgt_lower or str(it.get("id") or "").strip().lower() == tgt_lower:
-                    it["visible"] = bool(visible)
-                    break
-            self.source_visibility_changed.emit(target_name_or_id, bool(visible))
-            return True
-        return False
+        for it in matching_items:
+            item_res = it.get("resourceId")
+            item_name = it.get("name") or target_name_or_id
+            log_debug("SLOBS", f"Setting visibility={visible} on {item_res} ('{item_name}')")
+            self._call_rpc("setVisibility", item_res, [bool(visible)])
+            it["visible"] = bool(visible)
+            if item_name:
+                self._item_visibility_cache[item_name] = bool(visible)
+            if it.get("id"):
+                self._item_visibility_cache[str(it.get("id"))] = bool(visible)
+
+        self._item_visibility_cache[target_name_or_id] = bool(visible)
+        self.source_visibility_changed.emit(target_name_or_id, bool(visible))
+        return True
 
 
 # Global singleton client instance

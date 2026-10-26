@@ -1320,15 +1320,69 @@ class DirectorPanelWindow(QWidget):
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self.slobs_client.set_audio_deflection(name, val / 100.0)
 
+    def _fire_view_hotkey(self, source_name: str):
+        """Simulates the hotkey sequence configured in Streamlabs Desktop for the view."""
+        sn_lower = (source_name or "").strip().lower()
+        hotkey = None
+        vk_code = None
+        if "legal" in sn_lower:
+            hotkey = "ctrl+num 6"
+            vk_code = 0x66  # VK_NUMPAD6
+        elif "sandman" in sn_lower:
+            hotkey = "ctrl+num 7"
+            vk_code = 0x67  # VK_NUMPAD7
+
+        if not hotkey:
+            return
+
+        # 1. Fire via python keyboard library
+        try:
+            import keyboard
+            keyboard.send(hotkey)
+        except Exception:
+            pass
+
+        # 2. Also simulate via Windows Win32 API keybd_event with scan codes as fallback
+        if sys.platform == "win32" and vk_code:
+            try:
+                import ctypes
+                user32 = ctypes.windll.user32
+                VK_CONTROL = 0x11
+                KEYEVENTF_KEYUP = 0x0002
+                scan_ctrl = user32.MapVirtualKeyW(VK_CONTROL, 0)
+                scan_key = user32.MapVirtualKeyW(vk_code, 0)
+
+                # Press Ctrl + Key
+                user32.keybd_event(VK_CONTROL, scan_ctrl, 0, 0)
+                user32.keybd_event(vk_code, scan_key, 0, 0)
+                time.sleep(0.02)
+                # Release Key + Ctrl
+                user32.keybd_event(vk_code, scan_key, KEYEVENTF_KEYUP, 0)
+                user32.keybd_event(VK_CONTROL, scan_ctrl, KEYEVENTF_KEYUP, 0)
+            except Exception:
+                pass
+
     def _on_view_toggle_clicked(self, source_name: str, is_visible: bool):
         self.view_visibility_toggled.emit(source_name, is_visible)
+        # 1. Fire the configured hotkey sequence (Ctrl + Num6 / Ctrl + Num7)
+        self._fire_view_hotkey(source_name)
+        # 2. Also set visibility directly via live SLOBS RPC for all matching view items
         if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self.slobs_client.set_source_visibility(source_name, is_visible)
 
     def _on_slobs_source_visibility_changed(self, source_name: str, is_visible: bool):
         target = source_name.strip().lower()
         for name, btn in self.view_toggle_buttons.items():
-            if name.strip().lower() == target or name.strip().lower() in target or target in name.strip().lower():
+            btn_lower = name.strip().lower()
+            is_match = False
+            if btn_lower == target or btn_lower in target or target in btn_lower:
+                is_match = True
+            elif "legal" in btn_lower and "legal" in target:
+                is_match = True
+            elif "sandman" in btn_lower and "sandman" in target:
+                is_match = True
+
+            if is_match:
                 btn.set_visibility_state(is_visible)
 
     def reflow_for_active_scene(self, scene_name: str, scene_id: str = ""):
