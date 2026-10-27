@@ -5,10 +5,11 @@ import uuid
 import wave
 import struct
 import math
+import time
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Optional
 
-from PyQt6.QtCore import QObject, pyqtSignal, QUrl, Qt
+from PyQt6.QtCore import QObject, pyqtSignal, QUrl, Qt, QThread
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices, QAudioDevice
 
 # Directory configuration matching Streamer Calyx conventions
@@ -123,6 +124,12 @@ class SoundboardEngine(QObject):
     clips_updated = pyqtSignal()               # emitted on add/edit/delete
     error_occurred = pyqtSignal(str)           # error description
 
+    # Internal thread-safe queued dispatch signals (always executed on Qt GUI thread)
+    _req_play = pyqtSignal(str)
+    _req_stop = pyqtSignal(str)
+    _req_toggle = pyqtSignal(str)
+    _req_stop_all = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.sounds_dir = SOUNDS_DIR
@@ -138,6 +145,13 @@ class SoundboardEngine(QObject):
         # Active player pool: list of dicts: {'player': QMediaPlayer, 'audio': QAudioOutput, 'clip_id': str}
         self.active_players: List[Dict] = []
         self._bound_hotkeys: Dict[str, str] = {} # clip_id -> hotkey_str
+        self._last_trigger_time: Dict[str, float] = {} # clip_id -> timestamp (debounce)
+
+        # Connect internal dispatch signals with QueuedConnection to guarantee execution on GUI thread
+        self._req_play.connect(self._do_play_clip, Qt.ConnectionType.QueuedConnection)
+        self._req_stop.connect(self._do_stop_clip, Qt.ConnectionType.QueuedConnection)
+        self._req_toggle.connect(self._do_toggle_clip, Qt.ConnectionType.QueuedConnection)
+        self._req_stop_all.connect(self._do_stop_all, Qt.ConnectionType.QueuedConnection)
 
         self.load_config()
 
@@ -185,10 +199,56 @@ class SoundboardEngine(QObject):
             item["audio"].setVolume(effective)
 
     # -------------------------------------------------------------
-    # PLAYBACK OPERATIONS
+    # PLAYBACK OPERATIONS (THREAD-SAFE PUBLIC API)
     # -------------------------------------------------------------
     def play_clip(self, clip_id: str):
-        """Plays sound clip by ID with polyphonic overlap or exclusive cut-off."""
+        """Plays sound clip by ID with polyphonic overlap or exclusive cut-off (thread-safe)."""
+        if QThread.currentThread() != self.thread():
+            self._req_play.emit(clip_id)
+        else:
+            self._do_play_clip(clip_id)
+
+    def stop_clip(self, clip_id: str):
+        """Stops all active instances of a specific sound clip (thread-safe)."""
+        if QThread.currentThread() != self.thread():
+            self._req_stop.emit(clip_id)
+        else:
+            self._do_stop_clip(clip_id)
+
+    def toggle_clip(self, clip_id: str):
+        """Toggles playback of a sound clip: plays if stopped, stops if playing (thread-safe)."""
+        if QThread.currentThread() != self.thread():
+            self._req_toggle.emit(clip_id)
+        else:
+            self._do_toggle_clip(clip_id)
+
+    def stop_all(self):
+        """Emergency silence: stops all active audio playback immediately (thread-safe)."""
+        if QThread.currentThread() != self.thread():
+            self._req_stop_all.emit()
+        else:
+            self._do_stop_all()
+
+    def is_clip_playing(self, clip_id: str) -> bool:
+        """Checks if a sound clip is currently playing."""
+        return any(item["clip_id"] == clip_id for item in self.active_players)
+
+    # -------------------------------------------------------------
+    # INTERNAL GUI-THREAD PLAYBACK HANDLERS
+    # -------------------------------------------------------------
+    def _do_toggle_clip(self, clip_id: str):
+        now = time.time()
+        last_t = self._last_trigger_time.get(clip_id, 0.0)
+        if now - last_t < 0.25:
+            return
+        self._last_trigger_time[clip_id] = now
+
+        if self.is_clip_playing(clip_id):
+            self._do_stop_clip(clip_id)
+        else:
+            self._do_play_clip(clip_id)
+
+    def _do_play_clip(self, clip_id: str):
         clip = self.get_clip_by_id(clip_id)
         if not clip:
             self.error_occurred.emit(f"Sound clip '{clip_id}' not found.")
@@ -199,9 +259,9 @@ class SoundboardEngine(QObject):
             return
 
         if self.exclusive_mode:
-            self.stop_all()
+            self._do_stop_all()
 
-        # Allocate player + audio output
+        # Allocate player + audio output on GUI thread
         player = QMediaPlayer(self)
         audio_output = QAudioOutput(self)
         player.setAudioOutput(audio_output)
@@ -226,19 +286,28 @@ class SoundboardEngine(QObject):
         }
         self.active_players.append(item)
 
-        # Hook playback end
+        # Hook playback end, media status, and error handlers
         def on_state_changed(state):
             if state == QMediaPlayer.PlaybackState.StoppedState:
                 self._cleanup_player(item)
 
-        player.playbackStateChanged.connect(on_state_changed)
-        player.play()
+        def on_media_status_changed(status):
+            if status in (QMediaPlayer.MediaStatus.EndOfMedia, QMediaPlayer.MediaStatus.InvalidMedia):
+                self._cleanup_player(item)
 
+        def on_error(err, err_str):
+            print(f"[Soundboard] Playback error on {clip.name}: {err} ({err_str})")
+            self._cleanup_player(item)
+
+        player.playbackStateChanged.connect(on_state_changed)
+        player.mediaStatusChanged.connect(on_media_status_changed)
+        player.errorOccurred.connect(on_error)
+
+        player.play()
         self.clip_started.emit(clip.id, clip.name)
 
-    def stop_clip(self, clip_id: str):
-        """Stops all active instances of a specific sound clip."""
-        to_stop = [item for item in self.active_players if item["clip_id"] == clip_id]
+    def _do_stop_clip(self, clip_id: str):
+        to_stop = [item for item in list(self.active_players) if item["clip_id"] == clip_id]
         for item in to_stop:
             try:
                 item["player"].stop()
@@ -246,8 +315,7 @@ class SoundboardEngine(QObject):
                 pass
             self._cleanup_player(item)
 
-    def stop_all(self):
-        """Emergency silence: stops all active audio playback immediately."""
+    def _do_stop_all(self):
         active_ids = list(set(item["clip_id"] for item in self.active_players))
         for item in list(self.active_players):
             try:
@@ -258,14 +326,17 @@ class SoundboardEngine(QObject):
         for cid in active_ids:
             self.clip_stopped.emit(cid)
 
-    def is_clip_playing(self, clip_id: str) -> bool:
-        """Checks if a sound clip is currently playing."""
-        return any(item["clip_id"] == clip_id for item in self.active_players)
-
     def _cleanup_player(self, item: Dict):
         if item in self.active_players:
             self.active_players.remove(item)
+        else:
+            return  # Idempotent guard against multiple completion signals
+
         clip_id = item["clip_id"]
+        try:
+            item["player"].stop()
+        except Exception:
+            pass
         try:
             item["player"].deleteLater()
             item["audio"].deleteLater()
@@ -331,11 +402,11 @@ class SoundboardEngine(QObject):
         return ["All"] + (cats if cats else ["General"])
 
     def trigger_hotkey(self, hotkey_str: str) -> bool:
-        """Finds sound mapped to hotkey and plays it. Returns True if handled."""
+        """Finds sound mapped to hotkey and toggles it. Returns True if handled."""
         target_hk = hotkey_str.strip().lower()
         for clip in self.clips:
             if clip.hotkey and clip.hotkey.strip().lower() == target_hk:
-                self.play_clip(clip.id)
+                self.toggle_clip(clip.id)
                 return True
         return False
 
@@ -352,7 +423,9 @@ class SoundboardEngine(QObject):
                 continue
             hk = clip.hotkey.strip().lower()
             try:
-                keyboard.add_hotkey(hk, lambda cid=clip.id: self.play_clip(cid))
+                # Use thread-safe queued signal emission so playback is guaranteed
+                # to run on the main Qt GUI thread with an active event loop
+                keyboard.add_hotkey(hk, lambda cid=clip.id: self._req_toggle.emit(cid))
                 self._bound_hotkeys[clip.id] = hk
             except Exception as e:
                 pass

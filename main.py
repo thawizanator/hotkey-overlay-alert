@@ -989,8 +989,8 @@ class RedBorderOverlay(QMainWindow):
         elif action_id.startswith("soundboard_clip_"):
             clip_id = action_id.replace("soundboard_clip_", "")
             if hasattr(self, "soundboard_engine") and self.soundboard_engine:
-                self.soundboard_engine.play_clip(clip_id)
-                log_debug("SOUNDBOARD", f"Played soundboard clip {clip_id} via hotkey/peripheral")
+                self.soundboard_engine.toggle_clip(clip_id)
+                log_debug("SOUNDBOARD", f"Toggled soundboard clip {clip_id} via hotkey/peripheral")
 
     def evaluate_macro_trigger(self, slot_index):
         if slot_index >= len(self.twitch_macros): return
