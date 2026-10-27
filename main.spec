@@ -20,6 +20,9 @@ hidden_imports = [
     'pylibsrtp',
     'input_manager',
     'hotkey_tab',
+    'PyQt6.QtMultimedia',
+    'soundboard_engine',
+    'soundboard_tab',
 ] + collect_submodules('aiortc') + collect_submodules('aioice')
 
 a = Analysis(
