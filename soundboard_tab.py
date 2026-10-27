@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QSlider, QComboBox, QLineEdit, QCheckBox, QFrame, QScrollArea,
     QDialog, QFormLayout, QFileDialog, QMessageBox, QColorDialog
 )
-from PyQt6.QtGui import QColor, QFont, QKeyEvent
+from PyQt6.QtGui import QColor, QFont, QKeyEvent, QIcon, QPixmap, QPainter, QPen
 
 from soundboard_engine import SoundboardEngine, SoundClip
 
@@ -23,6 +23,32 @@ SWATCH_COLORS = [
     "#3b82f6", # Blue
     "#14b8a6", # Teal
 ]
+
+
+def create_trash_icon(color="#ef4444", size=32) -> QIcon:
+    """Generates crisp vector trash can QIcon rendered via QPainter."""
+    pix = QPixmap(size, size)
+    pix.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor(color), 2.0)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+
+    # Lid handle
+    p.drawLine(12, 7, 20, 7)
+    # Lid line
+    p.drawLine(7, 10, 25, 10)
+    # Bin body
+    p.drawLine(9, 11, 11, 26)
+    p.drawLine(11, 26, 21, 26)
+    p.drawLine(21, 26, 23, 11)
+    # Vertical slats
+    p.drawLine(14, 14, 14, 23)
+    p.drawLine(18, 14, 18, 23)
+    p.end()
+    return QIcon(pix)
 
 
 class HotkeyRecordLineEdit(QLineEdit):
@@ -368,16 +394,45 @@ class SoundCardWidget(QFrame):
             top_row.addWidget(lbl_loop)
 
         btn_edit = QPushButton("Edit")
-        btn_edit.setFixedHeight(20)
+        btn_edit.setFixedHeight(22)
+        btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_edit.setToolTip("Edit Sound Properties")
-        btn_edit.setStyleSheet("font-size: 10px; color: #a1a1aa; background: #27272a; border: 1px solid #3f3f46; border-radius: 3px; padding: 0 4px;")
+        btn_edit.setStyleSheet("""
+            QPushButton {
+                font-size: 11px;
+                color: #a1a1aa;
+                background: #27272a;
+                border: 1px solid #3f3f46;
+                border-radius: 4px;
+                padding: 0 6px;
+            }
+            QPushButton:hover {
+                color: #ffffff;
+                background: #3f3f46;
+                border-color: #71717a;
+            }
+        """)
         btn_edit.clicked.connect(lambda: self.edit_requested.emit(self.clip.id))
         top_row.addWidget(btn_edit)
 
-        btn_del = QPushButton("X")
-        btn_del.setFixedSize(20, 20)
+        btn_del = QPushButton()
+        btn_del.setIcon(create_trash_icon("#ef4444", 24))
+        btn_del.setIconSize(QSize(16, 16))
+        btn_del.setFixedSize(24, 22)
+        btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_del.setToolTip("Delete Sound")
-        btn_del.setStyleSheet("font-size: 10px; color: #ef4444; background: #27272a; border: 1px solid #3f3f46; border-radius: 3px; font-weight: bold;")
+        btn_del.setStyleSheet("""
+            QPushButton {
+                background: #27272a;
+                border: 1px solid #3f3f46;
+                border-radius: 4px;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: #3f3f46;
+                border-color: #ef4444;
+            }
+        """)
         btn_del.clicked.connect(lambda: self.delete_requested.emit(self.clip.id))
         top_row.addWidget(btn_del)
         layout.addLayout(top_row)
