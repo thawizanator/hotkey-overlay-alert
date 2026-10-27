@@ -9,6 +9,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QIcon
 
 from streamlabs_client import get_streamlabs_client
+from soundboard_spam_guard import SoundboardSpamGuard
+from debug_logger import log_debug
+try:
+    from soundboard_engine import SoundboardEngine
+except ImportError:
+    SoundboardEngine = None
 
 class SceneCardButton(QPushButton):
     """Custom rectangular scene card with distinct colored border, active glow, and slot swapping context menu."""
@@ -692,6 +698,324 @@ class VolumeFaderWidget(QWidget):
             self.value_changed.emit(self.fader_id, val)
 
 
+class DirectorSoundboardDeck(QWidget):
+    """
+    Floating Soundboard Pad popover positioned directly above the Director Dock.
+    Allows Stream Directors to trigger sound clips, protected by the SandMan Anti-Spam Troll Shield.
+    """
+    sound_triggered = pyqtSignal(str, str)
+    stop_all_requested = pyqtSignal()
+
+    def __init__(self, parent_dock=None, engine=None, spam_guard=None):
+        super().__init__(None)
+        self.parent_dock = parent_dock
+        self.engine = engine
+        self.spam_guard = spam_guard if spam_guard else SoundboardSpamGuard(parent=self)
+        self.user_identity = "director_dock"
+        self.buttons = {}
+        self._drag_pos = None
+
+        self.setObjectName("directorSoundboardDeck")
+        self.setWindowTitle("🔊 Director Soundboard Pad")
+        self.setWindowFlags(
+            Qt.WindowType.Tool |
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedWidth(340)
+
+        self.setStyleSheet("""
+            QWidget#directorSoundboardDeck {
+                background-color: #121214;
+                border: 2px solid #38bdf8;
+                border-radius: 12px;
+            }
+        """)
+
+        # Cooldown real-time countdown timer
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.setInterval(100)
+        self._countdown_timer.timeout.connect(self._update_cooldown_display)
+
+        self._build_ui()
+        if self.engine:
+            self._connect_engine_signals(self.engine)
+
+    def _build_ui(self):
+        self.root_layout = QVBoxLayout(self)
+        self.root_layout.setContentsMargins(12, 10, 12, 12)
+        self.root_layout.setSpacing(8)
+
+        # Header Bar
+        top_bar = QHBoxLayout()
+        lbl_title = QLabel("🔊  <b>DIRECTOR SOUNDBOARD</b>")
+        lbl_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #38bdf8; letter-spacing: 0.5px;")
+        top_bar.addWidget(lbl_title)
+        top_bar.addStretch()
+
+        self.lbl_shield = QLabel("🛡️ Troll Shield")
+        self.lbl_shield.setStyleSheet("font-size: 9px; font-weight: bold; color: #22c55e; background: #052e16; border: 1px solid #16a34a; border-radius: 4px; padding: 2px 5px;")
+        self.lbl_shield.setToolTip("SandMan Anti-Spam Troll Shield: Protects stream audio from button mashing")
+        top_bar.addWidget(self.lbl_shield)
+
+        btn_close = QPushButton("✕")
+        btn_close.setFixedSize(18, 18)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.setToolTip("Close Soundboard Pad")
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background: #27272a;
+                color: #a1a1aa;
+                border: 1px solid #3f3f46;
+                border-radius: 9px;
+                font-size: 9px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #ef4444;
+                color: #ffffff;
+            }
+        """)
+        btn_close.clicked.connect(self.hide)
+        top_bar.addWidget(btn_close)
+        self.root_layout.addLayout(top_bar)
+
+        # Anti-Spam Warning / Alarm Banner
+        self.banner = QFrame()
+        self.banner.setObjectName("warningBanner")
+        self.banner_layout = QHBoxLayout(self.banner)
+        self.banner_layout.setContentsMargins(8, 6, 8, 6)
+        self.lbl_warning = QLabel("")
+        self.lbl_warning.setWordWrap(True)
+        self.lbl_warning.setStyleSheet("font-size: 10px; font-weight: bold;")
+        self.banner_layout.addWidget(self.lbl_warning)
+        self.banner.setVisible(False)
+        self.root_layout.addWidget(self.banner)
+
+        # Grid of Sound Cards
+        self.grid_frame = QFrame()
+        self.grid = QGridLayout(self.grid_frame)
+        self.grid.setContentsMargins(0, 2, 0, 2)
+        self.grid.setSpacing(6)
+        self.root_layout.addWidget(self.grid_frame)
+
+        self._populate_grid()
+
+        # Footer Actions
+        footer = QHBoxLayout()
+        self.btn_stop_all = QPushButton("⏹  STOP ALL")
+        self.btn_stop_all.setFixedHeight(28)
+        self.btn_stop_all.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_stop_all.setToolTip("Immediately stop all currently playing sound clips")
+        self.btn_stop_all.setStyleSheet("""
+            QPushButton {
+                background-color: #7f1d1d;
+                color: #fecaca;
+                border: 1px solid #ef4444;
+                border-radius: 6px;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 0 10px;
+            }
+            QPushButton:hover {
+                background-color: #ef4444;
+                color: #ffffff;
+            }
+        """)
+        self.btn_stop_all.clicked.connect(self._on_stop_all)
+        footer.addWidget(self.btn_stop_all)
+        footer.addStretch()
+
+        self.lbl_status = QLabel("Ready")
+        self.lbl_status.setStyleSheet("font-size: 10px; color: #71717a;")
+        footer.addWidget(self.lbl_status)
+        self.root_layout.addLayout(footer)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton and self._drag_pos:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+
+    def _connect_engine_signals(self, engine):
+        try:
+            engine.clip_started.connect(self._on_clip_started)
+            engine.clip_stopped.connect(self._on_clip_stopped)
+            engine.clips_updated.connect(self.refresh_clips)
+        except Exception:
+            pass
+
+    def refresh_clips(self, engine=None):
+        if engine is not None and engine != self.engine:
+            self.engine = engine
+            self._connect_engine_signals(engine)
+        self._populate_grid()
+
+    def _populate_grid(self):
+        while self.grid.count() > 0:
+            item = self.grid.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self.buttons.clear()
+
+        clips = getattr(self.engine, "clips", []) if self.engine else []
+        if not clips:
+            lbl_empty = QLabel("No sound clips configured in Soundboard tab.")
+            lbl_empty.setStyleSheet("font-size: 10px; color: #71717a; padding: 12px 0;")
+            lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.grid.addWidget(lbl_empty, 0, 0, 1, 2)
+            self.adjustSize()
+            return
+
+        cols = 2
+        for idx, clip in enumerate(clips):
+            is_playing = self.engine.is_clip_playing(clip.id) if self.engine else False
+            btn = QPushButton()
+            btn.setFixedHeight(36)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clip_data = clip
+            self._update_button_style(btn, clip, is_playing)
+            btn.clicked.connect(lambda _, cid=clip.id, cname=clip.name, b=btn: self._on_clip_clicked(cid, cname, b))
+            self.buttons[clip.id] = btn
+            self.grid.addWidget(btn, idx // cols, idx % cols)
+
+        self.adjustSize()
+
+    def _update_button_style(self, btn, clip, is_playing: bool):
+        c = getattr(clip, "color", "#38bdf8")
+        name = getattr(clip, "name", "Sound")
+        if is_playing:
+            btn.setText(f"⏹  {name}")
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #2e1065;
+                    border: 2px solid #a855f7;
+                    border-left: 5px solid #a855f7;
+                    border-radius: 6px;
+                    color: #f3e8ff;
+                    font-size: 10px;
+                    font-weight: bold;
+                    padding: 4px 6px;
+                    text-align: left;
+                }}
+                QPushButton:hover {{
+                    background-color: #3b0764;
+                    border-color: #ffffff;
+                }}
+            """)
+        else:
+            btn.setText(f"▶  {name}")
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #18181b;
+                    border: 1px solid #3f3f46;
+                    border-left: 4px solid {c};
+                    border-radius: 6px;
+                    color: #ffffff;
+                    font-size: 10px;
+                    font-weight: bold;
+                    padding: 4px 6px;
+                    text-align: left;
+                }}
+                QPushButton:hover {{
+                    background-color: #27272a;
+                    border-color: {c};
+                }}
+            """)
+
+    def _on_clip_clicked(self, clip_id, clip_name, btn):
+        allowed, reason, rem = self.spam_guard.check_trigger(self.user_identity)
+        if not allowed:
+            self._show_warning(reason, rem)
+            strikes = self.spam_guard.get_strike_count(self.user_identity)
+            if strikes >= 3:
+                if self.engine and hasattr(self.engine, "play_alarm_buzzer"):
+                    self.engine.play_alarm_buzzer()
+                elif self.engine:
+                    self.engine.play_clip("cue-buzzer")
+            return
+
+        if self.engine:
+            self.engine.toggle_clip(clip_id)
+        self.sound_triggered.emit(clip_id, clip_name)
+        self.lbl_status.setText(f"Triggered: {clip_name}")
+
+    def _on_clip_started(self, clip_id, clip_name):
+        btn = self.buttons.get(clip_id)
+        if btn and hasattr(btn, "clip_data"):
+            self._update_button_style(btn, btn.clip_data, True)
+
+    def _on_clip_stopped(self, clip_id):
+        btn = self.buttons.get(clip_id)
+        if btn and hasattr(btn, "clip_data"):
+            self._update_button_style(btn, btn.clip_data, False)
+
+    def _on_stop_all(self):
+        if self.engine:
+            self.engine.stop_all()
+        self.stop_all_requested.emit()
+        self.lbl_status.setText("All Audio Stopped")
+
+    def _show_warning(self, msg, cooldown_sec):
+        self.banner.setVisible(True)
+        strikes = self.spam_guard.get_strike_count(self.user_identity)
+        if strikes >= 3:
+            self.banner.setStyleSheet("""
+                QFrame#warningBanner {
+                    background-color: #450a0a;
+                    border: 2px solid #ef4444;
+                    border-radius: 6px;
+                }
+            """)
+            self.lbl_warning.setStyleSheet("color: #fca5a5; font-size: 10px; font-weight: bold;")
+            self.lbl_shield.setStyleSheet("font-size: 9px; font-weight: bold; color: #ef4444; background: #450a0a; border: 1px solid #ef4444; border-radius: 4px; padding: 2px 5px;")
+            self.lbl_shield.setText("🚨 LOCKED")
+        else:
+            self.banner.setStyleSheet("""
+                QFrame#warningBanner {
+                    background-color: #422006;
+                    border: 1px solid #f59e0b;
+                    border-radius: 6px;
+                }
+            """)
+            self.lbl_warning.setStyleSheet("color: #fde68a; font-size: 10px; font-weight: bold;")
+            self.lbl_shield.setStyleSheet("font-size: 9px; font-weight: bold; color: #f59e0b; background: #422006; border: 1px solid #f59e0b; border-radius: 4px; padding: 2px 5px;")
+            self.lbl_shield.setText("⚠️ WARNING")
+
+        self.lbl_warning.setText(msg)
+        self.adjustSize()
+        if not self._countdown_timer.isActive():
+            self._countdown_timer.start()
+
+    def _update_cooldown_display(self):
+        rem = self.spam_guard.get_remaining_cooldown(self.user_identity)
+        if rem <= 0.0:
+            self._countdown_timer.stop()
+            self.banner.setVisible(False)
+            self.lbl_shield.setStyleSheet("font-size: 9px; font-weight: bold; color: #22c55e; background: #052e16; border: 1px solid #16a34a; border-radius: 4px; padding: 2px 5px;")
+            self.lbl_shield.setText("🛡️ Troll Shield")
+            self.lbl_status.setText("Ready")
+            self.adjustSize()
+            return
+
+        strikes = self.spam_guard.get_strike_count(self.user_identity)
+        if strikes >= 3:
+            self.lbl_warning.setText(f"🚨 TROLL SHIELD LOCKED: {rem:.1f}s cooldown remaining (Loud Alarm Buzzer Sounded!)")
+        elif strikes == 2:
+            self.lbl_warning.setText(f"⚠️ Strike 2: Persistent spamming will sound the Alarm Buzzer! ({rem:.1f}s)")
+        else:
+            self.lbl_warning.setText(f"⚠️ Anti-Spam Warning: Slow down! Cooldown: {rem:.1f}s")
+
+
 class DirectorPanelWindow(QWidget):
     """Floating control dock positioned on the chosen monitor directly above the Windows taskbar."""
     panel_closed = pyqtSignal()
@@ -754,6 +1078,10 @@ class DirectorPanelWindow(QWidget):
         self._active_scene_id = ""
         self._last_permissions = None
 
+        self.soundboard_engine = None
+        self.spam_guard = SoundboardSpamGuard(parent=self)
+        self.soundboard_deck = None
+
         self._build_ui()
 
         # Connect to StreamlabsClient for live IPC control & event sync
@@ -790,6 +1118,27 @@ class DirectorPanelWindow(QWidget):
         self.lbl_status.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_status.setStyleSheet("font-size: 10px; padding-right: 6px;")
         top_bar.addWidget(self.lbl_status)
+
+        self.btn_soundboard = QPushButton("🔊")
+        self.btn_soundboard.setFixedSize(20, 20)
+        self.btn_soundboard.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_soundboard.setToolTip("Toggle Soundboard Deck (Stream Director Pad)")
+        self.btn_soundboard.setStyleSheet("""
+            QPushButton {
+                background: #27272a;
+                color: #38bdf8;
+                border: 1px solid #3f3f46;
+                border-radius: 10px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background: #0284c7;
+                color: #ffffff;
+                border-color: #38bdf8;
+            }
+        """)
+        self.btn_soundboard.clicked.connect(self._toggle_soundboard_deck)
+        top_bar.addWidget(self.btn_soundboard)
 
         self.btn_resync = QPushButton("🔄")
         self.btn_resync.setFixedSize(20, 20)
@@ -1194,8 +1543,72 @@ class DirectorPanelWindow(QWidget):
             for i, f in enumerate(self.volume_faders):
                 f.fader_id = i
 
-    def load_configuration(self, scenes=None, audio=None, faders=None, permissions=None, pool_scenes=None, pool_audio=None, pool_faders=None):
+    def _toggle_soundboard_deck(self):
+        """Toggles the floating Director Soundboard Pad popover positioned directly above the dock."""
+        if self.soundboard_deck is None:
+            self.soundboard_deck = DirectorSoundboardDeck(
+                parent_dock=self,
+                engine=self.soundboard_engine,
+                spam_guard=self.spam_guard
+            )
+            self.soundboard_deck.sound_triggered.connect(
+                lambda cid, cname: log_debug("DIRECTOR", f"Dock soundboard triggered: {cname} ({cid})")
+            )
+
+        if self.soundboard_deck.isVisible():
+            self.soundboard_deck.hide()
+            self.btn_soundboard.setStyleSheet("""
+                QPushButton {
+                    background: #27272a;
+                    color: #38bdf8;
+                    border: 1px solid #3f3f46;
+                    border-radius: 10px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background: #0284c7;
+                    color: #ffffff;
+                    border-color: #38bdf8;
+                }
+            """)
+        else:
+            self.soundboard_deck.refresh_clips(self.soundboard_engine)
+            self._reposition_soundboard_deck()
+            self.soundboard_deck.show()
+            self.soundboard_deck.raise_()
+            self.soundboard_deck.activateWindow()
+            self.btn_soundboard.setStyleSheet("""
+                QPushButton {
+                    background: #0284c7;
+                    color: #ffffff;
+                    border: 1px solid #38bdf8;
+                    border-radius: 10px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background: #0369a1;
+                    border-color: #ffffff;
+                }
+            """)
+
+    def _reposition_soundboard_deck(self):
+        """Calculates and anchors the floating Soundboard Pad directly above the dock."""
+        if not self.soundboard_deck:
+            return
+        dock_geom = self.geometry()
+        deck_w = self.soundboard_deck.width() or 340
+        deck_h = self.soundboard_deck.sizeHint().height() or 240
+        deck_x = dock_geom.x() + (dock_geom.width() - deck_w) // 2
+        deck_y = dock_geom.y() - deck_h - 6
+        self.soundboard_deck.move(max(10, deck_x), max(10, deck_y))
+
+    def load_configuration(self, scenes=None, audio=None, faders=None, permissions=None, pool_scenes=None, pool_audio=None, pool_faders=None, soundboard_engine=None):
         """Builds or rebuilds the dynamic scene cards, audio buttons, and faders with permission gating and preselection pools."""
+        if soundboard_engine is not None:
+            self.soundboard_engine = soundboard_engine
+            if hasattr(self, "soundboard_deck") and self.soundboard_deck:
+                self.soundboard_deck.refresh_clips(self.soundboard_engine)
+
         if permissions is not None and bool(permissions):
             self._last_permissions = permissions
         elif hasattr(self, "_last_permissions"):
@@ -1732,6 +2145,8 @@ class DirectorPanelWindow(QWidget):
         pos_y = avail.bottom() - dock_height + 1
 
         self.setGeometry(pos_x, pos_y, dock_width, dock_height)
+        if hasattr(self, "soundboard_deck") and self.soundboard_deck and self.soundboard_deck.isVisible():
+            self._reposition_soundboard_deck()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1746,12 +2161,19 @@ class DirectorPanelWindow(QWidget):
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.MouseButton.LeftButton and self._drag_pos:
             self.move(event.globalPosition().toPoint() - self._drag_pos)
+            if hasattr(self, "soundboard_deck") and self.soundboard_deck and self.soundboard_deck.isVisible():
+                self._reposition_soundboard_deck()
             event.accept()
 
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
 
     def closeEvent(self, event):
+        if hasattr(self, "soundboard_deck") and self.soundboard_deck:
+            try:
+                self.soundboard_deck.close()
+            except Exception:
+                pass
         if hasattr(self, "_topmost_timer") and self._topmost_timer:
             self._topmost_timer.stop()
         try:

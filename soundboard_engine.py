@@ -229,6 +229,24 @@ class SoundboardEngine(QObject):
         else:
             self._do_stop_all()
 
+    def play_alarm_buzzer(self):
+        """Plays the punitive loud alarm buzzer (SandMan Troll Shield / alerts)."""
+        buzzer_clip = self.get_clip_by_id("cue-buzzer")
+        if buzzer_clip and os.path.exists(buzzer_clip.file_path):
+            self.play_clip("cue-buzzer")
+            return
+        for c in self.clips:
+            if "buzzer" in c.name.lower() or "buzzer" in c.file_path.lower():
+                if os.path.exists(c.file_path):
+                    self.play_clip(c.id)
+                    return
+        fallback = os.path.join(self.sounds_dir, "buzzer_fail.wav")
+        if os.path.exists(fallback):
+            for c in self.clips:
+                if os.path.normpath(c.file_path) == os.path.normpath(fallback):
+                    self.play_clip(c.id)
+                    return
+
     def is_clip_playing(self, clip_id: str) -> bool:
         """Checks if a sound clip is currently playing."""
         return any(item["clip_id"] == clip_id for item in self.active_players)

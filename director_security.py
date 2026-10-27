@@ -181,7 +181,7 @@ class BouncerValidator:
             return False, "Action must be a string", None
 
         action = action.upper().strip()
-        allowed_actions = {"SWITCH_SCENE", "TOGGLE_MUTE", "SET_VOLUME", "REQUEST_STATE", "PING", "SET_VISIBILITY"}
+        allowed_actions = {"SWITCH_SCENE", "TOGGLE_MUTE", "SET_VOLUME", "REQUEST_STATE", "PING", "SET_VISIBILITY", "PLAY_SOUND"}
         if action not in allowed_actions:
             log_debug("BOUNCER", f"Unauthorized action rejected: '{action}' from {peer_id}")
             return False, f"Action '{action}' is not allowed", None
@@ -189,6 +189,24 @@ class BouncerValidator:
         # REQUEST_STATE and PING require no target
         if action in {"REQUEST_STATE", "PING"}:
             return True, "Valid", {"action": action}
+
+        # PLAY_SOUND requires clip_id or target
+        if action == "PLAY_SOUND":
+            clip_id = payload.get("clip_id") or payload.get("target") or ""
+            if not isinstance(clip_id, str) or not clip_id.strip():
+                return False, "Sound clip ID is required", None
+            clean_clip_id = clip_id.strip()
+
+            username = self._peer_usernames.get(peer_id, "")
+            user_perm = self._lookup_user_perm(username) if username else {}
+            full_control = user_perm.get("full_control", False) if user_perm else (not self.user_permissions)
+
+            if not full_control and user_perm:
+                if not user_perm.get("allow_soundboard", True):
+                    log_debug("BOUNCER", f"Permission denied: @{username} is not permitted to trigger soundboard clips")
+                    return False, f"Permission denied: user @{username} does not have soundboard trigger permissions", None
+
+            return True, "Valid", {"action": action, "clip_id": clean_clip_id, "user": username or peer_id}
 
         target = payload.get("target", "")
         if not isinstance(target, str) or not target.strip():

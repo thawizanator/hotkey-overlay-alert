@@ -19,6 +19,7 @@ from debug_logger import log_debug
 
 from streamlabs_client import get_streamlabs_client
 from director_security import PasskeyManager, BouncerValidator
+from soundboard_spam_guard import SoundboardSpamGuard
 from typing import TYPE_CHECKING, Optional, Dict, Any
 if TYPE_CHECKING:
     from webrtc_p2p import WebRTCManager
@@ -575,6 +576,7 @@ class DirectorTab(QWidget):
         self.perm_mute_checkboxes: Dict[str, QCheckBox] = {}
         self.perm_vol_checkboxes: Dict[str, QCheckBox] = {}
         self._updating_perm_ui = False
+        self.spam_guard = SoundboardSpamGuard(parent=self)
 
         # Initialize Streamlabs client & wire signals
         self.slobs_client = get_streamlabs_client()
@@ -1608,6 +1610,16 @@ class DirectorTab(QWidget):
             self.lay_matrix_items.addWidget(chk)
             self.perm_vol_checkboxes[f_name] = chk
 
+        # 4. SOUNDBOARD PERMISSIONS
+        lbl_sec_sound = QLabel("🔊 Soundboard Permissions")
+        lbl_sec_sound.setStyleSheet("color: #38bdf8; font-weight: bold; font-size: 11px; padding-top: 6px;")
+        self.lay_matrix_items.addWidget(lbl_sec_sound)
+
+        self.chk_perm_soundboard = QCheckBox("Allow Soundboard Triggering")
+        self.chk_perm_soundboard.setStyleSheet("margin-left: 14px; font-size: 11px;")
+        self.chk_perm_soundboard.toggled.connect(self._on_granular_perm_changed)
+        self.lay_matrix_items.addWidget(self.chk_perm_soundboard)
+
         self.lay_matrix_items.addStretch()
         self._load_selected_cohost_permissions()
 
@@ -1633,6 +1645,9 @@ class DirectorTab(QWidget):
             for chk in self.perm_vol_checkboxes.values():
                 chk.setChecked(False)
                 chk.setEnabled(False)
+            if hasattr(self, "chk_perm_soundboard"):
+                self.chk_perm_soundboard.setChecked(False)
+                self.chk_perm_soundboard.setEnabled(False)
             self._updating_perm_ui = False
             return
 
@@ -1670,6 +1685,14 @@ class DirectorTab(QWidget):
                 else "margin-left: 14px; font-size: 11px; color: #efeff1;"
             )
 
+        if hasattr(self, "chk_perm_soundboard"):
+            self.chk_perm_soundboard.setChecked(is_full or perm.get("allow_soundboard", True))
+            self.chk_perm_soundboard.setEnabled(not is_full)
+            self.chk_perm_soundboard.setStyleSheet(
+                "margin-left: 14px; font-size: 11px; color: #a1a1aa;" if is_full
+                else "margin-left: 14px; font-size: 11px; color: #efeff1;"
+            )
+
         self._updating_perm_ui = False
 
     def _on_full_control_toggled(self, checked: bool):
@@ -1690,6 +1713,8 @@ class DirectorTab(QWidget):
             self.user_permissions[user]["allowed_audio_volume"] = [
                 v for v, chk in self.perm_vol_checkboxes.items() if chk.isChecked()
             ]
+            if hasattr(self, "chk_perm_soundboard"):
+                self.user_permissions[user]["allow_soundboard"] = self.chk_perm_soundboard.isChecked()
         else:
             self._updating_perm_ui = True
             for chk in self.perm_scene_checkboxes.values():
@@ -1698,10 +1723,13 @@ class DirectorTab(QWidget):
                 chk.setChecked(True)
             for chk in self.perm_vol_checkboxes.values():
                 chk.setChecked(True)
+            if hasattr(self, "chk_perm_soundboard"):
+                self.chk_perm_soundboard.setChecked(True)
             self._updating_perm_ui = False
             self.user_permissions[user]["allowed_scenes"] = list(self.perm_scene_checkboxes.keys())
             self.user_permissions[user]["allowed_audio_mutes"] = list(self.perm_mute_checkboxes.keys())
             self.user_permissions[user]["allowed_audio_volume"] = list(self.perm_vol_checkboxes.keys())
+            self.user_permissions[user]["allow_soundboard"] = True
 
         self._load_selected_cohost_permissions()
         self._sync_permissions_file()
@@ -1720,16 +1748,18 @@ class DirectorTab(QWidget):
         allowed_sc = [s for s, chk in self.perm_scene_checkboxes.items() if chk.isChecked()]
         allowed_mu = [a for a, chk in self.perm_mute_checkboxes.items() if chk.isChecked()]
         allowed_vo = [v for v, chk in self.perm_vol_checkboxes.items() if chk.isChecked()]
+        allow_sb = self.chk_perm_soundboard.isChecked() if hasattr(self, "chk_perm_soundboard") else True
 
         self.user_permissions[user]["allowed_scenes"] = allowed_sc
         self.user_permissions[user]["allowed_audio_mutes"] = allowed_mu
         self.user_permissions[user]["allowed_audio_volume"] = allowed_vo
+        self.user_permissions[user]["allow_soundboard"] = allow_sb
 
         all_scenes_checked = (len(allowed_sc) == len(self.perm_scene_checkboxes)) if self.perm_scene_checkboxes else True
         all_mutes_checked = (len(allowed_mu) == len(self.perm_mute_checkboxes)) if self.perm_mute_checkboxes else True
         all_vols_checked = (len(allowed_vo) == len(self.perm_vol_checkboxes)) if self.perm_vol_checkboxes else True
 
-        if not (all_scenes_checked and all_mutes_checked and all_vols_checked):
+        if not (all_scenes_checked and all_mutes_checked and all_vols_checked and allow_sb):
             self.user_permissions[user]["full_control"] = False
             self._updating_perm_ui = True
             if hasattr(self, "chk_perm_full"):
@@ -2013,7 +2043,8 @@ class DirectorTab(QWidget):
                 permissions=getattr(self, "_cached_client_permissions", None),
                 pool_scenes=self.scenes,
                 pool_audio=self._get_live_audio_toggles(),
-                pool_faders=self._get_active_fader_pool()
+                pool_faders=self._get_active_fader_pool(),
+                soundboard_engine=getattr(self.main_win, "soundboard_engine", None)
             )
         QMessageBox.information(self, "Audio Sources Detected", f"Successfully auto-detected {len(self.audio_toggles)} audio sources from Streamlabs Desktop!")
 
@@ -2062,7 +2093,8 @@ class DirectorTab(QWidget):
                     permissions=getattr(self, "_cached_client_permissions", None),
                     pool_scenes=self.scenes,
                     pool_audio=self._get_live_audio_toggles(),
-                    pool_faders=self._get_active_fader_pool()
+                    pool_faders=self._get_active_fader_pool(),
+                    soundboard_engine=getattr(self.main_win, "soundboard_engine", None)
                 )
 
     def _edit_scene(self):
@@ -2278,7 +2310,8 @@ class DirectorTab(QWidget):
             permissions=perms,
             pool_scenes=self.scenes,
             pool_audio=self._get_live_audio_toggles(),
-            pool_faders=self._get_active_fader_pool()
+            pool_faders=self._get_active_fader_pool(),
+            soundboard_engine=getattr(self.main_win, "soundboard_engine", None)
         )
 
         
@@ -2771,7 +2804,8 @@ class DirectorTab(QWidget):
                 permissions=getattr(self, "_cached_client_permissions", None),
                 pool_scenes=self.scenes,
                 pool_audio=self._get_live_audio_toggles(),
-                pool_faders=self._get_active_fader_pool()
+                pool_faders=self._get_active_fader_pool(),
+                soundboard_engine=getattr(self.main_win, "soundboard_engine", None)
             )
 
 
@@ -2860,6 +2894,26 @@ class DirectorTab(QWidget):
             log_debug("HOST_BOUNCER", f"Executing validated SET_VISIBILITY -> '{target}' ({sanitized.get('visible')})")
             self.slobs_client.set_source_visibility(target, sanitized.get("visible", True))
             QTimer.singleShot(300, self._broadcast_host_state_update)
+        elif cmd_act == "PLAY_SOUND":
+            clip_id = sanitized.get("clip_id") or sanitized.get("target") or ""
+            user = sanitized.get("user") or client_id
+            engine = getattr(self.main_win, "soundboard_engine", None)
+            if engine and clip_id:
+                guard = getattr(self, "spam_guard", None)
+                if not guard:
+                    guard = SoundboardSpamGuard(parent=self)
+                    self.spam_guard = guard
+                allowed, reason, rem = guard.check_trigger(user)
+                if not allowed:
+                    log_debug("HOST_BOUNCER", f"Soundboard trigger blocked by Spam Guard for {user}: {reason}")
+                    if guard.get_strike_count(user) >= 3:
+                        if hasattr(engine, "play_alarm_buzzer"):
+                            engine.play_alarm_buzzer()
+                        else:
+                            engine.play_clip("cue-buzzer")
+                else:
+                    log_debug("HOST_BOUNCER", f"Executing validated PLAY_SOUND -> '{clip_id}' from {user}")
+                    engine.toggle_clip(clip_id)
         elif cmd_act == "REQUEST_STATE":
             log_debug("HOST_BOUNCER", f"Executing validated REQUEST_STATE from client {client_id}")
             self._broadcast_host_state_update()

@@ -23,6 +23,7 @@ hidden_imports = [
     'PyQt6.QtMultimedia',
     'soundboard_engine',
     'soundboard_tab',
+    'soundboard_spam_guard',
 ] + collect_submodules('aiortc') + collect_submodules('aioice')
 
 a = Analysis(
