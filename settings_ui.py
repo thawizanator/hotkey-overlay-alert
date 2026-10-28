@@ -331,7 +331,7 @@ class MainTab(QWidget):
             "• <b>Checked (Streamer Mode):</b> Unlocks live broadcast features and transparent HUDs:"
             "<ul style='margin-top: 3px; margin-bottom: 5px; padding-left: 18px;'>"
             "<li><b>In-Game Transparent Overlays:</b> Border highlights, countdown bars, and auto-fading toasts that never interrupt full-screen games or video captures.</li>"
-            "<li><b>WebRTC Remote Director:</b> Broadcasts director panel feed to smartphones, tablets, or secondary laptops for wireless camera & scene switching.</li>"
+            "<li><b>WebRTC Remote Director:</b> Used for remotely changing scenes, muting/unmuting audio, adjusting audio volumes, and much more.</li>"
             "<li><b>Auto-Clip & Stream Markers:</b> Unlocks real-time microphone peak monitoring to auto-drop Twitch markers and log 60s clips during hype moments.</li>"
             "</ul>"
             "• <b>Unchecked (Desktop Mode):</b> Uses standard modal window dialogs with title bars and persistent confirmation popups, designed for channel moderators and desktop users. Locks in-game HUDs, Remote Director, and Auto-Clip suites."
