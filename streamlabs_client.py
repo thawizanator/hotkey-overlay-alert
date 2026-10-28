@@ -873,6 +873,8 @@ class StreamlabsClient(QObject):
 
     def is_source_in_scene(self, target_name: str, target_id: str = "", scene_id: str = "") -> bool:
         """Returns True if a source with matching name or ID exists in the given scene (or active scene)."""
+        if self._mode in ("webrtc_client", "remote"):
+            return True
         items = self.get_scene_items(scene_id)
         if not items:
             return False

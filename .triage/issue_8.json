@@ -1,0 +1,23 @@
+{
+  "issue_number": 8,
+  "issue_url": "https://github.com/thawizanator/hotkey-overlay-alert/issues/8",
+  "title": "Overlay border flickers on monitor 2",
+  "urgency_estimate": "Medium / Moderate",
+  "component": "Highlight Overlay",
+  "author": "ThaWizanator",
+  "source": "in-app",
+  "is_feature_request": false,
+  "description": "Moving OBS across monitors causes border alert to flash intermittently.",
+  "steps": "1. Launch Streamer Calyx\n2. Move OBS to secondary monitor\n3. Notice border flicker",
+  "diagnostics": {
+    "OS": "Windows 11",
+    "Monitors": [
+      "1920x1080",
+      "2560x1440"
+    ]
+  },
+  "logs": "C:\\Users\\<User>\\debug.txt: Warning - refresh called",
+  "ai_diagnosis": "Report filed for component **Highlight Overlay**. Logs have been attached and security-sanitized for maintainer review.",
+  "created_at": "2026-10-27T20:29:15.179931",
+  "status": "pending_solution"
+}

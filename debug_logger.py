@@ -36,7 +36,7 @@ def log_debug(category, message):
         log_line = f"[{timestamp}] [{category.upper()}] {message}\n"
         print(log_line.strip())
         if DEBUG_LOG_FILE:
-            if DEBUG_MODE or category.upper() in ("SYSTEM", "DIRECTOR", "CRASH", "UPDATER", "HOTKEY"):
+            if DEBUG_MODE or category.upper() in ("SYSTEM", "DIRECTOR", "CRASH", "UPDATER", "HOTKEY", "LAN_SOUND_SERVER", "LAN_SOUND_CLIENT", "SOUNDBOARD", "WEBRTC", "HOST_BOUNCER", "BOUNCER"):
                 with open(DEBUG_LOG_FILE, "a", encoding="utf-8") as f:
                     f.write(log_line)
     except Exception:

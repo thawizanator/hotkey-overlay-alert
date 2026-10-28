@@ -28,6 +28,7 @@ from director_tab import DirectorTab
 from hotkey_tab import HotkeysTab
 from soundboard_tab import SoundboardTab
 from soundboard_engine import SoundboardEngine
+from autoclip_tab import AutoClipTab
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -345,6 +346,10 @@ class MainTab(QWidget):
             self.main_win.overlay.set_streamer_mode(checked)
         if hasattr(self.main_win, "tab_director") and self.main_win.tab_director:
             self.main_win.tab_director.set_streamer_mode(checked)
+        if hasattr(self.main_win, "settings_window") and hasattr(self.main_win.settings_window, "tab_autoclip"):
+            self.main_win.settings_window.tab_autoclip.set_streamer_mode(checked)
+        elif hasattr(self, "tab_autoclip") and self.tab_autoclip:
+            self.tab_autoclip.set_streamer_mode(checked)
 
     def on_enable_primary_hk_toggled(self, checked):
         if hasattr(self.main_win.overlay, "set_primary_hotkey_enabled"):
@@ -1081,10 +1086,17 @@ class SystemTab(QWidget):
         diag_btns.addWidget(self.btn_open_appdata)
         lay_diag.addLayout(diag_btns)
 
+        row_diag_tools = QHBoxLayout()
+        self.btn_audio_diag = QPushButton("🎤 Run Audio Diagnostics...")
+        self.btn_audio_diag.setObjectName("btn_audio_diag")
+        self.btn_audio_diag.clicked.connect(self.open_audio_diagnostics_dialog)
+        row_diag_tools.addWidget(self.btn_audio_diag)
+
         self.btn_bug_report = QPushButton("🐞 Submit Bug Report...")
         self.btn_bug_report.setObjectName("btn_bug_report")
         self.btn_bug_report.clicked.connect(self.open_bug_report_dialog)
-        lay_diag.addWidget(self.btn_bug_report)
+        row_diag_tools.addWidget(self.btn_bug_report)
+        lay_diag.addLayout(row_diag_tools)
 
         layout.addWidget(grp_diag)
 
@@ -1137,6 +1149,12 @@ class SystemTab(QWidget):
         dlg = BugReportDialog(self, self.main_win.overlay)
         dlg.exec()
 
+    def open_audio_diagnostics_dialog(self):
+        from audio_diagnostics import AudioDiagnosticsDialog
+        engine = getattr(self.main_win.overlay, "auto_clip_engine", None)
+        dlg = AudioDiagnosticsDialog(self, overlay_app=self.main_win.overlay, engine=engine)
+        dlg.exec()
+
     def refresh_theme_labels(self, effective):
         sec_color = theme_manager.get_secondary_text_color(effective)
         tert_color = theme_manager.get_tertiary_text_color(effective)
@@ -1148,6 +1166,38 @@ class SystemTab(QWidget):
             self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>● <b>Dark Theme</b></span>")
         else:
             self.lbl_theme_info.setText(f"<span style='color: {sec_color}; font-size: 11px;'>● <b>Light Theme</b></span>")
+
+        if hasattr(self, "btn_audio_diag"):
+            if effective == "light":
+                self.btn_audio_diag.setStyleSheet("""
+                    QPushButton#btn_audio_diag {
+                        background-color: #e0f2fe;
+                        color: #0369a1;
+                        border: 1px solid #7dd3fc;
+                        border-radius: 5px;
+                        font-weight: 600;
+                        padding: 4px 12px;
+                        min-height: 20px;
+                    }
+                    QPushButton#btn_audio_diag:hover {
+                        background-color: #bae6fd;
+                    }
+                """)
+            else:
+                self.btn_audio_diag.setStyleSheet("""
+                    QPushButton#btn_audio_diag {
+                        background-color: #0c4a6e;
+                        color: #e0f2fe;
+                        border: 1px solid #0284c7;
+                        border-radius: 5px;
+                        font-weight: 600;
+                        padding: 4px 12px;
+                        min-height: 20px;
+                    }
+                    QPushButton#btn_audio_diag:hover {
+                        background-color: #075985;
+                    }
+                """)
 
         if hasattr(self, "btn_bug_report"):
             if effective == "light":
@@ -1442,7 +1492,8 @@ PAGE_TITLES = {
     6: "📜  Rotating Text & Trivia Cycler",
     7: "🎬  Stream Director Panel",
     8: "🎮  Unified Hotkeys & Peripherals",
-    9: "🔊  Soundboard & Audio Cues"
+    9: "🔊  Soundboard & Audio Cues",
+    10: "🎙️  Auto-Clip & Stream Markers"
 }
 
 
@@ -1506,11 +1557,13 @@ class SettingsWindow(QWidget):
         self.btn_nav_trivia = self._create_nav_btn("📜  Rotating Text", 6)
         self.btn_nav_director = self._create_nav_btn("🎬  Stream Director", 7)
         self.btn_nav_soundboard = self._create_nav_btn("🔊  Soundboard", 9)
+        self.btn_nav_autoclip = self._create_nav_btn("🎙️  Auto-Clip/Markers", 10)
         sidebar_layout.addWidget(self.btn_nav_twitch)
         sidebar_layout.addWidget(self.btn_nav_chronos)
         sidebar_layout.addWidget(self.btn_nav_trivia)
         sidebar_layout.addWidget(self.btn_nav_director)
         sidebar_layout.addWidget(self.btn_nav_soundboard)
+        sidebar_layout.addWidget(self.btn_nav_autoclip)
 
         # Category 3: SYSTEM & CONFIG
         lbl_cat_sys = QLabel("APP & CONFIG")
@@ -1623,8 +1676,21 @@ class SettingsWindow(QWidget):
         soundboard_eng = getattr(self.overlay, "soundboard_engine", None)
         if soundboard_eng is None:
             soundboard_eng = SoundboardEngine(self)
+        self.soundboard_engine = soundboard_eng
         self.tab_soundboard = SoundboardTab(self, soundboard_eng)
         self.stacked_pages.addWidget(self.tab_soundboard)        # 9
+
+        # Initialize Auto-Clip & Stream Markers Suite (Phase 6)
+        autoclip_eng = getattr(self.overlay, "auto_clip_engine", None)
+        if autoclip_eng is None:
+            from auto_clip_engine import AutoClipEngine
+            autoclip_eng = AutoClipEngine(self)
+        self.auto_clip_engine = autoclip_eng
+        self.tab_autoclip = AutoClipTab(self, autoclip_eng)
+        self.tab_autoclip.set_streamer_mode(getattr(self.overlay, "streamer_mode", False))
+        if hasattr(self.overlay, "save_settings"):
+            self.tab_autoclip.settings_changed.connect(self.overlay.save_settings)
+        self.stacked_pages.addWidget(self.tab_autoclip)          # 10
 
         content_layout.addWidget(self.stacked_pages)
 

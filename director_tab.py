@@ -20,6 +20,7 @@ from debug_logger import log_debug
 from streamlabs_client import get_streamlabs_client
 from director_security import PasskeyManager, BouncerValidator
 from soundboard_spam_guard import SoundboardSpamGuard
+from soundboard_lan_bridge import SoundboardLANServer, SoundboardLANClient
 from typing import TYPE_CHECKING, Optional, Dict, Any
 if TYPE_CHECKING:
     from webrtc_p2p import WebRTCManager
@@ -334,11 +335,12 @@ class SceneEditDialog(QDialog):
         for idx, a_name in enumerate(candidates):
             chk = QCheckBox(a_name)
             if target_audios is not None:
-                chk.setChecked(a_name in target_audios)
+                is_match = (a_name in target_audios) or any(DirectorPanelWindow._is_audio_channel_match(a_name, ta) for ta in target_audios)
+                chk.setChecked(is_match)
             else:
                 is_start_brb = any(k in name.lower() for k in ["start", "brb", "break", "end", "be right"])
                 if is_start_brb:
-                    chk.setChecked("spotify" in a_name.lower() or "music" in a_name.lower() or "vod" in a_name.lower())
+                    chk.setChecked(any(k in a_name.lower() for k in ["spot", "stop", "music", "vod"]))
                 else:
                     chk.setChecked(True)
             self.audio_checkboxes[a_name] = chk
@@ -360,11 +362,12 @@ class SceneEditDialog(QDialog):
         for idx, f_name in enumerate(f_candidates):
             chk = QCheckBox(f_name)
             if target_faders is not None:
-                chk.setChecked(f_name in target_faders)
+                is_match = (f_name in target_faders) or any(DirectorPanelWindow._is_audio_channel_match(f_name, tf) for tf in target_faders)
+                chk.setChecked(is_match)
             else:
                 is_start_brb = any(k in name.lower() for k in ["start", "brb", "break", "end", "be right"])
                 if is_start_brb:
-                    chk.setChecked("spotify" in f_name.lower() or "music" in f_name.lower() or "vod" in f_name.lower())
+                    chk.setChecked(any(k in f_name.lower() for k in ["spot", "stop", "music", "vod"]))
                 else:
                     chk.setChecked(True)
             self.fader_checkboxes[f_name] = chk
@@ -590,6 +593,10 @@ class DirectorTab(QWidget):
         self.slobs_client.audio_sources_updated.connect(self._on_slobs_audio_updated)
         self.slobs_client.source_visibility_changed.connect(self._broadcast_host_state_update)
 
+        self.soundboard_lan_server: Optional[SoundboardLANServer] = None
+        self.soundboard_lan_client: Optional[SoundboardLANClient] = None
+        self.remote_soundboard_clips: List[dict] = []
+
         self._is_loading = True
         self._build_ui()
         self.load_from_settings()
@@ -600,6 +607,23 @@ class DirectorTab(QWidget):
             self.slobs_client.connect_client()
         self._update_slobs_status_ui()
         self._refresh_fader_combos()
+
+        # Start Soundboard LAN server on Streamer rig (port 59651)
+        QTimer.singleShot(1500, self._ensure_lan_soundboard_server)
+
+    @property
+    def soundboard_engine(self):
+        """Resolves SoundboardEngine across SettingsWindow, RedBorderOverlay, and SoundboardTab."""
+        engine = getattr(self.main_win, "soundboard_engine", None)
+        if engine:
+            return engine
+        overlay = getattr(self.main_win, "overlay", None)
+        if overlay and getattr(overlay, "soundboard_engine", None):
+            return overlay.soundboard_engine
+        tab_sb = getattr(self.main_win, "tab_soundboard", None)
+        if tab_sb and getattr(tab_sb, "engine", None):
+            return tab_sb.engine
+        return None
 
     def _build_ui(self):
         main_layout = QVBoxLayout(self)
@@ -1815,7 +1839,71 @@ class DirectorTab(QWidget):
 
         self.set_streamer_mode(self.is_streamer_mode)
         self._update_slobs_status_ui()
+        if is_remote_lan:
+            self._ensure_lan_soundboard_client()
+        else:
+            if getattr(self, "soundboard_lan_client", None):
+                self.soundboard_lan_client.disconnect_client()
+            if is_local:
+                self._ensure_lan_soundboard_server()
         self._on_settings_changed()
+
+    def _ensure_lan_soundboard_server(self):
+        """Initializes and runs the Soundboard LAN Bridge server on the Streamer rig (port 59651)."""
+        engine = self.soundboard_engine
+        if not engine:
+            return
+        try:
+            base_port = int(self.edit_remote_port.text().strip()) if hasattr(self, "edit_remote_port") else 59650
+        except Exception:
+            base_port = 59650
+        server_port = base_port + 1
+
+        if self.soundboard_lan_server is None:
+            self.soundboard_lan_server = SoundboardLANServer(engine=engine, spam_guard=self.spam_guard, port=server_port, parent=self)
+            self.soundboard_lan_server.start()
+        elif getattr(self.soundboard_lan_server, "port", None) != server_port:
+            self.soundboard_lan_server.stop()
+            self.soundboard_lan_server.port = server_port
+            self.soundboard_lan_server.start()
+        elif not self.soundboard_lan_server.is_listening():
+            self.soundboard_lan_server.start()
+
+    def _ensure_lan_soundboard_client(self):
+        """Initializes and connects the Soundboard LAN Bridge client on the Director rig."""
+        if getattr(self, "conn_mode", "local") != "remote":
+            if self.soundboard_lan_client:
+                self.soundboard_lan_client.disconnect_client()
+            return
+
+        host = self.edit_remote_host.text().strip() if hasattr(self, "edit_remote_host") else "127.0.0.1"
+        try:
+            base_port = int(self.edit_remote_port.text().strip()) if hasattr(self, "edit_remote_port") else 59650
+        except Exception:
+            base_port = 59650
+        client_port = base_port + 1
+
+        if self.soundboard_lan_client is None:
+            self.soundboard_lan_client = SoundboardLANClient(parent=self)
+            self.soundboard_lan_client.clips_received.connect(self._on_lan_soundboard_clips_received)
+            self.soundboard_lan_client.playback_state_changed.connect(self._on_lan_soundboard_playback_changed)
+            self.soundboard_lan_client.spam_warning_received.connect(self._on_lan_soundboard_spam_warning)
+
+        self.soundboard_lan_client.connect_to_host(host, client_port)
+
+    def _on_lan_soundboard_clips_received(self, clips: list):
+        log_debug("DIRECTOR", f"LAN Director received {len(clips)} soundboard clips from streamer")
+        self.remote_soundboard_clips = list(clips)
+        if self.panel_window:
+            self.panel_window.set_remote_soundboard_clips(clips)
+
+    def _on_lan_soundboard_playback_changed(self, clip_id: str, is_playing: bool):
+        if self.panel_window and hasattr(self.panel_window, "soundboard_deck") and self.panel_window.soundboard_deck:
+            self.panel_window.soundboard_deck.set_playback_state(clip_id, is_playing)
+
+    def _on_lan_soundboard_spam_warning(self, msg: str, cd: float, strikes: int):
+        if self.panel_window and hasattr(self.panel_window, "soundboard_deck") and self.panel_window.soundboard_deck:
+            self.panel_window.soundboard_deck._show_warning(msg, cd)
 
     def _on_autodetect_clicked(self):
         detected = self.slobs_client.auto_detect_local_settings()
@@ -1860,6 +1948,8 @@ class DirectorTab(QWidget):
                     act_name = act_name[:16] + "..."
                 act_str = f" — Active: <b>{act_name}</b>" if act_name else ""
                 self.lbl_slobs_status.setText(f"<span style='color: #22c55e; font-weight: bold;'>🟢 Linked to Streamer via P2P (SLOBS Remote)</span>{act_str}")
+            elif getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+                self.lbl_slobs_status.setText("<span style='color: #38bdf8; font-weight: bold;'>🟡 Connecting to Streamer via P2P...</span>")
             else:
                 self.lbl_slobs_status.setText("<span style='color: #ef4444; font-weight: bold;'>🔴 P2P Disconnected</span> <span style='color: #a1a1aa;'>— Click 'Connect P2P' below to link with Streamer</span>")
             return
@@ -1901,6 +1991,8 @@ class DirectorTab(QWidget):
             ok = self.slobs_client.connect_client()
             self._update_slobs_status_ui()
             if ok:
+                if mode == "remote":
+                    self._ensure_lan_soundboard_client()
                 self._refresh_fader_combos()
                 mode_str = "Local PC (Named Pipe)" if mode == "local" else f"Remote LAN (ws://{host}:{port})"
                 QMessageBox.information(self, "Connected", f"Successfully connected to Streamlabs Desktop via {mode_str}!")
@@ -2044,7 +2136,7 @@ class DirectorTab(QWidget):
                 pool_scenes=self.scenes,
                 pool_audio=self._get_live_audio_toggles(),
                 pool_faders=self._get_active_fader_pool(),
-                soundboard_engine=getattr(self.main_win, "soundboard_engine", None)
+                soundboard_engine=self.soundboard_engine
             )
         QMessageBox.information(self, "Audio Sources Detected", f"Successfully auto-detected {len(self.audio_toggles)} audio sources from Streamlabs Desktop!")
 
@@ -2094,7 +2186,7 @@ class DirectorTab(QWidget):
                     pool_scenes=self.scenes,
                     pool_audio=self._get_live_audio_toggles(),
                     pool_faders=self._get_active_fader_pool(),
-                    soundboard_engine=getattr(self.main_win, "soundboard_engine", None)
+                    soundboard_engine=self.soundboard_engine
                 )
 
     def _edit_scene(self):
@@ -2187,15 +2279,72 @@ class DirectorTab(QWidget):
                     pool_faders=self._get_active_fader_pool()
                 )
 
+    def _cascade_rename_audio_source(self, old_name: str, new_name: str, raw_id: str = ""):
+        """
+        Propagates audio source renaming across all scene configurations, volume faders,
+        fader dropdowns, and preselection pools so audio sources never vanish when renamed.
+        """
+        if not old_name or not new_name or old_name == new_name:
+            return
+
+        # 1. Update all scene configurations
+        for sc in self.scenes:
+            if "audio_sources" in sc and isinstance(sc["audio_sources"], list):
+                sc["audio_sources"] = [
+                    new_name if (a == old_name or DirectorPanelWindow._is_audio_channel_match(a, old_name)) else a 
+                    for a in sc["audio_sources"]
+                ]
+            if "faders" in sc and isinstance(sc["faders"], list):
+                sc["faders"] = [
+                    new_name if (f == old_name or DirectorPanelWindow._is_audio_channel_match(f, old_name)) else f 
+                    for f in sc["faders"]
+                ]
+
+        # 2. Update active volume faders
+        for f in self.faders:
+            fn = f.get("name", "")
+            if fn == old_name or DirectorPanelWindow._is_audio_channel_match(fn, old_name):
+                f["name"] = new_name
+                if raw_id:
+                    f["id"] = raw_id
+
+        # 3. Update fader pool
+        if hasattr(self, "fader_pool") and isinstance(self.fader_pool, list):
+            for idx, fn in enumerate(self.fader_pool):
+                if fn == old_name or DirectorPanelWindow._is_audio_channel_match(fn, old_name):
+                    self.fader_pool[idx] = new_name
+
+        # 4. Update fader combo selections
+        fader_combos = [
+            getattr(self, "edit_fader1", None),
+            getattr(self, "edit_fader2", None),
+            getattr(self, "edit_fader3", None),
+            getattr(self, "edit_fader4", None),
+            getattr(self, "edit_fader5", None),
+        ]
+        for combo in fader_combos:
+            if combo:
+                ct = combo.currentText()
+                if ct == old_name or DirectorPanelWindow._is_audio_channel_match(ct, old_name):
+                    combo.blockSignals(True)
+                    combo.setCurrentText(new_name)
+                    combo.blockSignals(False)
+
+        self._refresh_fader_combos()
+        self._refresh_scene_list_ui()
+
     def _edit_audio(self):
         row = self.list_audio.currentRow()
         if 0 <= row < len(self.audio_toggles):
             cur = self.audio_toggles[row]
+            old_name = cur.get("name", "")
             avail = self.slobs_client.get_cached_audio_sources() if self.slobs_client else []
-            dlg = AudioEditDialog(cur["name"], available_sources=avail, source_id=cur.get("id"), parent=self)
+            dlg = AudioEditDialog(old_name, available_sources=avail, source_id=cur.get("id"), parent=self)
             if dlg.exec():
                 n, raw_id = dlg.get_data()
                 self.audio_toggles[row] = {"name": n, "id": raw_id, "muted": cur.get("muted", False)}
+                if old_name and old_name != n:
+                    self._cascade_rename_audio_source(old_name, n, raw_id)
                 self._refresh_audio_list_ui()
                 self._on_settings_changed()
                 if self.is_panel_open():
@@ -2206,13 +2355,23 @@ class DirectorTab(QWidget):
                         permissions=getattr(self, "_cached_client_permissions", None),
                         pool_scenes=self.scenes,
                         pool_audio=self._get_live_audio_toggles(),
-                        pool_faders=self._get_active_fader_pool()
+                        pool_faders=self._get_active_fader_pool(),
+                        soundboard_engine=self.soundboard_engine
                     )
 
     def _remove_audio(self):
         row = self.list_audio.currentRow()
         if 0 <= row < len(self.audio_toggles):
-            self.audio_toggles.pop(row)
+            removed = self.audio_toggles.pop(row)
+            rem_name = removed.get("name", "")
+            if rem_name:
+                for sc in self.scenes:
+                    if "audio_sources" in sc and isinstance(sc["audio_sources"], list):
+                        sc["audio_sources"] = [a for a in sc["audio_sources"] if a != rem_name]
+                    if "faders" in sc and isinstance(sc["faders"], list):
+                        sc["faders"] = [f for f in sc["faders"] if f != rem_name]
+                if hasattr(self, "fader_pool") and isinstance(self.fader_pool, list):
+                    self.fader_pool = [fn for fn in self.fader_pool if fn != rem_name]
             self._refresh_audio_list_ui()
             self._on_settings_changed()
             if self.is_panel_open():
@@ -2223,7 +2382,8 @@ class DirectorTab(QWidget):
                     permissions=getattr(self, "_cached_client_permissions", None),
                     pool_scenes=self.scenes,
                     pool_audio=self._get_live_audio_toggles(),
-                    pool_faders=self._get_active_fader_pool()
+                    pool_faders=self._get_active_fader_pool(),
+                    soundboard_engine=self.soundboard_engine
                 )
 
     def _set_launch_button_state(self, is_open: bool):
@@ -2301,6 +2461,22 @@ class DirectorTab(QWidget):
             self.panel_window.resync_requested.connect(self._on_panel_resync_requested)
             self.panel_window.view_visibility_toggled.connect(self._on_panel_view_visibility_toggled)
 
+        conn_mode = getattr(self, "conn_mode", "local")
+        sb_engine = self.soundboard_engine if conn_mode == "local" else None
+        sb_clips = None
+        sb_lan_client = None
+        sb_webrtc = None
+
+        if conn_mode == "remote":
+            self._ensure_lan_soundboard_client()
+            sb_lan_client = self.soundboard_lan_client
+            sb_clips = self.remote_soundboard_clips or (self.soundboard_lan_client.cached_clips if self.soundboard_lan_client else [])
+        elif conn_mode == "webrtc_client":
+            sb_webrtc = self.client_webrtc
+            sb_clips = getattr(self, "remote_soundboard_clips", [])
+        else:
+            self._ensure_lan_soundboard_server()
+
         fader_data = self._get_fader_data()
         perms = getattr(self, "_cached_client_permissions", None)
         self.panel_window.load_configuration(
@@ -2311,7 +2487,10 @@ class DirectorTab(QWidget):
             pool_scenes=self.scenes,
             pool_audio=self._get_live_audio_toggles(),
             pool_faders=self._get_active_fader_pool(),
-            soundboard_engine=getattr(self.main_win, "soundboard_engine", None)
+            soundboard_engine=sb_engine,
+            soundboard_clips=sb_clips,
+            soundboard_lan_client=sb_lan_client,
+            client_webrtc=sb_webrtc
         )
 
         
@@ -2657,8 +2836,6 @@ class DirectorTab(QWidget):
         if res == QMessageBox.StandardButton.Yes:
             self._stop_host_p2p()
             self._generate_new_passkey()
-            if hasattr(self, "chk_enable_wan_p2p") and self.chk_enable_wan_p2p.isChecked():
-                self._start_host_p2p()
 
     def _generate_new_passkey(self):
         raw_pk, salt, hash_val = PasskeyManager.generate_passkey()
@@ -2668,6 +2845,8 @@ class DirectorTab(QWidget):
         if hasattr(self, "edit_host_passkey"):
             self.edit_host_passkey.setText(raw_pk)
         self._on_settings_changed()
+        if hasattr(self, "chk_enable_wan_p2p") and self.chk_enable_wan_p2p.isChecked() and getattr(self, "conn_mode", "") != "webrtc_client":
+            self._start_host_p2p()
 
     def _on_host_p2p_toggled(self, checked: bool):
         if hasattr(self, "box_host_p2p_details"):
@@ -2685,8 +2864,17 @@ class DirectorTab(QWidget):
         self._stop_host_p2p()
         ch = self._get_streamer_channel()
         pk = self.p2p_passkey_raw
+        if not pk and hasattr(self, "edit_host_passkey"):
+            pk = self.edit_host_passkey.text().strip()
+            self.p2p_passkey_raw = pk
         if not pk:
+            log_debug("WEBRTC", "Host P2P cannot start: passkey is empty.")
             return
+
+        if pk and (not getattr(self, "p2p_passkey_salt", None) or not getattr(self, "p2p_passkey_hash", None)):
+            import secrets
+            self.p2p_passkey_salt = secrets.token_hex(16)
+            self.p2p_passkey_hash = PasskeyManager.hash_passkey(pk, self.p2p_passkey_salt)
 
         allowed_user = self._get_current_selected_cohost() or (self.edit_allowed_twitch_user.text().strip() if hasattr(self, "edit_allowed_twitch_user") else "")
         self.bouncer = BouncerValidator(
@@ -2701,6 +2889,7 @@ class DirectorTab(QWidget):
             QMessageBox.critical(self, "WebRTC Error", f"Failed to load WebRTC P2P module:\n{e}")
             return
 
+        log_debug("WEBRTC", f"Starting host P2P for channel='{ch}', pk='{pk}' (cohost={allowed_user})...")
         self.host_webrtc = WebRTCManager(role="host", channel_name=ch, passkey=pk, parent=self)
         self.host_webrtc.connection_status_changed.connect(self._on_host_p2p_status_changed)
         self.host_webrtc.command_received.connect(self._on_host_p2p_command_received)
@@ -2757,13 +2946,30 @@ class DirectorTab(QWidget):
             vol = self.slobs_client.get_source_volume_percent(name) if slobs_ok else (
                 self.faders[idx].get("volume", def_vol) if idx < len(self.faders) else def_vol
             )
-            result.append({"name": name, "volume": vol})
+            raw_id = self.faders[idx].get("id", "") if idx < len(self.faders) else ""
+            if not raw_id:
+                for a in self.audio_toggles:
+                    if a.get("name") == name:
+                        raw_id = a.get("id", "")
+                        break
+            if not raw_id and slobs_ok:
+                for s in self.slobs_client.get_cached_audio_sources():
+                    if s.get("name") == name:
+                        raw_id = s.get("sourceId") or s.get("id", "")
+                        break
+            result.append({"name": name, "volume": vol, "id": raw_id})
         return result
 
     def _on_panel_resync_requested(self):
         if self.client_webrtc and self.client_webrtc.isRunning():
             log_debug("WEBRTC", "Panel requested state re-sync from streamer via P2P")
             self.client_webrtc.send_command("REQUEST_STATE")
+        elif getattr(self, "conn_mode", "local") == "remote":
+            log_debug("DIRECTOR", "Panel requested state re-sync from streamer via LAN")
+            if self.soundboard_lan_client:
+                self.soundboard_lan_client.request_state()
+            if self.slobs_client and self.slobs_client.is_connected():
+                self.slobs_client.connect_client()
         else:
             self.push_sync_to_directors()
 
@@ -2785,6 +2991,16 @@ class DirectorTab(QWidget):
                     "Please click '🔗 Connect P2P' first to link with the streamer, then click sync."
                 )
             return
+        elif getattr(self, "conn_mode", "local") == "remote":
+            if self.soundboard_lan_client:
+                self.soundboard_lan_client.request_state()
+            if self.slobs_client and self.slobs_client.is_connected():
+                self.slobs_client.connect_client()
+            if hasattr(self, "btn_push_sync"):
+                orig_text = self.btn_push_sync.text()
+                self.btn_push_sync.setText("🔄 Syncing...")
+                QTimer.singleShot(1500, lambda: self.btn_push_sync.setText(orig_text))
+            return
 
         log_debug("HOST_BOUNCER", "Streamer pushed state re-sync to directors")
         self._broadcast_host_state_update()
@@ -2805,7 +3021,7 @@ class DirectorTab(QWidget):
                 pool_scenes=self.scenes,
                 pool_audio=self._get_live_audio_toggles(),
                 pool_faders=self._get_active_fader_pool(),
-                soundboard_engine=getattr(self.main_win, "soundboard_engine", None)
+                soundboard_engine=self.soundboard_engine
             )
 
 
@@ -2815,7 +3031,13 @@ class DirectorTab(QWidget):
             provided_key = payload.get("passkey", "")
             twitch_user = payload.get("twitch_user", "")
             # Verify passkey
-            if not PasskeyManager.verify_passkey(provided_key, self.p2p_passkey_salt, self.p2p_passkey_hash):
+            valid_pk = PasskeyManager.verify_passkey(provided_key, self.p2p_passkey_salt, self.p2p_passkey_hash)
+            if not valid_pk and getattr(self, "p2p_passkey_raw", ""):
+                clean_prov = provided_key.strip().upper().replace(" ", "").replace("-", "")
+                clean_raw = self.p2p_passkey_raw.strip().upper().replace(" ", "").replace("-", "")
+                if clean_prov and clean_prov == clean_raw:
+                    valid_pk = True
+            if not valid_pk:
                 log_debug("HOST_BOUNCER", f"Handshake rejected: invalid passkey from {client_id}")
                 if self.host_webrtc:
                     self.host_webrtc.reject_peer_handshake(client_id, "Invalid or expired Passkey")
@@ -2848,6 +3070,8 @@ class DirectorTab(QWidget):
                             peer_perms = v
                             break
 
+            engine = self.soundboard_engine
+            sb_clips = [c.to_dict() for c in getattr(engine, "clips", [])] if engine else []
             state = {
                 "active_scene": active_name or "",
                 "active_scene_id": act_id or "",
@@ -2859,6 +3083,7 @@ class DirectorTab(QWidget):
                 "pool_audio": live_toggles,
                 "pool_faders": active_pool,
                 "audio_sources": self.slobs_client.get_cached_audio_sources(),
+                "soundboard_clips": sb_clips,
                 "permissions": peer_perms,
                 "user_permissions": self.user_permissions
             }
@@ -2884,11 +3109,25 @@ class DirectorTab(QWidget):
             QTimer.singleShot(400, self._broadcast_host_state_update)
         elif cmd_act == "TOGGLE_MUTE":
             log_debug("HOST_BOUNCER", f"Executing validated TOGGLE_MUTE -> '{target}' ({sanitized.get('muted')})")
-            self.slobs_client.set_audio_muted(target, sanitized.get("muted", True))
+            ok = self.slobs_client.set_audio_muted(target, sanitized.get("muted", True))
+            if not ok:
+                for a in self.audio_toggles:
+                    if a.get("name", "").strip().lower() == str(target).strip().lower():
+                        aid = a.get("id")
+                        if aid:
+                            self.slobs_client.set_audio_muted(aid, sanitized.get("muted", True))
+                            break
             QTimer.singleShot(300, self._broadcast_host_state_update)
         elif cmd_act == "SET_VOLUME":
             log_debug("HOST_BOUNCER", f"Executing validated SET_VOLUME -> '{target}' ({sanitized.get('volume')})")
-            self.slobs_client.set_audio_deflection(target, sanitized.get("volume", 0.75))
+            ok = self.slobs_client.set_audio_deflection(target, sanitized.get("volume", 0.75))
+            if not ok:
+                for a in self.audio_toggles:
+                    if a.get("name", "").strip().lower() == str(target).strip().lower():
+                        aid = a.get("id")
+                        if aid:
+                            self.slobs_client.set_audio_deflection(aid, sanitized.get("volume", 0.75))
+                            break
             QTimer.singleShot(300, self._broadcast_host_state_update)
         elif cmd_act == "SET_VISIBILITY":
             log_debug("HOST_BOUNCER", f"Executing validated SET_VISIBILITY -> '{target}' ({sanitized.get('visible')})")
@@ -2897,7 +3136,7 @@ class DirectorTab(QWidget):
         elif cmd_act == "PLAY_SOUND":
             clip_id = sanitized.get("clip_id") or sanitized.get("target") or ""
             user = sanitized.get("user") or client_id
-            engine = getattr(self.main_win, "soundboard_engine", None)
+            engine = self.soundboard_engine
             if engine and clip_id:
                 guard = getattr(self, "spam_guard", None)
                 if not guard:
@@ -2914,6 +3153,11 @@ class DirectorTab(QWidget):
                 else:
                     log_debug("HOST_BOUNCER", f"Executing validated PLAY_SOUND -> '{clip_id}' from {user}")
                     engine.toggle_clip(clip_id)
+        elif cmd_act == "STOP_ALL":
+            log_debug("HOST_BOUNCER", f"Executing validated STOP_ALL from client {client_id}")
+            engine = self.soundboard_engine
+            if engine:
+                engine.stop_all()
         elif cmd_act == "REQUEST_STATE":
             log_debug("HOST_BOUNCER", f"Executing validated REQUEST_STATE from client {client_id}")
             self._broadcast_host_state_update()
@@ -2944,6 +3188,8 @@ class DirectorTab(QWidget):
             fader_data = self._get_fader_data()
             live_toggles = self._get_live_audio_toggles()
             active_pool = self._get_active_fader_pool()
+            engine = self.soundboard_engine
+            sb_clips = [c.to_dict() for c in getattr(engine, "clips", [])] if engine else []
             state = {
                 "active_scene": active_name or "",
                 "active_scene_id": act_id or "",
@@ -2955,6 +3201,7 @@ class DirectorTab(QWidget):
                 "pool_audio": live_toggles,
                 "pool_faders": active_pool,
                 "audio_sources": self.slobs_client.get_cached_audio_sources(),
+                "soundboard_clips": sb_clips,
                 "view_toggles": {
                     "Legal-View": self.slobs_client.get_source_visibility("Legal-View"),
                     "SandMan View": self.slobs_client.get_source_visibility("SandMan View"),
@@ -2969,6 +3216,8 @@ class DirectorTab(QWidget):
         if self.client_webrtc and self.client_webrtc.isRunning() and not force_reconnect:
             self.client_webrtc.stop_session()
             self.client_webrtc = None
+            if self.panel_window:
+                self.panel_window.client_webrtc = None
             self.slobs_client.disconnect_client()
             if hasattr(self, "btn_client_p2p_connect"):
                 self.btn_client_p2p_connect.setText("🔗 Connect P2P Session")
@@ -2981,6 +3230,8 @@ class DirectorTab(QWidget):
         if self.client_webrtc:
             self.client_webrtc.stop_session()
             self.client_webrtc = None
+            if self.panel_window:
+                self.panel_window.client_webrtc = None
 
         ch = self.edit_client_channel.text().strip() if hasattr(self, "edit_client_channel") else ""
         pk = self.edit_client_passkey.text().strip() if hasattr(self, "edit_client_passkey") else ""
@@ -3011,6 +3262,8 @@ class DirectorTab(QWidget):
         self.client_webrtc.state_received.connect(self._on_client_p2p_state_received)
         self.slobs_client.configure_connection(mode="webrtc_client")
         self.slobs_client.set_webrtc_client(self.client_webrtc)
+        if self.panel_window:
+            self.panel_window.client_webrtc = self.client_webrtc
         self.client_webrtc.start()
 
     def _on_client_p2p_status_changed(self, status_tag: str, msg: str):
@@ -3044,6 +3297,10 @@ class DirectorTab(QWidget):
             self.audio_toggles = audio_toggles
             self._refresh_audio_list_ui()
 
+        audio_sources = state.get("audio_sources", [])
+        if audio_sources and hasattr(self.slobs_client, "_audio_cache"):
+            self.slobs_client._audio_cache = list(audio_sources)
+
         faders = state.get("faders", [])
         if faders:
             self.faders = faders
@@ -3072,6 +3329,11 @@ class DirectorTab(QWidget):
 
         self._cached_client_permissions = perms
 
+        soundboard_clips = state.get("soundboard_clips", [])
+        if soundboard_clips:
+            self.remote_soundboard_clips = soundboard_clips
+            if self.panel_window:
+                self.panel_window.set_remote_soundboard_clips(soundboard_clips)
 
         if self.panel_window:
             fader_payload = faders or self._get_fader_data()
@@ -3082,7 +3344,9 @@ class DirectorTab(QWidget):
                 permissions=perms,
                 pool_scenes=pool_scenes,
                 pool_audio=pool_audio,
-                pool_faders=pool_faders
+                pool_faders=pool_faders,
+                soundboard_clips=getattr(self, "remote_soundboard_clips", []),
+                client_webrtc=self.client_webrtc
             )
             active_sc = state.get("active_scene", "")
             active_sc_id = state.get("active_scene_id", "")

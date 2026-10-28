@@ -1,0 +1,17 @@
+{
+  "issue_number": 11,
+  "issue_url": "https://github.com/thawizanator/hotkey-overlay-alert/issues/11",
+  "title": "Unknown Publisher",
+  "urgency_estimate": "Medium / Moderate",
+  "component": "launch",
+  "author": "purplen3rd (260206208722534420)",
+  "source": "discord",
+  "is_feature_request": false,
+  "description": "Isn't the app digitally signed by thawizanator? so shouldn't it be displaying that here?",
+  "steps": "download exe\ndouble click exe",
+  "diagnostics": {},
+  "logs": "📷 User attached screenshot: image.png\nURL: https://cdn.discordapp.com/ephemeral-attachments/1562566562047860839/1564873307600326676/image.png?ex=6ae2d956&is=6ae187d6&hm=8b6b11e7cb59ac77fbcad5b70d4caf72db8a5863d6ed7cb46a18041228aa4532&",
+  "ai_diagnosis": "Report filed for component **launch**. Logs have been attached and security-sanitized for maintainer review.",
+  "created_at": "2026-10-28T00:29:05.440837",
+  "status": "pending_solution"
+}

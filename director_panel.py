@@ -509,10 +509,11 @@ class VolumeFaderWidget(QWidget):
     """Vertical volume slider with label and value readout."""
     value_changed = pyqtSignal(int, int)  # (fader_id, value 0-100)
 
-    def __init__(self, fader_id, name="Audio", initial_val=75, parent=None):
+    def __init__(self, fader_id, name="Audio", initial_val=75, parent=None, raw_id=None):
         super().__init__(parent)
         self.fader_id = fader_id
         self.fader_name = name
+        self.fader_raw_id = raw_id
         self.is_locked = False
         self._is_dragging = False
         self._pending_val = None
@@ -524,21 +525,23 @@ class VolumeFaderWidget(QWidget):
         self._throttle_timer.timeout.connect(self._flush_pending_value)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 0, 4, 0)
-        layout.setSpacing(3)
+        layout.setContentsMargins(2, 0, 2, 0)
+        layout.setSpacing(2)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.lbl_name = QLabel(name)
         self.lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_name.setWordWrap(True)
+        self.lbl_name.setFixedHeight(32)
         self.lbl_name.setMaximumWidth(88)
-        self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #d4d4d8;")
+        self.lbl_name.setStyleSheet("font-size: 8.5px; font-weight: 600; color: #d4d4d8; line-height: 10px;")
+        self.lbl_name.setToolTip(name)
         layout.addWidget(self.lbl_name)
 
         self.slider = SmoothSlider(Qt.Orientation.Vertical, self)
         self.slider.setRange(0, 100)
         self.slider.setValue(initial_val)
-        self.slider.setFixedHeight(75)
+        self.slider.setFixedHeight(54)
         self.slider.setCursor(Qt.CursorShape.PointingHandCursor)
         self.slider.setStyleSheet("""
             QSlider::groove:vertical {
@@ -557,8 +560,8 @@ class VolumeFaderWidget(QWidget):
             QSlider::handle:vertical {
                 background: #00a8ff;
                 border: 1px solid #ffffff;
-                height: 14px;
-                margin: 0 -4px;
+                height: 12px;
+                margin: 0 -3px;
                 border-radius: 3px;
             }
             QSlider::handle:vertical:hover {
@@ -572,24 +575,26 @@ class VolumeFaderWidget(QWidget):
 
         self.lbl_val = QLabel(f"{initial_val}%")
         self.lbl_val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_val.setFixedHeight(12)
         self.lbl_val.setStyleSheet("font-size: 9px; color: #a1a1aa; font-family: monospace;")
         layout.addWidget(self.lbl_val)
 
     def set_label(self, name: str):
         self.fader_name = name
         self.lbl_name.setText(name)
+        self.lbl_name.setToolTip(name)
 
     def set_locked(self, locked: bool):
         self.is_locked = locked
         self.slider.setEnabled(not locked)
         if locked:
             self.setToolTip("🔒 Locked: Permission not granted by Streamer")
-            self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #52525b;")
+            self.lbl_name.setStyleSheet("font-size: 8.5px; font-weight: 600; color: #52525b; line-height: 10px;")
             self.lbl_val.setText("🔒")
             self.lbl_val.setStyleSheet("font-size: 9px; color: #52525b; font-family: monospace;")
         else:
             self.setToolTip("Scroll wheel or drag to adjust | Right-click to swap channel from pool")
-            self.lbl_name.setStyleSheet("font-size: 9px; font-weight: 600; color: #d4d4d8;")
+            self.lbl_name.setStyleSheet("font-size: 8.5px; font-weight: 600; color: #d4d4d8; line-height: 10px;")
             self.lbl_val.setText(f"{self.slider.value()}%")
             self.lbl_val.setStyleSheet("font-size: 9px; color: #a1a1aa; font-family: monospace;")
 
@@ -713,6 +718,8 @@ class DirectorSoundboardDeck(QWidget):
         self.spam_guard = spam_guard if spam_guard else SoundboardSpamGuard(parent=self)
         self.user_identity = "director_dock"
         self.buttons = {}
+        self.soundboard_clips = []
+        self.active_clip_ids = set()
         self._drag_pos = None
 
         self.setObjectName("directorSoundboardDeck")
@@ -807,7 +814,7 @@ class DirectorSoundboardDeck(QWidget):
         self.btn_stop_all = QPushButton("⏹  STOP ALL")
         self.btn_stop_all.setFixedHeight(28)
         self.btn_stop_all.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_stop_all.setToolTip("Immediately stop all currently playing sound clips")
+        self.btn_stop_all.setToolTip("Immediately stop all currently playing sound clips on streamer rig")
         self.btn_stop_all.setStyleSheet("""
             QPushButton {
                 background-color: #7f1d1d;
@@ -853,7 +860,9 @@ class DirectorSoundboardDeck(QWidget):
         except Exception:
             pass
 
-    def refresh_clips(self, engine=None):
+    def refresh_clips(self, engine=None, clips=None):
+        if clips is not None:
+            self.soundboard_clips = list(clips)
         if engine is not None and engine != self.engine:
             self.engine = engine
             self._connect_engine_signals(engine)
@@ -867,9 +876,9 @@ class DirectorSoundboardDeck(QWidget):
                 w.deleteLater()
         self.buttons.clear()
 
-        clips = getattr(self.engine, "clips", []) if self.engine else []
-        if not clips:
-            lbl_empty = QLabel("No sound clips configured in Soundboard tab.")
+        raw_clips = self.soundboard_clips if getattr(self, "soundboard_clips", None) else (getattr(self.engine, "clips", []) if self.engine else [])
+        if not raw_clips:
+            lbl_empty = QLabel("No sound clips configured on Streamer rig.")
             lbl_empty.setStyleSheet("font-size: 10px; color: #71717a; padding: 12px 0;")
             lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.grid.addWidget(lbl_empty, 0, 0, 1, 2)
@@ -877,22 +886,24 @@ class DirectorSoundboardDeck(QWidget):
             return
 
         cols = 2
-        for idx, clip in enumerate(clips):
-            is_playing = self.engine.is_clip_playing(clip.id) if self.engine else False
+        for idx, clip in enumerate(raw_clips):
+            cid = clip.get("id") if isinstance(clip, dict) else getattr(clip, "id", "")
+            cname = clip.get("name") if isinstance(clip, dict) else getattr(clip, "name", "Sound")
+            is_playing = cid in getattr(self, "active_clip_ids", set()) or (self.engine.is_clip_playing(cid) if self.engine else False)
             btn = QPushButton()
             btn.setFixedHeight(36)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clip_data = clip
             self._update_button_style(btn, clip, is_playing)
-            btn.clicked.connect(lambda _, cid=clip.id, cname=clip.name, b=btn: self._on_clip_clicked(cid, cname, b))
-            self.buttons[clip.id] = btn
+            btn.clicked.connect(lambda _, c_id=cid, c_nm=cname, b=btn: self._on_clip_clicked(c_id, c_nm, b))
+            self.buttons[cid] = btn
             self.grid.addWidget(btn, idx // cols, idx % cols)
 
         self.adjustSize()
 
     def _update_button_style(self, btn, clip, is_playing: bool):
-        c = getattr(clip, "color", "#38bdf8")
-        name = getattr(clip, "name", "Sound")
+        c = clip.get("color", "#38bdf8") if isinstance(clip, dict) else getattr(clip, "color", "#38bdf8")
+        name = clip.get("name", "Sound") if isinstance(clip, dict) else getattr(clip, "name", "Sound")
         if is_playing:
             btn.setText(f"⏹  {name}")
             btn.setStyleSheet(f"""
@@ -932,38 +943,52 @@ class DirectorSoundboardDeck(QWidget):
                 }}
             """)
 
+    def set_playback_state(self, clip_id: str, is_playing: bool):
+        if not hasattr(self, "active_clip_ids"):
+            self.active_clip_ids = set()
+        if is_playing:
+            self.active_clip_ids.add(clip_id)
+        else:
+            self.active_clip_ids.discard(clip_id)
+        btn = self.buttons.get(clip_id)
+        if btn and hasattr(btn, "clip_data"):
+            self._update_button_style(btn, btn.clip_data, is_playing)
+
     def _on_clip_clicked(self, clip_id, clip_name, btn):
         allowed, reason, rem = self.spam_guard.check_trigger(self.user_identity)
         if not allowed:
             self._show_warning(reason, rem)
             strikes = self.spam_guard.get_strike_count(self.user_identity)
             if strikes >= 3:
-                if self.engine and hasattr(self.engine, "play_alarm_buzzer"):
+                if self.parent_dock and hasattr(self.parent_dock, "play_alarm_buzzer"):
+                    self.parent_dock.play_alarm_buzzer()
+                elif self.engine and hasattr(self.engine, "play_alarm_buzzer"):
                     self.engine.play_alarm_buzzer()
                 elif self.engine:
                     self.engine.play_clip("cue-buzzer")
             return
 
-        if self.engine:
+        if self.parent_dock and hasattr(self.parent_dock, "trigger_sound"):
+            self.parent_dock.trigger_sound(clip_id, clip_name)
+        elif self.engine:
             self.engine.toggle_clip(clip_id)
         self.sound_triggered.emit(clip_id, clip_name)
         self.lbl_status.setText(f"Triggered: {clip_name}")
 
     def _on_clip_started(self, clip_id, clip_name):
-        btn = self.buttons.get(clip_id)
-        if btn and hasattr(btn, "clip_data"):
-            self._update_button_style(btn, btn.clip_data, True)
+        self.set_playback_state(clip_id, True)
 
     def _on_clip_stopped(self, clip_id):
-        btn = self.buttons.get(clip_id)
-        if btn and hasattr(btn, "clip_data"):
-            self._update_button_style(btn, btn.clip_data, False)
+        self.set_playback_state(clip_id, False)
 
     def _on_stop_all(self):
-        if self.engine:
+        if self.parent_dock and hasattr(self.parent_dock, "stop_all_sounds"):
+            self.parent_dock.stop_all_sounds()
+        elif self.engine:
             self.engine.stop_all()
         self.stop_all_requested.emit()
         self.lbl_status.setText("All Audio Stopped")
+
 
     def _show_warning(self, msg, cooldown_sec):
         self.banner.setVisible(True)
@@ -1081,6 +1106,14 @@ class DirectorPanelWindow(QWidget):
         self.soundboard_engine = None
         self.spam_guard = SoundboardSpamGuard(parent=self)
         self.soundboard_deck = None
+        self.soundboard_clips = []
+        self.soundboard_lan_client = None
+        self.client_webrtc = None
+
+        self._stable_dock_width = None
+        self._user_custom_width = None
+        self._programmatic_resizing = False
+        self._in_size_probe = False
 
         self._build_ui()
 
@@ -1234,7 +1267,7 @@ class DirectorPanelWindow(QWidget):
         self.lay_scenes_grid.setContentsMargins(0, 0, 0, 0)
         self.lay_scenes_grid.setSpacing(4)
         lay_scenes_box.addLayout(self.lay_scenes_grid)
-        content_row.addWidget(self.grp_scenes, 4)
+        content_row.addWidget(self.grp_scenes, 3)
 
         # SECTION 2: IN-GAME VIEW TOGGLES (SLOBS Source Visibility)
         self.grp_view_toggles = QFrame()
@@ -1314,10 +1347,10 @@ class DirectorPanelWindow(QWidget):
         lay_vol_box.addWidget(lbl_sec_vol)
 
         self.lay_vol_row = QHBoxLayout()
-        self.lay_vol_row.setSpacing(8)
+        self.lay_vol_row.setSpacing(5)
         self.lay_vol_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay_vol_box.addLayout(self.lay_vol_row)
-        content_row.addWidget(self.grp_volume, 3)
+        content_row.addWidget(self.grp_volume, 4)
 
         root.addLayout(content_row)
 
@@ -1358,8 +1391,8 @@ class DirectorPanelWindow(QWidget):
             fader_widget = self.volume_faders[i]
             name = f_info.get("name", f"Audio {i+1}")
             fader_widget.set_label(name)
-            # Sync volume percent from Streamlabs if connected
-            if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            # Sync volume percent from Streamlabs if connected locally
+            if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected() and getattr(self.slobs_client, "_mode", "") not in ("webrtc_client", "remote"):
                 vol = self.slobs_client.get_source_volume_percent(name)
                 fader_widget.set_value_silently(vol)
             elif "volume" in f_info:
@@ -1572,7 +1605,7 @@ class DirectorPanelWindow(QWidget):
                 }
             """)
         else:
-            self.soundboard_deck.refresh_clips(self.soundboard_engine)
+            self.soundboard_deck.refresh_clips(self.soundboard_engine, clips=self.soundboard_clips)
             self._reposition_soundboard_deck()
             self.soundboard_deck.show()
             self.soundboard_deck.raise_()
@@ -1602,12 +1635,89 @@ class DirectorPanelWindow(QWidget):
         deck_y = dock_geom.y() - deck_h - 6
         self.soundboard_deck.move(max(10, deck_x), max(10, deck_y))
 
-    def load_configuration(self, scenes=None, audio=None, faders=None, permissions=None, pool_scenes=None, pool_audio=None, pool_faders=None, soundboard_engine=None):
+    def set_remote_soundboard_clips(self, clips: list):
+        """Updates remote soundboard clips received from Streamer rig."""
+        self.soundboard_clips = list(clips)
+        if hasattr(self, "soundboard_deck") and self.soundboard_deck:
+            self.soundboard_deck.refresh_clips(self.soundboard_engine, clips=self.soundboard_clips)
+
+    def _connect_soundboard_lan_client(self, client):
+        if self.soundboard_lan_client == client:
+            return
+        self.soundboard_lan_client = client
+        try:
+            client.clips_received.connect(self._on_remote_soundboard_clips_received)
+            client.playback_state_changed.connect(self._on_remote_soundboard_playback_changed)
+            client.spam_warning_received.connect(self._on_remote_soundboard_spam_warning)
+        except Exception:
+            pass
+        if getattr(client, "cached_clips", None):
+            self.set_remote_soundboard_clips(client.cached_clips)
+
+    def _on_remote_soundboard_clips_received(self, clips: list):
+        self.set_remote_soundboard_clips(clips)
+
+    def _on_remote_soundboard_playback_changed(self, clip_id: str, is_playing: bool):
+        if hasattr(self, "soundboard_deck") and self.soundboard_deck:
+            self.soundboard_deck.set_playback_state(clip_id, is_playing)
+
+    def _on_remote_soundboard_spam_warning(self, msg: str, cd: float, strikes: int):
+        if hasattr(self, "soundboard_deck") and self.soundboard_deck:
+            self.soundboard_deck._show_warning(msg, cd)
+
+    def trigger_sound(self, clip_id: str, clip_name: str = ""):
+        """Dispatches soundboard trigger across P2P WebRTC, LAN WebSocket, or local soundboard engine."""
+        log_debug("DIRECTOR", f"Dock triggering sound: {clip_name} ({clip_id})")
+        if getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+            log_debug("DIRECTOR", f"Dispatching PLAY_SOUND via WebRTC: {clip_id}")
+            self.client_webrtc.send_command("PLAY_SOUND", value=clip_id)
+        elif getattr(self, "soundboard_lan_client", None) and self.soundboard_lan_client.is_connected():
+            log_debug("DIRECTOR", f"Dispatching PLAY_SOUND via LAN WebSocket: {clip_id}")
+            self.soundboard_lan_client.send_play_sound(clip_id)
+        elif self.soundboard_engine:
+            log_debug("DIRECTOR", f"Dispatching PLAY_SOUND via local soundboard engine: {clip_id}")
+            self.soundboard_engine.toggle_clip(clip_id)
+        else:
+            log_debug("DIRECTOR", f"trigger_sound failed: No transport available (lan_client={getattr(self, 'soundboard_lan_client', None)}, webrtc={getattr(self, 'client_webrtc', None)}, engine={getattr(self, 'soundboard_engine', None)})")
+
+    def stop_all_sounds(self):
+        """Dispatches STOP ALL across P2P WebRTC, LAN WebSocket, or local soundboard engine."""
+        log_debug("DIRECTOR", "Dock requested STOP ALL sounds")
+        if getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+            self.client_webrtc.send_command("STOP_ALL", value="")
+        elif getattr(self, "soundboard_lan_client", None) and self.soundboard_lan_client.is_connected():
+            self.soundboard_lan_client.send_stop_all()
+        elif self.soundboard_engine:
+            self.soundboard_engine.stop_all()
+
+    def play_alarm_buzzer(self):
+        """Punitive strike 3 alarm buzzer dispatch to streamer rig."""
+        log_debug("DIRECTOR", "Dock sounding alarm buzzer on streamer rig")
+        if getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+            self.client_webrtc.send_command("PLAY_SOUND", value="cue-buzzer")
+        elif getattr(self, "soundboard_lan_client", None) and self.soundboard_lan_client.is_connected():
+            self.soundboard_lan_client.send_play_sound("cue-buzzer")
+        elif self.soundboard_engine and hasattr(self.soundboard_engine, "play_alarm_buzzer"):
+            self.soundboard_engine.play_alarm_buzzer()
+        elif self.soundboard_engine:
+            self.soundboard_engine.play_clip("cue-buzzer")
+
+    def load_configuration(self, scenes=None, audio=None, faders=None, permissions=None, pool_scenes=None, pool_audio=None, pool_faders=None, soundboard_engine=None, soundboard_clips=None, soundboard_lan_client=None, client_webrtc=None):
         """Builds or rebuilds the dynamic scene cards, audio buttons, and faders with permission gating and preselection pools."""
         if soundboard_engine is not None:
             self.soundboard_engine = soundboard_engine
-            if hasattr(self, "soundboard_deck") and self.soundboard_deck:
-                self.soundboard_deck.refresh_clips(self.soundboard_engine)
+
+        if soundboard_clips is not None:
+            self.soundboard_clips = list(soundboard_clips)
+
+        if soundboard_lan_client is not None:
+            self._connect_soundboard_lan_client(soundboard_lan_client)
+
+        if client_webrtc is not None:
+            self.client_webrtc = client_webrtc
+
+        if hasattr(self, "soundboard_deck") and self.soundboard_deck:
+            self.soundboard_deck.refresh_clips(self.soundboard_engine, clips=self.soundboard_clips)
 
         if permissions is not None and bool(permissions):
             self._last_permissions = permissions
@@ -1698,7 +1808,15 @@ class DirectorPanelWindow(QWidget):
             self._clear_layout(self.lay_vol_row)
             self.volume_faders.clear()
             for i, f in enumerate(faders):
-                fader = VolumeFaderWidget(i, f.get("name", f"Audio {i+1}"), f.get("volume", 75), self)
+                f_name = f.get("name", f"Audio {i+1}")
+                f_raw_id = f.get("id")
+                if not f_raw_id:
+                    for a in getattr(self, "pool_audio", []):
+                        an = a.get("name") if isinstance(a, dict) else str(a)
+                        if an == f_name and isinstance(a, dict):
+                            f_raw_id = a.get("id")
+                            break
+                fader = VolumeFaderWidget(i, f_name, f.get("volume", 75), self, raw_id=f_raw_id)
                 fader.value_changed.connect(lambda fid, v, fw=fader: self._on_volume_adjusted(fid, fw.fader_name, v))
                 self.lay_vol_row.addWidget(fader)
                 self.volume_faders.append(fader)
@@ -1706,13 +1824,18 @@ class DirectorPanelWindow(QWidget):
             for i, fi in enumerate(faders):
                 if "volume" in fi:
                     self.volume_faders[i].set_value_silently(fi["volume"])
+                if "id" in fi and fi["id"]:
+                    self.volume_faders[i].fader_raw_id = fi["id"]
 
         # 4. Apply Granular Permissions Scoping
         self.re_evaluate_scene_states()
         self.re_evaluate_audio_states()
         self.re_evaluate_volume_states()
 
-        # 5. Trigger initial scene-aware reflow
+        # 5. Calculate stable dock width across all scenes to prevent resizing jerks
+        self._update_stable_dock_width()
+
+        # 6. Trigger initial scene-aware reflow
         cur_sc = self.scene_buttons[self.active_scene_index] if 0 <= self.active_scene_index < len(self.scene_buttons) else None
         cur_name = cur_sc.scene_name if cur_sc else (getattr(self, "_active_scene_name", "") or "")
         cur_id = getattr(cur_sc, "scene_raw_id", "") if cur_sc else (getattr(self, "_active_scene_id", "") or "")
@@ -1727,19 +1850,37 @@ class DirectorPanelWindow(QWidget):
             b.set_active(b == btn)
         self.reflow_for_active_scene(name, getattr(btn, "scene_raw_id", ""))
         self.scene_selected.emit(scene_id, name)
-        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
-            target = getattr(btn, "scene_raw_id", None) or name
+        target = getattr(btn, "scene_raw_id", None) or name
+        if getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+            self.client_webrtc.send_command("SWITCH_SCENE", target=name)
+        elif hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self.slobs_client.make_scene_active(target)
 
     def _on_audio_toggled(self, aid, name, is_muted):
         self.audio_toggled.emit(aid, name, is_muted)
-        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
-            self.slobs_client.set_audio_muted(name, is_muted)
+        btn = self.audio_buttons[aid] if 0 <= aid < len(self.audio_buttons) else None
+        target = (getattr(btn, "audio_raw_id", None) or "") if btn else ""
+        if not target:
+            target = name
+        if getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+            self.client_webrtc.send_command("TOGGLE_MUTE", target=name, value=is_muted)
+        elif hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            ok = self.slobs_client.set_audio_muted(target, is_muted)
+            if not ok and target != name:
+                self.slobs_client.set_audio_muted(name, is_muted)
 
     def _on_volume_adjusted(self, fid, name, val):
         self.volume_adjusted.emit(fid, name, val)
-        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
-            self.slobs_client.set_audio_deflection(name, val / 100.0)
+        fw = self.volume_faders[fid] if 0 <= fid < len(self.volume_faders) else None
+        target = (getattr(fw, "fader_raw_id", None) or "") if fw else ""
+        if not target:
+            target = name
+        if getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+            self.client_webrtc.send_command("SET_VOLUME", target=name, value=val / 100.0)
+        elif hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            ok = self.slobs_client.set_audio_deflection(target, val / 100.0)
+            if not ok and target != name:
+                self.slobs_client.set_audio_deflection(name, val / 100.0)
 
     def _fire_hotkey(self, hotkey_str: str, source_name: str = ""):
         """Parses and simulates any hotkey combination (Ctrl, Alt, Shift, Win, Numpad, F-keys, letters, numbers)."""
@@ -1860,8 +2001,10 @@ class DirectorPanelWindow(QWidget):
         else:
             self._fire_view_hotkey(source_name)
 
-        # 2. Also set visibility directly via live SLOBS RPC for target source
-        if target_source and hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+        # 2. Also set visibility directly via live SLOBS RPC or WebRTC for target source
+        if target_source and getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+            self.client_webrtc.send_command("SET_VISIBILITY", target=target_source, value=is_visible)
+        elif target_source and hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
             self.slobs_client.set_source_visibility(target_source, is_visible)
 
     def _on_slobs_source_visibility_changed(self, source_name: str, is_visible: bool):
@@ -1880,10 +2023,64 @@ class DirectorPanelWindow(QWidget):
             if is_match:
                 btn.set_visibility_state(is_visible)
 
-    def reflow_for_active_scene(self, scene_name: str, scene_id: str = ""):
+    @staticmethod
+    def _is_audio_channel_match(name_a: str, name_b: str) -> bool:
+        if not name_a or not name_b:
+            return False
+        a_low = name_a.strip().lower()
+        b_low = name_b.strip().lower()
+        if a_low == b_low or a_low in b_low or b_low in a_low:
+            return True
+        music_syns = ('spot', 'stop', 'music', 'vod')
+        if any(m in a_low for m in music_syns) and any(m in b_low for m in music_syns):
+            return True
+        mic_syns = ('mic', 'microphone')
+        if any(m in a_low for m in mic_syns) and any(m in b_low for m in mic_syns):
+            return True
+        if ('disc' in a_low or a_low.startswith('dis')) and ('disc' in b_low or b_low.startswith('dis')):
+            return True
+        alert_syns = ('alert', 'alerts')
+        if any(al in a_low for al in alert_syns) and any(al in b_low for al in alert_syns):
+            return True
+        if 'everyone' in a_low and 'everyone' in b_low:
+            return True
+        return False
+
+    def _is_audio_match_with_aliases(self, item_name: str, item_raw_id: str, allowed_list: list) -> bool:
+        if not allowed_list:
+            return True
+        # 1. Exact or synonym match on item_name
+        if any(self._is_audio_channel_match(item_name, a) for a in allowed_list):
+            return True
+        # 2. Check by raw_id
+        if item_raw_id:
+            raw_clean = str(item_raw_id).strip().lower()
+            for a in allowed_list:
+                a_clean = str(a).strip().lower()
+                if a_clean == raw_clean:
+                    return True
+            # 3. Check Streamlabs cache: does this raw_id have a Streamlabs name that matches allowed_list?
+            if hasattr(self, "slobs_client") and self.slobs_client:
+                for s in self.slobs_client.get_cached_audio_sources():
+                    sid = str(s.get("sourceId") or s.get("id") or "").strip().lower()
+                    sn = (s.get("name") or "").strip()
+                    if sid == raw_clean and sn:
+                        if any(self._is_audio_channel_match(sn, a) for a in allowed_list):
+                            return True
+        # 4. Check pool_audio for alias resolution
+        for a_item in getattr(self, "pool_audio", []):
+            if isinstance(a_item, dict):
+                p_name = a_item.get("name", "")
+                p_id = a_item.get("id", "")
+                if (self._is_audio_channel_match(item_name, p_name) or (item_raw_id and p_id == item_raw_id)) and p_name != item_name:
+                    if any(self._is_audio_channel_match(p_name, a) for a in allowed_list):
+                        return True
+        return False
+
+    def _apply_scene_scoping(self, scene_name: str, scene_id: str = ""):
         """
-        Dynamically adjusts visible view toggles, audio mute buttons, and volume faders
-        based on the active scene's configuration.
+        Internal logic to toggle visibility of view toggles, audio buttons, and volume faders
+        strictly matching the target scene without modifying window geometry.
         """
         sc_config = None
         s_name_lower = (scene_name or "").strip().lower()
@@ -1977,41 +2174,84 @@ class DirectorPanelWindow(QWidget):
                 continue
 
             if allowed_audio is not None and len(allowed_audio) > 0:
-                match = any(a.strip().lower() == bn_lower or a.strip().lower() in bn_lower or bn_lower in a.strip().lower() for a in allowed_audio)
+                match = self._is_audio_match_with_aliases(b.audio_name, getattr(b, "audio_raw_id", ""), allowed_audio)
                 b.setVisible(match)
             elif is_break_or_start:
-                b.setVisible("spotify" in bn_lower or "music" in bn_lower or "vod" in bn_lower)
-            elif hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
-                target_sc_id = sc_id_target or getattr(self, "_active_scene_id", "")
-                in_scene = self.slobs_client.is_source_in_scene(b.audio_name, getattr(b, "audio_raw_id", ""), scene_id=target_sc_id)
-                b.setVisible(in_scene)
+                b.setVisible(any(k in bn_lower for k in ["spot", "stop", "music", "vod"]))
             else:
                 b.setVisible(True)
 
         self._reflow_audio_grid()
 
-        # 4. Scoping Volume Faders
+        # 4. Scoping Volume Faders: strictly show only audio channels on the selected scene
         allowed_faders = sc_config.get("faders") if sc_config else None
+        target_fader_whitelist = allowed_faders if (allowed_faders is not None and len(allowed_faders) > 0) else allowed_audio
+
         for f in self.volume_faders:
             fn_lower = f.fader_name.strip().lower()
             if fn_lower in view_names:
                 f.setVisible(False)
                 continue
 
-            if allowed_faders is not None and len(allowed_faders) > 0:
-                match = any(a.strip().lower() == fn_lower or a.strip().lower() in fn_lower or fn_lower in a.strip().lower() for a in allowed_faders)
+            if target_fader_whitelist is not None and len(target_fader_whitelist) > 0:
+                match = self._is_audio_match_with_aliases(f.fader_name, getattr(f, "fader_raw_id", ""), target_fader_whitelist)
                 f.setVisible(match)
             elif is_break_or_start:
-                f.setVisible("spotify" in fn_lower or "music" in fn_lower or "vod" in fn_lower)
-            elif hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
-                target_sc_id = sc_id_target or getattr(self, "_active_scene_id", "")
-                in_scene = self.slobs_client.is_source_in_scene(f.fader_name, scene_id=target_sc_id)
-                f.setVisible(in_scene)
+                f.setVisible(any(k in fn_lower for k in ["spot", "stop", "music", "vod"]))
             else:
                 f.setVisible(True)
 
-        self.adjustSize()
-        self.reposition_above_taskbar()
+    def _update_stable_dock_width(self):
+        """
+        Calculates the maximum sizeHint width across all configured scenes (such as In-Game)
+        so the Director Dock remains completely fixed and stable in width across scene switches.
+        """
+        if getattr(self, "_user_custom_width", None):
+            self._stable_dock_width = self._user_custom_width
+            return
+
+        old_active = getattr(self, "_active_scene_name", "")
+        old_id = getattr(self, "_active_scene_id", "")
+
+        max_w = max(self.sizeHint().width(), 380)
+
+        candidates = []
+        for sc in getattr(self, "pool_scenes", []) or []:
+            if isinstance(sc, dict):
+                candidates.append((sc.get("name", ""), sc.get("id", "")))
+        for b in self.scene_buttons:
+            candidates.append((b.scene_name, getattr(b, "scene_raw_id", "")))
+
+        self._in_size_probe = True
+        try:
+            for s_name, s_id in candidates:
+                self._apply_scene_scoping(s_name, s_id)
+                if self.layout():
+                    self.layout().invalidate()
+                    self.layout().activate()
+                w = self.sizeHint().width()
+                if w > max_w:
+                    max_w = w
+        finally:
+            self._in_size_probe = False
+            if old_active or old_id:
+                self._apply_scene_scoping(old_active, old_id)
+            if self.layout():
+                self.layout().invalidate()
+                self.layout().activate()
+
+        self._stable_dock_width = max(max_w, getattr(self, "_stable_dock_width", 0) or 0)
+
+    def reflow_for_active_scene(self, scene_name: str, scene_id: str = ""):
+        """
+        Dynamically adjusts visible view toggles, audio mute buttons, and volume faders
+        based on the active scene's configuration, and anchors geometry to the stable dock width.
+        """
+        self._active_scene_name = scene_name
+        self._active_scene_id = scene_id
+        self._apply_scene_scoping(scene_name, scene_id)
+        if not getattr(self, "_in_size_probe", False):
+            self.reposition_above_taskbar()
 
     def _on_resync_clicked(self):
         """User clicked the re-sync button on the Director Panel dock."""
@@ -2120,7 +2360,10 @@ class DirectorPanelWindow(QWidget):
                 pass
 
     def reposition_above_taskbar(self, monitor_index: int = -1):
-        """Places the dock horizontally centered directly above the taskbar on the target screen."""
+        """Places the dock horizontally centered directly above the taskbar on the target screen maintaining a fixed, stable width across scene switches."""
+        if getattr(self, "_in_size_probe", False):
+            return
+
         screens = QApplication.screens()
         if not screens:
             return
@@ -2132,24 +2375,39 @@ class DirectorPanelWindow(QWidget):
         screen = screens[idx]
         avail = screen.availableGeometry()
 
-        self.adjustSize()
         hint = self.sizeHint()
-        dock_height = max(hint.height(), 145)
-        
+        dock_height = max(hint.height(), 172)
+
         # Strictly clamp dock width so it never overflows the screen (especially narrow/vertical displays)
         max_allowed_w = max(320, avail.width() - 16)
-        dock_width = min(max_allowed_w, max(hint.width(), 380))
-        
+
+        target_w = getattr(self, "_user_custom_width", None) or getattr(self, "_stable_dock_width", None)
+        if not target_w or target_w < 380:
+            target_w = max(hint.width(), 380)
+            self._stable_dock_width = target_w
+
+        dock_width = min(max_allowed_w, max(target_w, 380))
+
         # Position X centered on that screen, Y right above the taskbar
         pos_x = avail.x() + (avail.width() - dock_width) // 2
         pos_y = avail.bottom() - dock_height + 1
 
-        self.setGeometry(pos_x, pos_y, dock_width, dock_height)
+        self._programmatic_resizing = True
+        try:
+            self.setGeometry(pos_x, pos_y, dock_width, dock_height)
+        finally:
+            self._programmatic_resizing = False
+
         if hasattr(self, "soundboard_deck") and self.soundboard_deck and self.soundboard_deck.isVisible():
             self._reposition_soundboard_deck()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if not getattr(self, "_programmatic_resizing", False) and not getattr(self, "_in_size_probe", False):
+            curr_w = self.width()
+            if abs(curr_w - getattr(self, "_stable_dock_width", 0)) > 5:
+                self._user_custom_width = curr_w
+                self._stable_dock_width = curr_w
         if hasattr(self, "size_grip") and self.size_grip:
             self.size_grip.move(self.width() - self.size_grip.width() - 2, self.height() - self.size_grip.height() - 2)
 

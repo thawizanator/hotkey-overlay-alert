@@ -110,6 +110,7 @@ def bundle_logs(overlay_app=None, target_dir=None) -> tuple:
         ("CRASH LOG (crash_log.txt)", os.path.join(APP_DIR, "crash_log.txt")),
         ("DEBUG LOG (debug.txt)", os.path.join(APP_DIR, "debug.txt")),
         ("UPDATER LOG (updater_log.txt)", os.path.join(APP_DIR, "updater_log.txt")),
+        ("AUDIO DIAGNOSTICS (audio_diagnostic.txt)", os.path.join(APP_DIR, "audio_diagnostic.txt")),
     ]
 
     for title, log_path in log_files:

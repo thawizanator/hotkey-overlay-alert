@@ -24,6 +24,10 @@ hidden_imports = [
     'soundboard_engine',
     'soundboard_tab',
     'soundboard_spam_guard',
+    'soundboard_lan_bridge',
+    'auto_clip_engine',
+    'autoclip_tab',
+    'audio_diagnostics',
 ] + collect_submodules('aiortc') + collect_submodules('aioice')
 
 a = Analysis(

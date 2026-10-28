@@ -181,13 +181,13 @@ class BouncerValidator:
             return False, "Action must be a string", None
 
         action = action.upper().strip()
-        allowed_actions = {"SWITCH_SCENE", "TOGGLE_MUTE", "SET_VOLUME", "REQUEST_STATE", "PING", "SET_VISIBILITY", "PLAY_SOUND"}
+        allowed_actions = {"SWITCH_SCENE", "TOGGLE_MUTE", "SET_VOLUME", "REQUEST_STATE", "PING", "SET_VISIBILITY", "PLAY_SOUND", "STOP_ALL"}
         if action not in allowed_actions:
             log_debug("BOUNCER", f"Unauthorized action rejected: '{action}' from {peer_id}")
             return False, f"Action '{action}' is not allowed", None
 
-        # REQUEST_STATE and PING require no target
-        if action in {"REQUEST_STATE", "PING"}:
+        # REQUEST_STATE, PING, and STOP_ALL require no target
+        if action in {"REQUEST_STATE", "PING", "STOP_ALL"}:
             return True, "Valid", {"action": action}
 
         # PLAY_SOUND requires clip_id or target

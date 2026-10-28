@@ -11,6 +11,7 @@ from typing import List, Dict, Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal, QUrl, Qt, QThread
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices, QAudioDevice
+from debug_logger import log_debug
 
 # Directory configuration matching Streamer Calyx conventions
 APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "StreamerCalyx")
@@ -247,6 +248,40 @@ class SoundboardEngine(QObject):
                     self.play_clip(c.id)
                     return
 
+    def play_marker_chime(self):
+        """Plays the crystal ding chime confirming a stream marker / auto-clip."""
+        ding_clip = self.get_clip_by_id("cue-ding")
+        if ding_clip and os.path.exists(ding_clip.file_path):
+            self.play_clip("cue-ding")
+            return
+        for c in self.clips:
+            if "ding" in c.name.lower() or "marker" in c.name.lower() or "chime" in c.name.lower():
+                if os.path.exists(c.file_path):
+                    self.play_clip(c.id)
+                    return
+        fallback = os.path.join(self.sounds_dir, "marker_ding.wav")
+        if os.path.exists(fallback):
+            for c in self.clips:
+                if os.path.normpath(c.file_path) == os.path.normpath(fallback):
+                    self.play_clip(c.id)
+                    return
+        # If not in clips list, play fallback directly if player available
+        fallback_chime = os.path.join(self.sounds_dir, "chime_alert.wav")
+        target_path = fallback if os.path.exists(fallback) else fallback_chime
+        if os.path.exists(target_path):
+            try:
+                player = QMediaPlayer(self)
+                audio = QAudioOutput(self)
+                dev = self._resolve_target_device()
+                if dev:
+                    audio.setDevice(dev)
+                audio.setVolume(self.master_volume * 0.8)
+                player.setAudioOutput(audio)
+                player.setSource(QUrl.fromLocalFile(target_path))
+                player.play()
+            except Exception as e:
+                log_debug("SOUNDBOARD", f"Error playing direct chime: {e}")
+
     def is_clip_playing(self, clip_id: str) -> bool:
         """Checks if a sound clip is currently playing."""
         return any(item["clip_id"] == clip_id for item in self.active_players)
@@ -291,6 +326,11 @@ class SoundboardEngine(QObject):
         effective_vol = 0.0 if self.is_muted else (self.master_volume * clip.volume)
         audio_output.setVolume(effective_vol)
 
+        dev_desc = target_device.description() if target_device else "Default"
+        log_debug("SOUNDBOARD", f"Playing '{clip.name}' (id={clip.id}) to device '{dev_desc}' at effective_vol={effective_vol:.2f} (master={self.master_volume:.2f}, clip={clip.volume:.2f}, muted={self.is_muted})")
+        if effective_vol <= 0.0:
+            log_debug("SOUNDBOARD", f"WARNING: Audio '{clip.name}' is playing at ZERO effective volume (muted={self.is_muted}, master={self.master_volume})")
+
         if clip.loop:
             player.setLoops(QMediaPlayer.Loops.Infinite)
 
@@ -307,6 +347,7 @@ class SoundboardEngine(QObject):
         # Hook playback end, media status, and error handlers
         def on_state_changed(state):
             if state == QMediaPlayer.PlaybackState.StoppedState:
+                log_debug("SOUNDBOARD", f"Playback stopped on '{clip.name}' ({clip.id})")
                 self._cleanup_player(item)
 
         def on_media_status_changed(status):
@@ -314,7 +355,7 @@ class SoundboardEngine(QObject):
                 self._cleanup_player(item)
 
         def on_error(err, err_str):
-            print(f"[Soundboard] Playback error on {clip.name}: {err} ({err_str})")
+            log_debug("SOUNDBOARD", f"Playback error on {clip.name}: {err} ({err_str})")
             self._cleanup_player(item)
 
         player.playbackStateChanged.connect(on_state_changed)
@@ -492,7 +533,10 @@ class SoundboardEngine(QObject):
                     print(f"[Soundboard] Could not read {path}: {e}")
 
         if loaded_data:
-            self.master_volume = float(loaded_data.get("master_volume", 1.0))
+            vol = float(loaded_data.get("master_volume", 1.0))
+            if vol <= 0.0:
+                vol = 1.0  # Self-heal dead initial volume state
+            self.master_volume = max(0.0, min(1.0, vol))
             self.exclusive_mode = bool(loaded_data.get("exclusive_mode", False))
             self.selected_device_name = loaded_data.get("selected_device_name", "")
             raw_clips = loaded_data.get("clips", [])

@@ -7,7 +7,7 @@ Welcome to the development roadmap for **Streamer Calyx** (formerly *HotKey Over
 ## 🧭 Release Architecture & Branches
 
 - **`main` Branch**: Tracks stable production releases (currently **`v2.5.2`**).
-- **`develop` Branch**: Tracks active feature branches, alpha builds, and early access previews (currently **`v3.0.0-beta.4.2`**).
+- **`develop` Branch**: Tracks active feature branches, alpha builds, and early access previews (currently **`v3.0.0-beta.5.0`**).
 
 ---
 
@@ -75,15 +75,14 @@ Welcome to the development roadmap for **Streamer Calyx** (formerly *HotKey Over
 
 ---
 
-## 🚀 Active Milestones: Phase 6 — Soundboard & Audio Triggers for Stream Markers
-
-> [!IMPORTANT]
-> **Phase 6 Focus**: With multi-device peripheral mapping and backstage Stream Director firmly established, Phase 6 brings native soundboard triggering, audio cues, and audio triggers for stream markers and highlight bookmarking to Streamer Calyx.
-
-### Phase 6: Soundboard & Audio Triggers for Stream Markers
+### Phase 6: Soundboard Deck, Troll Shield & Auto-Clip Stream Markers (`v3.0.0-beta.5.0`) — *Completed*
 - **Standalone Soundboard Engine**: Local audio effect player and production audio routing with zero external dependencies.
-- **Stream Marker Audio Triggers**: Specific audio cues, audible chimes, and instant feedback tied directly to stream markers and highlight bookmarking moments.
-- **Custom Audio Cue Assignment**: Assign local sound effects, chimes, and alerts to stream events, custom hotkeys, and stream milestones.
+- **SandMan Anti-Spam Troll Shield**: Rate-limiting rapid-fire playback, panic lock, and loud alarm buzzer protection for remote co-host sound triggering.
+- **Auto-Clip & Stream Markers Engine**: Real-time microphone/VoiceMeeter audio monitoring, 10-second rolling baseline, 40-segment LED VU meter, Twitch stream marker dispatcher, and 60-second clip window logging (40s pre / 20s aftermath).
+- **WASAPI 32-Bit IEEE Float PCM Decoding**: Native Windows 11 and VoiceMeeter VAIO audio support with zero digital distortion.
+- **Hardware/Virtual Input Gain Trim**: Direct in-app gain slider (25% to 200%) with 1-click reset button.
+- **Streamer Mode Gating**: Automatically pauses audio capture and dims controls when Streamer Mode is disabled.
+- **Audio Input Diagnostics Suite**: Privacy-safe 5-second acoustic calibration benchmark with copyable reports and bug report attachment.
 
 ---
 

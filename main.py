@@ -65,6 +65,7 @@ from chronos_engine import ChronosEngine
 from cycler_engine import CyclerEngine
 from soundboard_engine import SoundboardEngine
 from input_manager import InputManager
+from auto_clip_engine import AutoClipEngine
 
 def get_app_directory():
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
@@ -502,6 +503,14 @@ class RedBorderOverlay(QMainWindow):
         self.chronos_engine = ChronosEngine(self)
         self.cycler_engine = CyclerEngine(self)
         self.soundboard_engine = SoundboardEngine(self)
+        self.auto_clip_engine = AutoClipEngine(self, app_dir=self.app_dir)
+        self.auto_clip_engine.marker_triggered.connect(self._handle_auto_clip_marker)
+        self.auto_clip_engine.secondary_peak_logged.connect(self._handle_auto_clip_secondary)
+        self.auto_clip_engine.possible_peak_logged.connect(self._handle_auto_clip_possible)
+        self._temp_alert_timer = QTimer(self)
+        self._temp_alert_timer.setSingleShot(True)
+        self._temp_alert_timer.timeout.connect(self._restore_from_temporary_alert)
+        self._saved_overlay_state = None
         self.input_manager = InputManager(overlay=self, parent=self)
         self.input_manager.trigger_action.connect(self._handle_input_action)
         self.load_settings()
@@ -650,6 +659,8 @@ class RedBorderOverlay(QMainWindow):
                         self.chronos_engine.import_settings(d.get("chronos", {}))
                     if hasattr(self, "cycler_engine") and self.cycler_engine and "cycler" in d:
                         self.cycler_engine.import_settings(d.get("cycler", {}))
+                    if hasattr(self, "auto_clip_engine") and self.auto_clip_engine and "autoclip" in d:
+                        self.auto_clip_engine.import_settings(d.get("autoclip", {}))
                     self.director_settings = d.get("director", {})
                     if hasattr(self, "input_manager") and self.input_manager:
                         self.input_manager.load_bindings(d)
@@ -697,6 +708,8 @@ class RedBorderOverlay(QMainWindow):
             d["chronos"] = self.chronos_engine.export_settings()
         if hasattr(self, "cycler_engine") and self.cycler_engine:
             d["cycler"] = self.cycler_engine.export_settings()
+        if hasattr(self, "auto_clip_engine") and self.auto_clip_engine:
+            d["autoclip"] = self.auto_clip_engine.export_settings()
         if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
             self.director_settings = self.settings_window.tab_director.export_settings()
         if hasattr(self, "director_settings") and self.director_settings:
@@ -719,6 +732,8 @@ class RedBorderOverlay(QMainWindow):
 
     def set_streamer_mode(self, enabled):
         self.streamer_mode = bool(enabled)
+        if hasattr(self, "auto_clip_engine") and self.auto_clip_engine:
+            self.auto_clip_engine.set_streamer_mode(self.streamer_mode)
         self.save_settings()
         log_debug("SYSTEM", f"Streamer mode toggled: {'ENABLED' if self.streamer_mode else 'DISABLED'}")
 
@@ -1057,6 +1072,49 @@ class RedBorderOverlay(QMainWindow):
         if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
             self.tray_icon.showMessage("Streamer Calyx - Twitch", message, icon, 4000)
 
+    def _handle_auto_clip_marker(self, payload: dict):
+        """Handles a primary peak event triggered by AutoClipEngine."""
+        log_debug("AUTOCLIP", f"Handling primary peak marker event: {payload}")
+        eng = getattr(self, "auto_clip_engine", None)
+        play_chime = getattr(eng, "play_chime", True) if eng else True
+        flash_overlay = getattr(eng, "flash_overlay", True) if eng else True
+        alert_color = getattr(eng, "alert_color", "#f59e0b") if eng else "#f59e0b"
+        desc = getattr(eng, "marker_description", "Auto-Clip/Markers") if eng else "Auto-Clip/Markers"
+
+        # 1. Play audio chime in headphones via Soundboard Engine
+        if play_chime and hasattr(self, "soundboard_engine") and self.soundboard_engine:
+            try:
+                self.soundboard_engine.play_marker_chime()
+            except Exception as e:
+                log_debug("AUTOCLIP", f"Error playing marker chime: {e}")
+
+        # 2. Flash temporary monitor border alert
+        if flash_overlay:
+            self.flash_temporary_alert(duration_ms=1500, color=QColor(alert_color))
+
+        # 3. Drop Twitch Stream Marker
+        if self.twitch_token and self.twitch_channel:
+            log_debug("AUTOCLIP", f"Dropping Twitch Stream Marker: '{desc}' on channel '{self.twitch_channel}'")
+            self.dispatch_twitch_call("/marker", desc)
+
+        # 4. Display In-Game HUD Toast notification
+        ts_str = payload.get("timestamp_str", "")
+        clip_range = payload.get("clip_range_str", "")
+        toast_msg = f"🎙️ Auto-Clip Marker Dropped! [{ts_str}]\n{clip_range}"
+        self.show_hud_toast(toast_msg, True)
+
+    def _handle_auto_clip_secondary(self, payload: dict):
+        """Handles a secondary peak event during cooldown (logged to file)."""
+        log_debug("AUTOCLIP", f"Handling cooldown secondary peak logged: {payload}")
+        ts_str = payload.get("timestamp_str", "")
+        clip_range = payload.get("clip_range_str", "")
+        toast_msg = f"📝 Cooldown Clip Logged: [{ts_str}]\n{clip_range}"
+        self.show_hud_toast(toast_msg, True)
+
+    def _handle_auto_clip_possible(self, payload: dict):
+        """Handles an orange possible moment logged to file."""
+        log_debug("AUTOCLIP", f"Handling orange possible moment logged: {payload}")
+
     def show_welcome_message(self):
         msg = QMessageBox()
         msg.setWindowTitle("Streamer Calyx Loaded")
@@ -1178,6 +1236,46 @@ class RedBorderOverlay(QMainWindow):
             self.flash_direction = -1
         self.setWindowOpacity(new_op)
 
+    def flash_temporary_alert(self, duration_ms=1500, color=None):
+        """
+        Temporarily flashes the border overlay in a specific highlight color (e.g. Marker Alert Gold)
+        without permanently modifying the streamer's saved border color or overlay visibility state.
+        """
+        if self._saved_overlay_state is None:
+            self._saved_overlay_state = {
+                "color": QColor(self.border_color),
+                "is_visible": self.is_visible,
+                "is_flashing": self.is_flashing,
+                "opacity": self.windowOpacity()
+            }
+
+        if color:
+            self.border_color = QColor(color)
+
+        self.setWindowOpacity(self.border_opacity)
+        self.show()
+        self.raise_()
+        self.update()
+
+        self._temp_alert_timer.stop()
+        self._temp_alert_timer.start(duration_ms)
+
+    def _restore_from_temporary_alert(self):
+        """Restores the border overlay to its pre-alert color and visibility state."""
+        if not self._saved_overlay_state:
+            return
+        state = self._saved_overlay_state
+        self._saved_overlay_state = None
+        self.border_color = state["color"]
+        if not state["is_visible"]:
+            self.hide()
+            self.flash_timer.stop()
+        else:
+            self.setWindowOpacity(state["opacity"])
+            if state["is_flashing"] and self.flash_speed_name != "Always On":
+                self.flash_timer.start(30)
+        self.update()
+
     def open_settings(self):
         if hasattr(self.settings_window, "tab_monitor"):
             self.settings_window.tab_monitor.refresh_monitors()
@@ -1192,6 +1290,11 @@ class RedBorderOverlay(QMainWindow):
 
     def close_application(self):
         global lock_file_handle
+        if hasattr(self, "auto_clip_engine") and self.auto_clip_engine:
+            try:
+                self.auto_clip_engine.stop_monitoring()
+            except Exception:
+                pass
         if hasattr(self, "input_manager") and self.input_manager:
             try:
                 self.input_manager.shutdown()

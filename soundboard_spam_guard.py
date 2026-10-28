@@ -44,6 +44,8 @@ class SoundboardSpamGuard(QObject):
         self._cooldown_until: Dict[str, float] = {}
         # user_id -> timestamp of last violation (for strike decay)
         self._last_violation_time: Dict[str, float] = {}
+        # user_id -> count of clicks while already in cooldown
+        self._cooldown_violations: Dict[str, int] = {}
 
         # Maintenance timer for strike decay and cooldown cleanup (checks every 1s)
         self._timer = QTimer(self)
@@ -63,6 +65,27 @@ class SoundboardSpamGuard(QObject):
         cooldown_end = self._cooldown_until.get(uid, 0.0)
         if now < cooldown_end:
             rem = cooldown_end - now
+            # If user persists in clicking during active cooldown, escalate strikes!
+            violations = self._cooldown_violations.get(uid, 0) + 1
+            self._cooldown_violations[uid] = violations
+            if violations >= 2:
+                self._cooldown_violations[uid] = 0
+                current_strikes = min(3, self._strikes.get(uid, 1) + 1)
+                self._strikes[uid] = current_strikes
+                self._last_violation_time[uid] = now
+                if current_strikes == 2:
+                    cooldown_dur = max(rem, 10.0)
+                    self._cooldown_until[uid] = now + cooldown_dur
+                    msg = "⚠️ Strike 2: Persistent spamming will trigger the Loud Alarm Buzzer! (Cooldown: 10s)"
+                    self.warning_issued.emit(uid, 2, cooldown_dur, msg)
+                    return False, msg, cooldown_dur
+                elif current_strikes >= 3:
+                    cooldown_dur = 30.0
+                    self._cooldown_until[uid] = now + cooldown_dur
+                    msg = "🚨 SPAM DETECTED: SandMan Troll Shield Activated! Loud Alarm Buzzer Sounded (Locked for 30s)."
+                    self.alarm_triggered.emit(uid, cooldown_dur, msg)
+                    return False, msg, cooldown_dur
+
             strikes = self._strikes.get(uid, 1)
             msg = f"Cooldown active ({rem:.1f}s remaining). Slow down!"
             if strikes >= 3:
