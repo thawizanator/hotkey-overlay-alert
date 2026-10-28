@@ -12,6 +12,7 @@
   "diagnostics": {},
   "logs": "📷 User attached screenshot: image.png\nURL: https://cdn.discordapp.com/ephemeral-attachments/1562566562047860839/1564873307600326676/image.png?ex=6ae2d956&is=6ae187d6&hm=8b6b11e7cb59ac77fbcad5b70d4caf72db8a5863d6ed7cb46a18041228aa4532&",
   "ai_diagnosis": "Report filed for component **launch**. Logs have been attached and security-sanitized for maintainer review.",
-  "created_at": "2026-10-28T00:29:05.440837",
-  "status": "pending_solution"
+  "status": "resolved",
+  "resolved_at": "2026-10-28T10:25:00.000000",
+  "resolution": "Established dual Authenticode EV digital signing with DigiCert hardware token across all production executables (StreamerCalyx.exe and HotKeyOverlayAlert.exe) in release v3.0.0-beta.5.0."
 }

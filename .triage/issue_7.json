@@ -19,5 +19,6 @@
   "logs": "C:\\Users\\<User>\\debug.txt: Warning - refresh called",
   "ai_diagnosis": "Report filed for component **Highlight Overlay**. Logs have been attached and security-sanitized for maintainer review.",
   "created_at": "2026-10-27T20:12:26.939885",
-  "status": "pending_solution"
+  "status": "closed_test",
+  "resolution": "Closed as test submission generated during Calyx Support Bot integration testing."
 }
