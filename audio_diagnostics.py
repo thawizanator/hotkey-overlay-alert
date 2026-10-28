@@ -482,6 +482,7 @@ class AudioDiagnosticsDialog(QDialog):
                 f"Spike Trigger Offset:     +{int(self.engine.trigger_offset * 100)}%",
                 f"Current Red Threshold:    {int(self.engine.current_threshold * 100)}%",
                 f"Current Baseline Floor:   {int(self.engine.current_baseline * 100)}%",
+                f"Session Voice Anchor:     {int(getattr(self.engine, 'session_voice_anchor', 0.35) * 100)}% (Quiet Game Shield)",
                 f"Minimum Peak Duration:    {self.engine.min_duration_ms} ms",
                 f"Twitch Marker on Peak:    {'Yes' if self.engine.enabled else 'No'}",
                 f"Active Scenes Whitelist:  {self.engine.active_scenes}"

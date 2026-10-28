@@ -283,10 +283,16 @@ class AutoClipTab(QWidget):
 
         # Legend & Stats Row
         row_legend = QHBoxLayout()
-        self.lbl_stats = QLabel("Ambient: 5% | Threshold: 70% | Level: 0%")
+        self.lbl_stats = QLabel("Ambient: 5% | Voice: 35% | Trigger: 70% | Level: 0%")
         self.lbl_stats.setStyleSheet("font-size: 10px; color: #a1a1aa; font-family: monospace;")
         row_legend.addWidget(self.lbl_stats)
         row_legend.addStretch()
+
+        self.btn_reset_voice = QPushButton("🔄 Reset Voice")
+        self.btn_reset_voice.setStyleSheet("font-size: 9.5px; padding: 1px 6px; border-radius: 3px;")
+        self.btn_reset_voice.setToolTip("Resets learned session voice average back to 35% default (e.g. when switching from a quiet stealth game to a loud discord lobby).")
+        self.btn_reset_voice.clicked.connect(self._on_reset_voice_clicked)
+        row_legend.addWidget(self.btn_reset_voice)
 
         self.lbl_status = QLabel("● Active")
         self.lbl_status.setStyleSheet("font-size: 10px; font-weight: bold; color: #22c55e;")
@@ -697,8 +703,15 @@ class AutoClipTab(QWidget):
 
     def _on_level_updated(self, level: float, zone: int, baseline: float, threshold: float):
         self.vu_meter.update_meter(level, zone, baseline, threshold)
+        voice_anchor = getattr(self.engine, "session_voice_anchor", 0.35)
         self.lbl_stats.setText(
-            f"Ambient: {int(baseline * 100)}% | Trigger: {int(threshold * 100)}% | Current: {int(level * 100)}%"
+            f"Ambient: {int(baseline * 100)}% | Voice: {int(voice_anchor * 100)}% | Trigger: {int(threshold * 100)}% | Level: {int(level * 100)}%"
+        )
+
+    def _on_reset_voice_clicked(self):
+        self.engine.reset_session_voice()
+        self.lbl_stats.setText(
+            f"Ambient: {int(self.engine.current_baseline * 100)}% | Voice: 35% | Trigger: {int(self.engine.current_threshold * 100)}% | Level: {int(self.vu_meter.current_level * 100)}%"
         )
 
     def _on_cooldown_tick(self, rem: int):

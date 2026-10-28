@@ -94,6 +94,10 @@ class AutoClipEngine(QObject):
         self.current_baseline = 0.08
         self.current_threshold = 0.68
 
+        # Dual-Baseline: Session Voice Anchor (Long-term speech profile for quiet gaming)
+        self.session_voice_anchor = 0.35   # Standard speech profile (35% default)
+        self.session_voice_count = 0
+
         # Peak Detection & Duration Tracking
         self._spike_start_time = None
         self._peak_latched = False
@@ -255,21 +259,25 @@ class AutoClipEngine(QObject):
 
     # ------------------ Audio Sampling & Peak Analysis ------------------
 
-    def _process_audio_samples(self):
+    def _process_audio_samples(self, override_level: float = None):
         """Reads pending PCM audio data, computes normalized peak/RMS, and tests thresholds."""
-        if not self.audio_io:
-            return
+        if override_level is not None:
+            level_val = override_level
+        else:
+            if not self.audio_io:
+                return
 
-        try:
-            raw_bytes = self.audio_io.readAll().data()
-        except Exception:
-            return
+            try:
+                raw_bytes = self.audio_io.readAll().data()
+            except Exception:
+                return
 
-        if not raw_bytes:
-            return
+            if not raw_bytes:
+                return
 
-        # Calculate normalized perceptual level (RMS + peak blend, 0.0 to 1.0)
-        level_val = self._calculate_level(raw_bytes)
+            # Calculate normalized perceptual level (RMS + peak blend, 0.0 to 1.0)
+            level_val = self._calculate_level(raw_bytes)
+
         self.current_level = level_val
 
         # Update 10-second rolling baseline only from non-peak audio (ambient + normal talking)
@@ -278,11 +286,22 @@ class AutoClipEngine(QObject):
             self.level_buffer.append(level_val)
             self.current_baseline = sum(self.level_buffer) / len(self.level_buffer)
 
-        # Calculate dynamic or manual thresholds
+        # Update Session Voice Anchor (Cumulative Speech EMA)
+        # Adapts only when audio sits cleanly in the conversational speech band (0.22 to 0.55)
+        # Prevents screaming, coughing, desk bumps, and silence from altering the voice anchor
+        if 0.22 <= level_val <= 0.55:
+            alpha = 0.05 if self.session_voice_count < 100 else 0.005
+            self.session_voice_anchor = (1.0 - alpha) * self.session_voice_anchor + alpha * level_val
+            self.session_voice_anchor = max(0.25, min(0.52, self.session_voice_anchor))
+            self.session_voice_count += 1
+
+        # Calculate dynamic or manual thresholds with Dual-Baseline floor
         if self.auto_sensitivity:
-            # Discord-style: Float threshold above conversational baseline using user's offset
+            # Dual-Baseline: Effective baseline is the higher of immediate room noise vs established speech anchor
+            # Guarantees that quiet/stealth gaming stretches do not drop the threshold down to silence
+            effective_baseline = max(self.current_baseline, self.session_voice_anchor)
             offset = self.trigger_offset
-            red_thresh = min(0.98, max(0.68, self.current_baseline + offset))
+            red_thresh = min(0.98, max(0.68, effective_baseline + offset))
             orange_thresh = min(0.90, max(0.48, red_thresh * 0.78))
             yellow_thresh = min(0.60, max(0.24, red_thresh * 0.42))
         else:
@@ -538,6 +557,12 @@ class AutoClipEngine(QObject):
         except Exception as e:
             log_debug("AUTOCLIP", f"Error clearing log file: {e}")
 
+    def reset_session_voice(self):
+        """Resets the learned long-term session voice anchor back to default 35%."""
+        self.session_voice_anchor = 0.35
+        self.session_voice_count = 0
+        log_debug("AUTOCLIP", "Session Voice Anchor reset to default (35%).")
+
     # ------------------ Configuration Import / Export ------------------
 
     def export_settings(self) -> dict:
@@ -555,7 +580,8 @@ class AutoClipEngine(QObject):
             "play_chime": self.play_chime,
             "active_scenes": list(self.active_scenes),
             "cooldown_duration_sec": self.cooldown_duration_sec,
-            "marker_description": self.marker_description
+            "marker_description": self.marker_description,
+            "session_voice_anchor": self.session_voice_anchor
         }
 
     def import_settings(self, d: dict):
@@ -568,6 +594,7 @@ class AutoClipEngine(QObject):
         self.trigger_offset = d.get("trigger_offset", 0.30)
         self.manual_threshold = d.get("manual_threshold", 0.70)
         self.min_duration_ms = d.get("min_duration_ms", 250)
+        self.session_voice_anchor = d.get("session_voice_anchor", 0.35)
         self.log_orange_moments = d.get("log_orange_moments", True)
         self.flash_overlay = d.get("flash_overlay", True)
         self.alert_color = d.get("alert_color", "#f59e0b")
