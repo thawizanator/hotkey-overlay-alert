@@ -747,12 +747,19 @@ class AutoClipTab(QWidget):
         self.banner_streamer_mode.setVisible(not is_active)
         self.engine.set_streamer_mode(is_active)
         if not is_active:
-            self.lbl_status.setText("● Inactive (Streamer Mode OFF)")
+            self.lbl_status.setText("● Locked (Streamer Mode OFF)")
             self.lbl_status.setStyleSheet("font-size: 10px; font-weight: bold; color: #71717a;")
             if hasattr(self, "cards"):
                 for c in self.cards:
                     c.setEnabled(False)
             self.switch_master_enable.setEnabled(False)
+            if hasattr(self, "btn_audio_diag"):
+                self.btn_audio_diag.setEnabled(False)
         else:
             self.switch_master_enable.setEnabled(True)
+            if hasattr(self, "btn_audio_diag"):
+                self.btn_audio_diag.setEnabled(True)
+            if hasattr(self, "cards"):
+                for c in self.cards:
+                    c.setEnabled(self.engine.enabled)
             self._on_master_enable_toggled(self.engine.enabled)

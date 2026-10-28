@@ -272,7 +272,7 @@ class MainTab(QWidget):
         lay_mode = QVBoxLayout(grp_mode)
         lay_mode.setSpacing(6)
 
-        self.chk_streamer = QCheckBox("Streamer Mode (In-Game Transparent HUD Overlays)")
+        self.chk_streamer = QCheckBox("Streamer Mode (Live Broadcast Suite && In-Game Overlays)")
         self.chk_streamer.setStyleSheet("font-weight: bold; font-size: 13px;")
         self.chk_streamer.setChecked(getattr(self.main_win.overlay, "streamer_mode", False))
         self.chk_streamer.toggled.connect(self.on_streamer_toggled)
@@ -327,12 +327,15 @@ class MainTab(QWidget):
         sec_color = theme_manager.get_secondary_text_color(effective)
         tert_color = theme_manager.get_tertiary_text_color(effective)
         self.lbl_mode_desc.setText(
-            f"<span style='color: {sec_color}; font-size: 12px;'>"
-            "• <b>Checked (Streamer Mode):</b> Uses non-intrusive transparent in-game HUD alerts "
-            "and auto-fading toasts so game captures and full-screen games are never interrupted.<br>"
-            "• <b>Unchecked (Desktop Mode):</b> Uses standard modal window dialogs with title bars "
-            "and persistent confirmation popups, designed for channel moderators and desktop users."
-            "</span>"
+            f"<div style='color: {sec_color}; font-size: 11.5px; line-height: 1.4;'>"
+            "• <b>Checked (Streamer Mode):</b> Unlocks live broadcast features and transparent HUDs:"
+            "<ul style='margin-top: 3px; margin-bottom: 5px; padding-left: 18px;'>"
+            "<li><b>In-Game Transparent Overlays:</b> Border highlights, countdown bars, and auto-fading toasts that never interrupt full-screen games or video captures.</li>"
+            "<li><b>WebRTC Remote Director:</b> Broadcasts director panel feed to smartphones, tablets, or secondary laptops for wireless camera & scene switching.</li>"
+            "<li><b>Auto-Clip & Stream Markers:</b> Unlocks real-time microphone peak monitoring to auto-drop Twitch markers and log 60s clips during hype moments.</li>"
+            "</ul>"
+            "• <b>Unchecked (Desktop Mode):</b> Uses standard modal window dialogs with title bars and persistent confirmation popups, designed for channel moderators and desktop users. Locks in-game HUDs, Remote Director, and Auto-Clip suites."
+            "</div>"
         )
         self.lbl_hint.setText(
             f"<span style='color: {tert_color}; font-size: 11px;'>"
@@ -344,12 +347,12 @@ class MainTab(QWidget):
     def on_streamer_toggled(self, checked):
         if hasattr(self.main_win.overlay, "set_streamer_mode"):
             self.main_win.overlay.set_streamer_mode(checked)
-        if hasattr(self.main_win, "tab_director") and self.main_win.tab_director:
+        if hasattr(self.main_win, "update_streamer_mode_state"):
+            self.main_win.update_streamer_mode_state(checked)
+        elif hasattr(self.main_win, "tab_director") and self.main_win.tab_director:
             self.main_win.tab_director.set_streamer_mode(checked)
-        if hasattr(self.main_win, "settings_window") and hasattr(self.main_win.settings_window, "tab_autoclip"):
-            self.main_win.settings_window.tab_autoclip.set_streamer_mode(checked)
-        elif hasattr(self, "tab_autoclip") and self.tab_autoclip:
-            self.tab_autoclip.set_streamer_mode(checked)
+        if hasattr(self.main_win, "settings_window") and hasattr(self.main_win.settings_window, "update_streamer_mode_state"):
+            self.main_win.settings_window.update_streamer_mode_state(checked)
 
     def on_enable_primary_hk_toggled(self, checked):
         if hasattr(self.main_win.overlay, "set_primary_hotkey_enabled"):
@@ -1725,6 +1728,9 @@ class SettingsWindow(QWidget):
         # Apply initial theme
         self.refresh_theme()
 
+        # Initialize Streamer Mode gating state
+        self.update_streamer_mode_state(getattr(self.overlay, "streamer_mode", False))
+
     def _create_nav_btn(self, text, idx):
         btn = QPushButton(text)
         btn.setCheckable(True)
@@ -1826,6 +1832,9 @@ class SettingsWindow(QWidget):
             """)
 
     def set_view_index(self, idx):
+        if idx == 10 and not getattr(self.overlay, "streamer_mode", False):
+            # Auto-Clip & Stream Markers is locked when Streamer Mode is disabled
+            return
         if 0 <= idx < self.stacked_pages.count():
             self.stacked_pages.setCurrentIndex(idx)
             btn = self.nav_button_group.button(idx)
@@ -1841,6 +1850,47 @@ class SettingsWindow(QWidget):
                     self.combo_collapsed_nav.blockSignals(True)
                     self.combo_collapsed_nav.setCurrentIndex(c_idx)
                     self.combo_collapsed_nav.blockSignals(False)
+
+    def update_streamer_mode_state(self, is_streamer_mode: bool):
+        """Updates UI tabs, buttons, and dropdown entries based on Streamer Mode status."""
+        is_active = bool(is_streamer_mode)
+
+        # Propagate to DirectorTab
+        if hasattr(self, "tab_director") and self.tab_director:
+            self.tab_director.set_streamer_mode(is_active)
+
+        # Propagate to AutoClipTab
+        if hasattr(self, "tab_autoclip") and self.tab_autoclip:
+            self.tab_autoclip.set_streamer_mode(is_active)
+
+        # Update Auto-Clip sidebar navigation button
+        if hasattr(self, "btn_nav_autoclip") and self.btn_nav_autoclip:
+            self.btn_nav_autoclip.setEnabled(is_active)
+            if is_active:
+                self.btn_nav_autoclip.setText("🎙️  Auto-Clip/Markers")
+                self.btn_nav_autoclip.setToolTip("")
+            else:
+                self.btn_nav_autoclip.setText("🎙️  Auto-Clip/Markers 🔒")
+                self.btn_nav_autoclip.setToolTip("Locked: Auto-Clip & Stream Markers requires Streamer Mode to be enabled in Main Overlay settings.")
+
+        # If currently on Auto-Clip tab and Streamer Mode is toggled off, bounce back to MainTab
+        if not is_active and self.stacked_pages.currentIndex() == 10:
+            self.set_view_index(0)
+
+        # Update collapsed combo box
+        if hasattr(self, "combo_collapsed_nav") and self.combo_collapsed_nav:
+            c_idx = self.combo_collapsed_nav.findData(10)
+            if c_idx >= 0:
+                model = self.combo_collapsed_nav.model()
+                item = model.item(c_idx) if hasattr(model, "item") else None
+                if is_active:
+                    self.combo_collapsed_nav.setItemText(c_idx, PAGE_TITLES.get(10, "🎙️  Auto-Clip & Stream Markers"))
+                    if item:
+                        item.setEnabled(True)
+                else:
+                    self.combo_collapsed_nav.setItemText(c_idx, "🎙️  Auto-Clip/Markers 🔒 (Locked)")
+                    if item:
+                        item.setEnabled(False)
 
     def toggle_sidebar(self):
         self.is_sidebar_collapsed = not self.is_sidebar_collapsed

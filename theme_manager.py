@@ -360,6 +360,11 @@ LIGHT_STYLESHEET = """
         color: #18181b;
         border-left: 3px solid #9146ff;
     }
+    QPushButton[isNav="true"]:disabled {
+        color: #a1a1aa;
+        background-color: transparent;
+        border-left: 3px solid transparent;
+    }
     QLabel#contentHeaderLabel {
         color: #18181b;
         font-size: 15px;
@@ -614,6 +619,11 @@ DARK_STYLESHEET = """
         background-color: #27272a;
         color: #ffffff;
         border-left: 3px solid #9146ff;
+    }
+    QPushButton[isNav="true"]:disabled {
+        color: #52525b;
+        background-color: transparent;
+        border-left: 3px solid transparent;
     }
     QLabel#contentHeaderLabel {
         color: #efeff1;
