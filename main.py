@@ -1055,18 +1055,24 @@ class RedBorderOverlay(QMainWindow):
 
     def on_twitch_worker_result(self, message, is_success):
         log_debug("TWITCH_RESPONSE", f"Success={is_success} | message='{message}'")
+        msg_lower = message.lower()
+        is_offline = any(k in msg_lower for k in ["offline", "not currently live", "not live", "cannot create marker"])
+
         if self.streamer_mode:
             self.show_hud_toast(message, is_success)
         else:
-            icon = QMessageBox.Icon.Information if is_success else QMessageBox.Icon.Warning
-            title = "Twitch Action Complete" if is_success else "Twitch Action Notice"
-            msg_box = QMessageBox(icon, title, message)
-            msg_box.setWindowIcon(get_app_icon())
-            theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
-            msg_box.setText(f"<b>{title}</b><br><br>{message}")
-            msg_box.setTextFormat(Qt.TextFormat.RichText)
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
-            msg_box.exec()
+            if is_offline:
+                log_debug("TWITCH_RESPONSE", f"Suppressed blocking modal dialog for offline stream notice: '{message}'")
+            else:
+                icon = QMessageBox.Icon.Information if is_success else QMessageBox.Icon.Warning
+                title = "Twitch Action Complete" if is_success else "Twitch Action Notice"
+                msg_box = QMessageBox(icon, title, message)
+                msg_box.setWindowIcon(get_app_icon())
+                theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
+                msg_box.setText(f"<b>{title}</b><br><br>{message}")
+                msg_box.setTextFormat(Qt.TextFormat.RichText)
+                msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg_box.exec()
 
         icon = QSystemTrayIcon.MessageIcon.Information if is_success else QSystemTrayIcon.MessageIcon.Warning
         if hasattr(self, "tray_icon") and self.tray_icon.isVisible():

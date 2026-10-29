@@ -259,7 +259,7 @@ class AutoClipTab(QWidget):
         self.row_gain.addWidget(self.lbl_gain_title)
 
         self.slider_gain = QSlider(Qt.Orientation.Horizontal)
-        self.slider_gain.setRange(25, 200)
+        self.slider_gain.setRange(25, 300)
         self.slider_gain.setValue(100)
         self.slider_gain.valueChanged.connect(self._on_gain_changed)
         self.row_gain.addWidget(self.slider_gain, 1)
@@ -272,7 +272,7 @@ class AutoClipTab(QWidget):
         self.btn_reset_gain = QPushButton("Reset")
         self.btn_reset_gain.setFixedWidth(50)
         self.btn_reset_gain.setStyleSheet("font-size: 10px; padding: 2px 4px;")
-        self.btn_reset_gain.setToolTip("Reset gain trim to 100% (standard baseline)")
+        self.btn_reset_gain.setToolTip("Reset gain trim to 100% (standard 2.5x baseline)")
         self.btn_reset_gain.clicked.connect(lambda: self.slider_gain.setValue(100))
         self.row_gain.addWidget(self.btn_reset_gain)
         lay_meter.addLayout(self.row_gain)

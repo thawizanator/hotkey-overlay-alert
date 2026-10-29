@@ -57,8 +57,8 @@ class ControllerVisualizerWidget(QFrame):
         self.setObjectName("controllerVisualizer")
         self.setStyleSheet("""
             QFrame#controllerVisualizer {
-                background-color: #121522;
-                border: 1px solid #242b45;
+                background-color: #18181b;
+                border: 1px solid #3f3f46;
                 border-radius: 8px;
                 padding: 8px;
             }
@@ -71,12 +71,12 @@ class ControllerVisualizerWidget(QFrame):
         # Header with connection indicator
         hdr_row = QHBoxLayout()
         self.lbl_status = QLabel("🎮 Controller Status: Checking...")
-        self.lbl_status.setStyleSheet("font-size: 12px; font-weight: bold; color: #94a3b8;")
+        self.lbl_status.setStyleSheet("font-size: 12px; font-weight: bold; color: #adadb8;")
         hdr_row.addWidget(self.lbl_status)
         hdr_row.addStretch()
 
         self.lbl_slot_info = QLabel("Slot: Index 0 (XInput)")
-        self.lbl_slot_info.setStyleSheet("font-size: 11px; color: #64748b;")
+        self.lbl_slot_info.setStyleSheet("font-size: 11px; color: #71717a;")
         hdr_row.addWidget(self.lbl_slot_info)
         layout.addLayout(hdr_row)
 
@@ -108,7 +108,7 @@ class ControllerVisualizerWidget(QFrame):
         row2 = QHBoxLayout()
         row2.setSpacing(4)
         lbl_dpad_tag = QLabel("D-Pad:")
-        lbl_dpad_tag.setStyleSheet("color: #64748b; font-size: 10px; font-weight: bold;")
+        lbl_dpad_tag.setStyleSheet("color: #71717a; font-size: 10px; font-weight: bold;")
         row2.addWidget(lbl_dpad_tag)
         row2.addWidget(self._make_badge("D-Pad Up", "▲", 24))
         row2.addWidget(self._make_badge("D-Pad Down", "▼", 24))
@@ -118,7 +118,7 @@ class ControllerVisualizerWidget(QFrame):
         row2.addSpacing(16)
 
         lbl_face_tag = QLabel("Buttons:")
-        lbl_face_tag.setStyleSheet("color: #64748b; font-size: 10px; font-weight: bold;")
+        lbl_face_tag.setStyleSheet("color: #71717a; font-size: 10px; font-weight: bold;")
         row2.addWidget(lbl_face_tag)
         row2.addWidget(self._make_badge("X", "X", 24))
         row2.addWidget(self._make_badge("Y", "Y", 24))
@@ -139,20 +139,20 @@ class ControllerVisualizerWidget(QFrame):
     def _apply_badge_style(self, lbl, active=False):
         if active:
             lbl.setStyleSheet("""
-                background-color: #a855f7;
+                background-color: #9146ff;
                 color: #ffffff;
                 font-size: 10px;
                 font-weight: bold;
-                border: 1px solid #c084fc;
+                border: 1px solid #a855f7;
                 border-radius: 4px;
             """)
         else:
             lbl.setStyleSheet("""
-                background-color: #171b2c;
-                color: #64748b;
+                background-color: #27272a;
+                color: #a1a1aa;
                 font-size: 10px;
                 font-weight: 600;
-                border: 1px solid #242b45;
+                border: 1px solid #3f3f46;
                 border-radius: 4px;
             """)
 
@@ -194,8 +194,8 @@ class ShortcutRecordDialog(QDialog):
         self.setFixedSize(480, 310)
         self.setStyleSheet("""
             QDialog {
-                background-color: #121522;
-                color: #f1f5f9;
+                background-color: #18181b;
+                color: #efeff1;
             }
         """)
 
@@ -207,15 +207,15 @@ class ShortcutRecordDialog(QDialog):
         lbl_info = QLabel(f"<b>Assigning shortcut for:</b> <span style='color:#a855f7;'>{action_name}</span><br>"
                           "Press any key on your <b>Keyboard</b>, <b>Mouse Button</b>, or <b>Controller Button / Chord</b>.")
         lbl_info.setWordWrap(True)
-        lbl_info.setStyleSheet("font-size: 13px; color: #e2e8f0;")
+        lbl_info.setStyleSheet("font-size: 13px; color: #efeff1;")
         layout.addWidget(lbl_info)
 
         # Live Display Box
         self.lbl_display = QLabel("Listening for input...")
         self.lbl_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_display.setStyleSheet("""
-            background-color: #0b0d14;
-            border: 2px dashed #a855f7;
+            background-color: #121214;
+            border: 2px dashed #9146ff;
             border-radius: 8px;
             padding: 16px;
             font-size: 16px;
@@ -263,7 +263,19 @@ class ShortcutRecordDialog(QDialog):
         btn_box.addWidget(self.btn_cancel)
 
         self.btn_save = QPushButton("Save Shortcut")
-        self.btn_save.setStyleSheet("background-color: #7c3aed; color: #fff; font-weight: bold; padding: 6px 16px; border-radius: 4px;")
+        self.btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #9146ff;
+                color: #ffffff;
+                font-weight: bold;
+                padding: 6px 16px;
+                border-radius: 4px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #a970ff;
+            }
+        """)
         self.btn_save.clicked.connect(self.accept)
         btn_box.addWidget(self.btn_save)
 
@@ -388,7 +400,7 @@ class HotkeyCardWidget(QFrame):
                 border-radius: 6px;
             }
             QFrame#hotkeyHeader:hover {
-                background-color: #171b2c;
+                background-color: #27272a;
             }
         """)
 
@@ -407,7 +419,7 @@ class HotkeyCardWidget(QFrame):
             display_name = display_name.split(" (")[0]
 
         self.lbl_name = QLabel(display_name)
-        self.lbl_name.setStyleSheet("font-size: 13px; font-weight: bold; color: #f1f5f9;")
+        self.lbl_name.setStyleSheet("font-size: 13px; font-weight: bold; color: #efeff1;")
         hdr_layout.addWidget(self.lbl_name)
 
         hdr_layout.addStretch()
@@ -420,16 +432,16 @@ class HotkeyCardWidget(QFrame):
         self.btn_edit = QPushButton("Edit  ▼")
         self.btn_edit.setStyleSheet("""
             QPushButton {
-                background-color: #3b4261;
-                color: #ffffff;
+                background-color: #27272a;
+                color: #efeff1;
                 font-size: 11px;
                 font-weight: 600;
                 padding: 4px 10px;
                 border-radius: 4px;
-                border: 1px solid #4a5578;
+                border: 1px solid #3f3f46;
             }
             QPushButton:hover {
-                background-color: #4a5578;
+                background-color: #3f3f46;
             }
         """)
         self.btn_edit.clicked.connect(self.toggle_drawer)
@@ -446,8 +458,8 @@ class HotkeyCardWidget(QFrame):
         self.drawer.setVisible(False)
         self.drawer.setStyleSheet("""
             QFrame#hotkeyDrawer {
-                background-color: #0b0d14;
-                border-top: 1px solid #1e243a;
+                background-color: #121214;
+                border-top: 1px solid #27272a;
                 border-radius: 0px 0px 6px 6px;
             }
         """)
@@ -464,10 +476,10 @@ class HotkeyCardWidget(QFrame):
         if " (" in raw_name and ")" in raw_name:
             extra_detail = raw_name[raw_name.find("(") + 1 : raw_name.rfind(")")]
 
-        info_html = f"<span style='color:#94a3b8;'>Category:</span> <b style='color:#c084fc;'>{cat_name}</b>"
+        info_html = f"<span style='color:#adadb8;'>Category:</span> <b style='color:#a970ff;'>{cat_name}</b>"
         if extra_detail:
-            info_html += f" &nbsp;•&nbsp; <span style='color:#94a3b8;'>Command:</span> <code style='color:#38bdf8;'>{extra_detail}</code>"
-        info_html += f"<br><span style='color:#94a3b8;'>Function:</span> <span style='color:#e2e8f0;'>{desc_text}</span>"
+            info_html += f" &nbsp;•&nbsp; <span style='color:#adadb8;'>Command:</span> <code style='color:#a970ff;'>{extra_detail}</code>"
+        info_html += f"<br><span style='color:#adadb8;'>Function:</span> <span style='color:#efeff1;'>{desc_text}</span>"
 
         lbl_info = QLabel(info_html)
         lbl_info.setWordWrap(True)
@@ -479,7 +491,7 @@ class HotkeyCardWidget(QFrame):
         config_row.setSpacing(8)
 
         lbl_hold_title = QLabel("Activation Delay:")
-        lbl_hold_title.setStyleSheet("font-size: 11px; color: #94a3b8;")
+        lbl_hold_title.setStyleSheet("font-size: 11px; color: #adadb8;")
         config_row.addWidget(lbl_hold_title)
 
         self.combo_hold = QComboBox()
@@ -501,7 +513,7 @@ class HotkeyCardWidget(QFrame):
         self.btn_record = QPushButton("🎮 / ⌨️  Set Hotkey")
         self.btn_record.setStyleSheet("""
             QPushButton {
-                background-color: #7c3aed;
+                background-color: #9146ff;
                 color: #ffffff;
                 font-size: 11px;
                 font-weight: bold;
@@ -509,7 +521,7 @@ class HotkeyCardWidget(QFrame):
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #8b5cf6;
+                background-color: #a970ff;
             }
         """)
         self.btn_record.clicked.connect(self._on_record_clicked)
@@ -518,17 +530,17 @@ class HotkeyCardWidget(QFrame):
         self.btn_clear = QPushButton("🗑️ Clear Hotkey")
         self.btn_clear.setStyleSheet("""
             QPushButton {
-                background-color: #242b45;
-                color: #f87171;
+                background-color: #27272a;
+                color: #ef4444;
                 font-size: 11px;
                 font-weight: 600;
                 padding: 5px 12px;
                 border-radius: 4px;
-                border: 1px solid #3b4261;
+                border: 1px solid #3f3f46;
             }
             QPushButton:hover {
-                background-color: #334155;
-                color: #ef4444;
+                background-color: #3f3f46;
+                color: #f87171;
             }
         """)
         self.btn_clear.clicked.connect(self._on_clear_clicked)
@@ -540,13 +552,13 @@ class HotkeyCardWidget(QFrame):
         self.btn_collapse.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
-                color: #64748b;
+                color: #71717a;
                 font-size: 11px;
                 padding: 4px 8px;
                 border: none;
             }
             QPushButton:hover {
-                color: #cbd5e1;
+                color: #efeff1;
             }
         """)
         self.btn_collapse.clicked.connect(self.toggle_drawer)
@@ -559,15 +571,15 @@ class HotkeyCardWidget(QFrame):
         self.update_binding_info(self.binding_info)
 
     def _apply_frame_style(self, active=False):
-        border_col = "#7c3aed" if active else "#242b45"
+        border_col = "#9146ff" if active else "#3f3f46"
         self.setStyleSheet(f"""
             QFrame#hotkeyCard {{
-                background-color: #121522;
+                background-color: #18181b;
                 border: 1px solid {border_col};
                 border-radius: 6px;
             }}
             QFrame#hotkeyCard:hover {{
-                border: 1px solid #3b4261;
+                border: 1px solid #52525b;
             }}
         """)
 
@@ -596,24 +608,24 @@ class HotkeyCardWidget(QFrame):
             dev_icon = "⌨️ " if device == "keyboard" else ("🖱️ " if device == "mouse" else "🎮 ")
             self.lbl_type_badge.setText(f"{dev_icon}{disp_str}")
             self.lbl_type_badge.setStyleSheet("""
-                background-color: #0c2d48;
-                color: #38bdf8;
+                background-color: #27272a;
+                color: #a970ff;
                 font-weight: bold;
                 font-size: 11px;
                 padding: 3px 8px;
                 border-radius: 4px;
-                border: 1px solid #0284c7;
+                border: 1px solid #9146ff;
             """)
         else:
             self.lbl_type_badge.setText("Not Set")
             self.lbl_type_badge.setStyleSheet("""
-                background-color: #171b2c;
-                color: #64748b;
+                background-color: #18181b;
+                color: #71717a;
                 font-weight: 500;
                 font-size: 11px;
                 padding: 3px 8px;
                 border-radius: 4px;
-                border: 1px solid #242b45;
+                border: 1px solid #27272a;
             """)
 
         # Set hold combo without triggering change signal
@@ -665,7 +677,7 @@ class HotkeysTab(QWidget):
         toolbar.setSpacing(6)
 
         lbl_filt = QLabel("Filter:")
-        lbl_filt.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold;")
+        lbl_filt.setStyleSheet("color: #adadb8; font-size: 11px; font-weight: bold;")
         toolbar.addWidget(lbl_filt)
 
         self.combo_filter = QComboBox()
@@ -685,17 +697,56 @@ class HotkeysTab(QWidget):
         toolbar.addStretch()
 
         self.btn_expand_all = QPushButton("Expand All")
-        self.btn_expand_all.setStyleSheet("background-color: #1e243a; color: #94a3b8; font-size: 10px; padding: 3px 6px; border-radius: 4px;")
+        self.btn_expand_all.setStyleSheet("""
+            QPushButton {
+                background-color: #27272a;
+                color: #adadb8;
+                border: 1px solid #3f3f46;
+                font-size: 10px;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #3f3f46;
+                color: #efeff1;
+            }
+        """)
         self.btn_expand_all.clicked.connect(lambda: self.set_all_expanded(True))
         toolbar.addWidget(self.btn_expand_all)
 
         self.btn_collapse_all = QPushButton("Collapse All")
-        self.btn_collapse_all.setStyleSheet("background-color: #1e243a; color: #94a3b8; font-size: 10px; padding: 3px 6px; border-radius: 4px;")
+        self.btn_collapse_all.setStyleSheet("""
+            QPushButton {
+                background-color: #27272a;
+                color: #adadb8;
+                border: 1px solid #3f3f46;
+                font-size: 10px;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #3f3f46;
+                color: #efeff1;
+            }
+        """)
         self.btn_collapse_all.clicked.connect(lambda: self.set_all_expanded(False))
         toolbar.addWidget(self.btn_collapse_all)
 
         self.btn_reset_defaults = QPushButton("Reset Defaults")
-        self.btn_reset_defaults.setStyleSheet("background-color: #242b45; color: #cbd5e1; font-size: 10px; padding: 3px 8px; border-radius: 4px;")
+        self.btn_reset_defaults.setStyleSheet("""
+            QPushButton {
+                background-color: #27272a;
+                color: #efeff1;
+                border: 1px solid #3f3f46;
+                font-size: 10px;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #3f3f46;
+                color: #ffffff;
+            }
+        """)
         self.btn_reset_defaults.clicked.connect(self.reset_all_defaults)
         toolbar.addWidget(self.btn_reset_defaults)
 
@@ -704,7 +755,7 @@ class HotkeysTab(QWidget):
         # Description
         lbl_desc = QLabel("Click any hotkey title to open its settings drawer. Assign shortcuts across Keyboard, Mouse, and Gamepad.")
         lbl_desc.setWordWrap(True)
-        lbl_desc.setStyleSheet("color: #64748b; font-size: 11px; margin-bottom: 2px;")
+        lbl_desc.setStyleSheet("color: #adadb8; font-size: 11px; margin-bottom: 2px;")
         layout.addWidget(lbl_desc)
 
         # 3. Scrollable Card List Area (Zero Horizontal Scrollbars!)
@@ -714,23 +765,23 @@ class HotkeysTab(QWidget):
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll_area.setStyleSheet("""
             QScrollArea {
-                border: 1px solid #1e243a;
+                border: 1px solid #27272a;
                 border-radius: 6px;
-                background-color: #0b0d14;
+                background-color: #121214;
             }
             QScrollBar:vertical {
-                background-color: #121522;
+                background-color: #18181b;
                 width: 6px;
                 border-radius: 3px;
                 margin: 0px;
             }
             QScrollBar::handle:vertical {
-                background-color: #3b4261;
+                background-color: #3f3f46;
                 min-height: 20px;
                 border-radius: 3px;
             }
             QScrollBar::handle:vertical:hover {
-                background-color: #7c3aed;
+                background-color: #9146ff;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;

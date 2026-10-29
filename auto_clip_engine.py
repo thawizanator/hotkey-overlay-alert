@@ -119,6 +119,8 @@ class AutoClipEngine(QObject):
         # Session & Scene Tracking
         self._session_start_time = time.time()
         self._current_scene_name = ""
+        self._current_scene_id = ""
+        self._scene_paused = False
         self.slobs_client = get_streamlabs_client()
         if self.slobs_client:
             self.slobs_client.scene_switched.connect(self._on_scene_switched)
@@ -175,15 +177,17 @@ class AutoClipEngine(QObject):
         if not self.enabled:
             return
 
-        if not getattr(self, "streamer_mode", True):
+        if not getattr(self, "streamer_mode", False):
             log_debug("AUTOCLIP", "Audio capture skipped: Streamer Mode is disabled.")
             self.status_changed.emit("Paused (Streamer Mode disabled)", False)
             return
 
         # Check scene scoping
         if not self.is_scene_active():
+            self._scene_paused = True
             self.status_changed.emit(f"Paused (Scene '{self._current_scene_name}' not active)", False)
-            return
+        else:
+            self._scene_paused = False
 
         device = self._resolve_target_device()
         if not device or device.isNull():
@@ -203,7 +207,8 @@ class AutoClipEngine(QObject):
             self._sample_timer.start()
             dev_label = device.description()
             log_debug("AUTOCLIP", f"Audio capture active on: {dev_label} ({self._sample_rate}Hz, {self._channels}ch)")
-            self.status_changed.emit(f"Active ({dev_label})", True)
+            if not self._scene_paused:
+                self.status_changed.emit(f"Active ({dev_label})", True)
         except Exception as e:
             log_debug("AUTOCLIP", f"Failed to start QAudioSource: {e}")
             self.status_changed.emit(f"Error: {e}", False)
@@ -214,6 +219,7 @@ class AutoClipEngine(QObject):
         if self.audio_source:
             try:
                 self.audio_source.stop()
+                self.audio_source.deleteLater()
             except Exception:
                 pass
             self.audio_source = None
@@ -232,28 +238,40 @@ class AutoClipEngine(QObject):
 
     # ------------------ Scene Scoping ------------------
 
-    def _on_scene_switched(self, scene_name: str, scene_id: str):
-        self._current_scene_name = scene_name
+    def _on_scene_switched(self, scene_id: str, scene_name: str):
+        # Resolve scene name cleanly (slobs emits scene_id, scene_name)
+        resolved_name = scene_name or scene_id or ""
+        self._current_scene_name = resolved_name
+        self._current_scene_id = scene_id or ""
         is_active = self.is_scene_active()
-        log_debug("AUTOCLIP", f"Scene switched to '{scene_name}' | Auto-Clip Allowed={is_active}")
+        log_debug("AUTOCLIP", f"Scene switched to '{resolved_name}' (ID: '{scene_id}') | Auto-Clip Allowed={is_active}")
+
+        if not self.enabled or not getattr(self, "streamer_mode", False):
+            return
+
         if is_active:
-            if not self._sample_timer.isActive():
+            self._scene_paused = False
+            dev_label = self.current_device.description() if self.current_device else "Active"
+            self.status_changed.emit(f"Active ({dev_label})", True)
+            if not self._sample_timer.isActive() or not self.audio_source:
                 self.start_audio_capture()
         else:
-            if self._sample_timer.isActive():
-                self.stop_audio_capture()
-                self.status_changed.emit(f"Paused (Scene '{scene_name}')", False)
+            self._scene_paused = True
+            self.status_changed.emit(f"Paused (Scene '{resolved_name}')", False)
 
     def is_scene_active(self) -> bool:
         """Checks if current scene is in the active_scenes whitelist."""
         if not self.active_scenes:
             return True  # If empty, allow all scenes
-        if not self._current_scene_name:
+        if not self._current_scene_name and not getattr(self, "_current_scene_id", ""):
             return True
-        curr = self._current_scene_name.lower().strip()
+        curr_name = (self._current_scene_name or "").lower().strip()
+        curr_id = getattr(self, "_current_scene_id", "").lower().strip()
         for allowed in self.active_scenes:
             a = allowed.lower().strip()
-            if a in curr or curr in a:
+            if not a:
+                continue
+            if a in curr_name or curr_name in a or (curr_id and a == curr_id):
                 return True
         return False
 
@@ -273,6 +291,12 @@ class AutoClipEngine(QObject):
                 return
 
             if not raw_bytes:
+                return
+
+            # If paused by scene filter, drain buffer to prevent overflow, show 0 level and skip triggers
+            if getattr(self, "_scene_paused", False):
+                self.current_level = 0.0
+                self.level_updated.emit(0.0, self.ZONE_GREEN, self.current_baseline, self.current_threshold)
                 return
 
             # Calculate normalized perceptual level (RMS + peak blend, 0.0 to 1.0)
@@ -301,9 +325,9 @@ class AutoClipEngine(QObject):
             # Guarantees that quiet/stealth gaming stretches do not drop the threshold down to silence
             effective_baseline = max(self.current_baseline, self.session_voice_anchor)
             offset = self.trigger_offset
-            red_thresh = min(0.98, max(0.68, effective_baseline + offset))
-            orange_thresh = min(0.90, max(0.48, red_thresh * 0.78))
-            yellow_thresh = min(0.60, max(0.24, red_thresh * 0.42))
+            red_thresh = min(0.98, max(0.48, effective_baseline + offset))
+            orange_thresh = min(0.90, max(0.36, red_thresh * 0.78))
+            yellow_thresh = min(0.60, max(0.20, red_thresh * 0.42))
         else:
             red_thresh = max(0.40, min(1.0, self.manual_threshold))
             orange_thresh = red_thresh * 0.78
@@ -355,7 +379,7 @@ class AutoClipEngine(QObject):
             if byte_len < 2:
                 return 0.0
 
-            gain = getattr(self, "input_gain", 1.0) * 2.0  # 100% on slider = 2.0x boost baseline
+            gain = getattr(self, "input_gain", 1.0) * 2.5  # 100% on slider = 2.5x boost baseline
 
             # 1. 32-bit Floating Point PCM (Standard for WASAPI / Windows 11 & VoiceMeeter)
             if getattr(self, "_sample_format", None) == QAudioFormat.SampleFormat.Float:
