@@ -272,7 +272,7 @@ class AutoClipTab(QWidget):
         self.btn_reset_gain = QPushButton("Reset")
         self.btn_reset_gain.setFixedWidth(50)
         self.btn_reset_gain.setStyleSheet("font-size: 10px; padding: 2px 4px;")
-        self.btn_reset_gain.setToolTip("Reset gain trim to 100% (unity gain)")
+        self.btn_reset_gain.setToolTip("Reset gain trim to 100% (standard baseline)")
         self.btn_reset_gain.clicked.connect(lambda: self.slider_gain.setValue(100))
         self.row_gain.addWidget(self.btn_reset_gain)
         lay_meter.addLayout(self.row_gain)

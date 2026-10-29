@@ -32,6 +32,42 @@ def get_checkmark_icon_path() -> str:
             pass
     return icon_path.replace("\\", "/")
 
+def get_dropdown_arrow_path(theme: str = "dark", disabled: bool = False) -> str:
+    """Returns absolute path with forward slashes to the dropdown chevron icon, creating it if needed."""
+    app_data = os.environ.get("APPDATA", "")
+    target_dir = os.path.join(app_data, "StreamerCalyx") if app_data else os.path.dirname(__file__)
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+    except Exception:
+        pass
+
+    if disabled:
+        filename = f"dropdown_arrow_{theme}_disabled.png"
+        color_hex = "#52525b" if theme == "dark" else "#a1a1aa"
+    else:
+        filename = f"dropdown_arrow_{theme}.png"
+        color_hex = "#efeff1" if theme == "dark" else "#52525b"
+
+    icon_path = os.path.join(target_dir, filename)
+    if not os.path.exists(icon_path):
+        try:
+            pix = QPixmap(32, 32)
+            pix.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pix)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            pen = QPen(QColor(color_hex), 3.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            path = QPainterPath()
+            path.moveTo(8, 12)
+            path.lineTo(16, 20)
+            path.lineTo(24, 12)
+            painter.drawPath(path)
+            painter.end()
+            pix.save(icon_path)
+        except Exception:
+            pass
+    return icon_path.replace("\\", "/")
+
 def detect_system_theme() -> str:
     """
     Detects whether the Windows host OS is currently using Light or Dark theme.
@@ -222,6 +258,9 @@ LIGHT_STYLESHEET = """
         min-height: 18px;
         max-height: 22px;
     }
+    QComboBox {
+        padding-right: 22px;
+    }
     QComboBox:hover, QSpinBox:hover, QDateTimeEdit:hover {
         border-color: #a1a1aa;
     }
@@ -229,8 +268,18 @@ LIGHT_STYLESHEET = """
         border: 1px solid #9146ff;
     }
     QComboBox::drop-down {
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
+        width: 20px;
         border: none;
-        width: 18px;
+    }
+    QComboBox::down-arrow {
+        image: url("__DROPDOWN_ARROW_URL__");
+        width: 12px;
+        height: 12px;
+    }
+    QComboBox::down-arrow:disabled {
+        image: url("__DROPDOWN_ARROW_DISABLED_URL__");
     }
     QComboBox QAbstractItemView {
         background-color: #ffffff;
@@ -482,6 +531,9 @@ DARK_STYLESHEET = """
         min-height: 18px;
         max-height: 22px;
     }
+    QComboBox {
+        padding-right: 22px;
+    }
     QComboBox:hover, QSpinBox:hover, QDateTimeEdit:hover {
         border-color: #52525b;
     }
@@ -489,8 +541,18 @@ DARK_STYLESHEET = """
         border: 1px solid #9146ff;
     }
     QComboBox::drop-down {
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
+        width: 20px;
         border: none;
-        width: 18px;
+    }
+    QComboBox::down-arrow {
+        image: url("__DROPDOWN_ARROW_URL__");
+        width: 12px;
+        height: 12px;
+    }
+    QComboBox::down-arrow:disabled {
+        image: url("__DROPDOWN_ARROW_DISABLED_URL__");
     }
     QComboBox QAbstractItemView {
         background-color: #18181b;
@@ -636,8 +698,13 @@ DARK_STYLESHEET = """
 def get_theme_stylesheet(theme: str) -> str:
     """Returns the CSS stylesheet matching the given theme ('dark' or 'light')."""
     chk_icon = get_checkmark_icon_path()
+    arrow_icon = get_dropdown_arrow_path(theme, disabled=False)
+    arrow_disabled = get_dropdown_arrow_path(theme, disabled=True)
     raw = LIGHT_STYLESHEET if theme == "light" else DARK_STYLESHEET
-    return raw.replace("__CHECKMARK_URL__", chk_icon)
+    return (raw
+            .replace("__CHECKMARK_URL__", chk_icon)
+            .replace("__DROPDOWN_ARROW_URL__", arrow_icon)
+            .replace("__DROPDOWN_ARROW_DISABLED_URL__", arrow_disabled))
 
 def set_window_immersive_dark_mode(hwnd, is_dark: bool):
     """

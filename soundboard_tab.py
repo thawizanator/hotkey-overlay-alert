@@ -162,14 +162,14 @@ class SoundClipDialog(QDialog):
             QLabel {
                 color: #e4e4e7;
             }
-            QLineEdit, QComboBox {
+            QLineEdit {
                 background-color: #27272a;
                 border: 1px solid #3f3f46;
                 border-radius: 6px;
                 padding: 6px 10px;
                 color: #ffffff;
             }
-            QLineEdit:focus, QComboBox:focus {
+            QLineEdit:focus {
                 border: 1px solid #38bdf8;
             }
             QPushButton {
@@ -595,7 +595,7 @@ class SoundboardTab(QWidget):
             QPushButton:hover {
                 background-color: #3f3f46;
             }
-            QComboBox, QLineEdit {
+            QLineEdit {
                 background-color: #27272a;
                 border: 1px solid #3f3f46;
                 border-radius: 6px;

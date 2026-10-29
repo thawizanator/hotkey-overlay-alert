@@ -308,7 +308,7 @@ class AudioDiagnosticsDialog(QDialog):
                 raw_bytes = self.audio_io.readAll().data()
                 byte_len = len(raw_bytes) if raw_bytes else 0
                 if byte_len >= 2:
-                    gain = getattr(self.engine, "input_gain", 1.0) if self.engine else 1.0
+                    gain = (getattr(self.engine, "input_gain", 1.0) if self.engine else 1.0) * 2.0
                     peak = 0.0
                     rms = 0.0
 

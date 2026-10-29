@@ -60,7 +60,7 @@ class AutoClipEngine(QObject):
         self.log_file_path = os.path.join(self.app_dir, "cooldown_clips.txt")
 
         # Engine Settings
-        self.enabled = True
+        self.enabled = False
         self.selected_device_name = ""
         self.auto_sensitivity = True
         self.input_gain = 1.0              # 0.25 to 2.0 (Input Gain Trim)
@@ -74,7 +74,7 @@ class AutoClipEngine(QObject):
         self.cooldown_duration_sec = 60
         self.active_scenes = ["In-Game", "Banter"]
         self.marker_description = "Auto-Clip/Markers"
-        self.streamer_mode = True
+        self.streamer_mode = False
 
         # Audio Capture State
         self.audio_source = None
@@ -355,7 +355,7 @@ class AutoClipEngine(QObject):
             if byte_len < 2:
                 return 0.0
 
-            gain = getattr(self, "input_gain", 1.0)
+            gain = getattr(self, "input_gain", 1.0) * 2.0  # 100% on slider = 2.0x boost baseline
 
             # 1. 32-bit Floating Point PCM (Standard for WASAPI / Windows 11 & VoiceMeeter)
             if getattr(self, "_sample_format", None) == QAudioFormat.SampleFormat.Float:
@@ -587,7 +587,7 @@ class AutoClipEngine(QObject):
     def import_settings(self, d: dict):
         if not isinstance(d, dict):
             return
-        self.enabled = d.get("enabled", True)
+        self.enabled = d.get("enabled", False)
         self.selected_device_name = d.get("device_name", "")
         self.auto_sensitivity = d.get("auto_sensitivity", True)
         self.input_gain = d.get("input_gain", 1.0)

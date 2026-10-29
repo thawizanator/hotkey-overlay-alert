@@ -1486,7 +1486,7 @@ class TabsAdapter:
 
 
 PAGE_TITLES = {
-    0: "🏠  Main Overlay & Streaming Mode",
+    0: "🏠  Main & Streaming Mode",
     1: "🖥️  Multi-Monitor Configuration",
     2: "🎨  Alert Overlay Styles & Effects",
     3: "🟣  Twitch Channel & Macro Hotkeys",
@@ -1543,7 +1543,7 @@ class SettingsWindow(QWidget):
         lbl_cat_display.setObjectName("navCatLabel")
         sidebar_layout.addWidget(lbl_cat_display)
 
-        self.btn_nav_main = self._create_nav_btn("🏠  Main Overlay", 0)
+        self.btn_nav_main = self._create_nav_btn("🏠  Main", 0)
         self.btn_nav_monitor = self._create_nav_btn("🖥️  Monitor Setup", 1)
         self.btn_nav_alert = self._create_nav_btn("🎨  Alert Overlay", 2)
         sidebar_layout.addWidget(self.btn_nav_main)
@@ -1619,7 +1619,7 @@ class SettingsWindow(QWidget):
         self.btn_toggle_sidebar.clicked.connect(self.toggle_sidebar)
         header_row.addWidget(self.btn_toggle_sidebar)
 
-        self.lbl_page_title = QLabel("🏠  Main Overlay & Streaming Mode")
+        self.lbl_page_title = QLabel("🏠  Main & Streaming Mode")
         self.lbl_page_title.setObjectName("contentHeaderLabel")
         header_row.addWidget(self.lbl_page_title, 1)
 
@@ -1871,7 +1871,7 @@ class SettingsWindow(QWidget):
                 self.btn_nav_autoclip.setToolTip("")
             else:
                 self.btn_nav_autoclip.setText("🎙️  Auto-Clip/Markers 🔒")
-                self.btn_nav_autoclip.setToolTip("Locked: Auto-Clip & Stream Markers requires Streamer Mode to be enabled in Main Overlay settings.")
+                self.btn_nav_autoclip.setToolTip("Locked: Auto-Clip & Stream Markers requires Streamer Mode to be enabled in Main settings.")
 
         # If currently on Auto-Clip tab and Streamer Mode is toggled off, bounce back to MainTab
         if not is_active and self.stacked_pages.currentIndex() == 10:

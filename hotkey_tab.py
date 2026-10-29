@@ -487,18 +487,8 @@ class HotkeyCardWidget(QFrame):
         self.combo_hold.addItem("Hold for 0.5s (Recommended for controllers)", 0.5)
         self.combo_hold.addItem("Hold for 0.75s", 0.75)
         self.combo_hold.addItem("Hold for 1.0s (Long hold shield)", 1.0)
-        self.combo_hold.setStyleSheet("""
-            QComboBox {
-                background-color: #171b2c;
-                border: 1px solid #242b45;
-                border-radius: 4px;
-                padding: 3px 6px;
-                color: #f1f5f9;
-                font-size: 11px;
-                min-width: 180px;
-                max-width: 260px;
-            }
-        """)
+        self.combo_hold.setMinimumWidth(180)
+        self.combo_hold.setMaximumWidth(260)
         self.combo_hold.currentIndexChanged.connect(self._on_hold_changed)
         config_row.addWidget(self.combo_hold)
         config_row.addStretch()
@@ -687,18 +677,8 @@ class HotkeysTab(QWidget):
             "Trivia & Text",
             "Stream Director"
         ])
-        self.combo_filter.setStyleSheet("""
-            QComboBox {
-                background-color: #171b2c;
-                border: 1px solid #242b45;
-                border-radius: 4px;
-                padding: 3px 6px;
-                color: #cbd5e1;
-                font-size: 11px;
-                min-width: 120px;
-                max-width: 140px;
-            }
-        """)
+        self.combo_filter.setMinimumWidth(120)
+        self.combo_filter.setMaximumWidth(140)
         self.combo_filter.currentTextChanged.connect(self._on_filter_changed)
         toolbar.addWidget(self.combo_filter)
 
