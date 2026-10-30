@@ -2460,6 +2460,7 @@ class DirectorTab(QWidget):
             self.panel_window.settings_requested.connect(self._open_settings_from_panel)
             self.panel_window.resync_requested.connect(self._on_panel_resync_requested)
             self.panel_window.view_visibility_toggled.connect(self._on_panel_view_visibility_toggled)
+            self.panel_window.orientation_changed.connect(self._on_panel_orientation_changed)
 
         conn_mode = getattr(self, "conn_mode", "local")
         sb_engine = self.soundboard_engine if conn_mode == "local" else None
@@ -2501,8 +2502,10 @@ class DirectorTab(QWidget):
             target_mon = 0
 
         log_debug("DIRECTOR", f"Target monitor index: {target_mon}")
+        self.panel_window.set_orientation(getattr(self, "dock_orientation", "horizontal"))
         self.panel_window.reposition_above_taskbar(target_mon)
         self.panel_window.showNormal()
+
         self.panel_window.raise_()
         self.panel_window.activateWindow()
         self.panel_window.force_topmost()
@@ -2668,7 +2671,13 @@ class DirectorTab(QWidget):
             "audio_toggles": self.audio_toggles,
             "faders": self._get_fader_data(),
             "fader_pool": self._get_active_fader_pool(),
+            "orientation": self.panel_window.orientation if self.is_panel_open() else getattr(self, "dock_orientation", "horizontal"),
         }
+
+    def _on_panel_orientation_changed(self, mode: str):
+        self.dock_orientation = mode
+        self.save_to_settings()
+
 
     def load_from_settings(self, settings_override: Optional[dict] = None):
         self._is_loading = True
@@ -2679,8 +2688,10 @@ class DirectorTab(QWidget):
                 overlay = getattr(self.main_win, "overlay", None) if self.main_win else None
                 d = getattr(overlay, "director_settings", {}) if overlay else {}
             if d:
+                self.dock_orientation = d.get("orientation", "horizontal")
                 self.conn_mode = d.get("conn_mode", "local")
                 self.remote_host = d.get("remote_host", "127.0.0.1")
+
                 self.remote_port = d.get("remote_port", "59650")
                 self.api_key = obfuscate_str(d.get("api_key_obf", ""))
 

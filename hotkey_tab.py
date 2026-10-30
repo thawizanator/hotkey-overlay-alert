@@ -681,6 +681,7 @@ class HotkeysTab(QWidget):
         toolbar.addWidget(lbl_filt)
 
         self.combo_filter = QComboBox()
+        self.combo_filter.setToolTip("Filter shortcuts table by category (All, Alerts, Twitch, Timing, Trivia, Stream Director).")
         self.combo_filter.addItems([
             "All Categories",
             "Alerts & Highlights",
@@ -697,6 +698,7 @@ class HotkeysTab(QWidget):
         toolbar.addStretch()
 
         self.btn_expand_all = QPushButton("Expand All")
+        self.btn_expand_all.setToolTip("Expand all hotkey category groups to view all shortcuts.")
         self.btn_expand_all.setStyleSheet("""
             QPushButton {
                 background-color: #27272a;
@@ -715,6 +717,7 @@ class HotkeysTab(QWidget):
         toolbar.addWidget(self.btn_expand_all)
 
         self.btn_collapse_all = QPushButton("Collapse All")
+        self.btn_collapse_all.setToolTip("Collapse all category groups to save screen space.")
         self.btn_collapse_all.setStyleSheet("""
             QPushButton {
                 background-color: #27272a;
@@ -733,6 +736,7 @@ class HotkeysTab(QWidget):
         toolbar.addWidget(self.btn_collapse_all)
 
         self.btn_reset_defaults = QPushButton("Reset Defaults")
+        self.btn_reset_defaults.setToolTip("Restore all shortcuts across all features to factory default bindings.")
         self.btn_reset_defaults.setStyleSheet("""
             QPushButton {
                 background-color: #27272a;

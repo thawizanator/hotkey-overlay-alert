@@ -28,6 +28,11 @@ hidden_imports = [
     'auto_clip_engine',
     'autoclip_tab',
     'audio_diagnostics',
+    'about_tab',
+    'stream_launch_tab',
+    'logs_tab',
+    'beta_telemetry_dialog',
+    'debug_logger',
 ] + collect_submodules('aiortc') + collect_submodules('aioice')
 
 a = Analysis(

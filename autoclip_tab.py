@@ -166,6 +166,7 @@ class AutoClipTab(QWidget):
 
         self.btn_audio_diag = QPushButton("🩺 Audio Diagnostics...")
         self.btn_audio_diag.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_audio_diag.setToolTip("Open the Audio Input Diagnostics window to check WASAPI audio devices, sample rates, and peak levels.")
         self.btn_audio_diag.setStyleSheet("""
             QPushButton {
                 background-color: #1e1e24;
@@ -188,6 +189,7 @@ class AutoClipTab(QWidget):
         # Master Enable Toggle Switch
         row_master = QHBoxLayout()
         self.switch_master_enable = QCheckBox("Enable Auto-Clip Monitoring (Hype & Scream Detection)")
+        self.switch_master_enable.setToolTip("Toggle live microphone audio monitoring for automated clip capture and Twitch stream markers.")
         self.switch_master_enable.setStyleSheet("""
             QCheckBox {
                 font-size: 12px;
@@ -243,11 +245,13 @@ class AutoClipTab(QWidget):
         self.combo_device.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.combo_device.setMinimumContentsLength(8)
         self.combo_device.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.combo_device.setToolTip("Select your microphone or audio input capture device.")
         self.combo_device.currentIndexChanged.connect(self._on_device_changed)
         row_dev.addWidget(self.combo_device, 1)
 
         self.btn_refresh_dev = QPushButton("🔄 Refresh")
         self.btn_refresh_dev.setFixedWidth(82)
+        self.btn_refresh_dev.setToolTip("Rescan connected audio input hardware.")
         self.btn_refresh_dev.clicked.connect(self._populate_devices)
         row_dev.addWidget(self.btn_refresh_dev)
         lay_meter.addLayout(row_dev)
@@ -261,6 +265,7 @@ class AutoClipTab(QWidget):
         self.slider_gain = QSlider(Qt.Orientation.Horizontal)
         self.slider_gain.setRange(25, 300)
         self.slider_gain.setValue(100)
+        self.slider_gain.setToolTip("Adjust digital input pre-amplification trim (25% to 300%).")
         self.slider_gain.valueChanged.connect(self._on_gain_changed)
         self.row_gain.addWidget(self.slider_gain, 1)
 
@@ -324,6 +329,7 @@ class AutoClipTab(QWidget):
 
         self.chk_auto_sens = QCheckBox("Auto-determine sensitivity (Discord-style adaptive baseline)")
         self.chk_auto_sens.setStyleSheet("font-weight: 600; font-size: 11px;")
+        self.chk_auto_sens.setToolTip("Automatically track ambient room noise and speech baseline to dynamically adjust trigger thresholds.")
         self.chk_auto_sens.toggled.connect(self._on_auto_sens_toggled)
         lay_sens.addWidget(self.chk_auto_sens)
 
@@ -336,6 +342,7 @@ class AutoClipTab(QWidget):
         self.slider_offset = QSlider(Qt.Orientation.Horizontal)
         self.slider_offset.setRange(15, 60)
         self.slider_offset.setValue(30)
+        self.slider_offset.setToolTip("Volume spike delta required above voice baseline to trigger a marker event.")
         self.slider_offset.valueChanged.connect(self._on_offset_changed)
         self.row_offset.addWidget(self.slider_offset, 1)
 

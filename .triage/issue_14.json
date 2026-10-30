@@ -1,0 +1,17 @@
+{
+  "issue_number": 14,
+  "issue_url": "https://github.com/thawizanator/hotkey-overlay-alert/issues/14",
+  "title": "When navigation menu is hidden, the dropdown navigation is not in order",
+  "urgency_estimate": "Medium / Moderate",
+  "component": "drop down navigation",
+  "author": "purplen3rd (260206208722534420)",
+  "source": "discord",
+  "is_feature_request": false,
+  "description": "Cosmetically or just visually the drop down menu is not in the same order as the left side navigation menu",
+  "steps": "1.) open main window\n2.) hide left side panel navigation\n3.) click on the navigation dropdown on top of screen",
+  "diagnostics": {},
+  "logs": "📷 User attached screenshot: image.png\nURL: https://cdn.discordapp.com/ephemeral-attachments/1562566562047860839/1565489452820865114/image.png?ex=6ae5172a&is=6ae3c5aa&hm=1c67f9e468456bcf45df0fb47d9aa91275ac9ee0be99820dfb0eb21391c87607&",
+  "ai_diagnosis": "Report filed for component **drop down navigation**. Logs have been attached and security-sanitized for maintainer review.",
+  "created_at": "2026-10-29T17:18:16.288063",
+  "status": "resolved"
+}

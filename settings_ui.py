@@ -19,7 +19,7 @@ from updater import (UpdateCheckWorker, DownloadWorker, apply_update_and_restart
                      CURRENT_VERSION, BUILD_COMMIT, get_build_commit, get_full_version_string,
                      get_clickable_version_html, get_commit_url,
                      is_newer_version, GITHUB_REPO)
-from debug_logger import log_debug, get_crash_log_path, get_debug_log_path
+from debug_logger import log_debug, get_crash_log_path, get_debug_log_path, is_beta_build
 import theme_manager
 from bug_report_dialog import BugReportDialog
 from chronos_tab import ChronosTab
@@ -29,6 +29,9 @@ from hotkey_tab import HotkeysTab
 from soundboard_tab import SoundboardTab
 from soundboard_engine import SoundboardEngine
 from autoclip_tab import AutoClipTab
+from about_tab import AboutTab
+from stream_launch_tab import StreamLaunchTab
+from logs_tab import LogsTab
 
 SPEED_MAPPING = {"Snail": 0.01, "Turtle": 0.02, "Squirrel": 0.04, "Cheetah": 0.08, "Lightning": 0.15, "Always On": 0.00}
 TWITCH_COMMANDS = [
@@ -274,6 +277,7 @@ class MainTab(QWidget):
 
         self.chk_streamer = QCheckBox("Streamer Mode (Live Broadcast Suite && In-Game Overlays)")
         self.chk_streamer.setStyleSheet("font-weight: bold; font-size: 13px;")
+        self.chk_streamer.setToolTip("Toggle Streamer Mode: unlocks live broadcast overlays, transparent border HUDs, Remote Director, and Auto-Clip suites.")
         self.chk_streamer.setChecked(getattr(self.main_win.overlay, "streamer_mode", False))
         self.chk_streamer.toggled.connect(self.on_streamer_toggled)
         lay_mode.addWidget(self.chk_streamer)
@@ -291,6 +295,7 @@ class MainTab(QWidget):
 
         self.chk_enable_primary_hk = QCheckBox("Enable Primary Monitor Highlight Hotkey")
         self.chk_enable_primary_hk.setStyleSheet("font-weight: bold;")
+        self.chk_enable_primary_hk.setToolTip("Enable or disable the global hotkey used to flash/highlight the primary monitor.")
         self.chk_enable_primary_hk.setChecked(getattr(self.main_win.overlay, "primary_hotkey_enabled", False))
         self.chk_enable_primary_hk.toggled.connect(self.on_enable_primary_hk_toggled)
         lay_hk.addWidget(self.chk_enable_primary_hk)
@@ -302,10 +307,12 @@ class MainTab(QWidget):
         hk_btn_layout = QHBoxLayout()
         self.btn_change_hk = QPushButton("Change Hotkey")
         self.btn_change_hk.setCheckable(True)
+        self.btn_change_hk.setToolTip("Click to record a new custom global hotkey combination for primary monitor highlight.")
         self.main_win.setup_row_key_catcher(self.btn_change_hk)
         self.btn_change_hk.clicked.connect(self.on_activation_hotkey_btn_clicked)
 
         self.btn_reset_hk = QPushButton("Reset Default (Ctrl + Add)")
+        self.btn_reset_hk.setToolTip("Reset the primary highlight hotkey back to factory default (Ctrl + Add / Numpad Plus).")
         self.btn_reset_hk.clicked.connect(self.reset_activation_hotkey)
 
         hk_btn_layout.addWidget(self.btn_change_hk)
@@ -438,12 +445,14 @@ class MonitorTab(QWidget):
 
         lay_mon.addWidget(QLabel("Select which display should be highlighted when the alert triggers:"))
         self.monitor_combo = QComboBox()
+        self.monitor_combo.setToolTip("Select which connected monitor will be highlighted when the alert triggers.")
         self.refresh_monitors()
         self.monitor_combo.currentIndexChanged.connect(self.change_monitor)
         lay_mon.addWidget(self.monitor_combo)
 
         self.btn_identify = QPushButton("🔍 Identify Displays (Show Numbers On-Screen)")
         self.btn_identify.setStyleSheet("padding: 3px 8px; font-weight: bold;")
+        self.btn_identify.setToolTip("Flash large numbered badges on each connected display to identify screen numbers.")
         self.btn_identify.clicked.connect(self.main_win.overlay.identify_monitors)
         lay_mon.addWidget(self.btn_identify)
 
@@ -463,6 +472,7 @@ class MonitorTab(QWidget):
         dpi_row.setSpacing(10)
         dpi_row.addWidget(QLabel("DPI Awareness Mode:"))
         self.combo_dpi = QComboBox()
+        self.combo_dpi.setToolTip("Choose DPI scaling mode: System Aware (prevents resizing glitch) or Per-Monitor V2 (crisp scaling).")
         self.combo_dpi.addItem("System Aware (Uniform across monitors - No resizing glitch)", "system")
         self.combo_dpi.addItem("Per-Monitor V2 (Per-display crisp scaling - standard Qt)", "per_monitor")
         cur_dpi = getattr(self.main_win.overlay, "dpi_mode", "system")
@@ -561,10 +571,12 @@ class AlertOverlayTab(QWidget):
         color_layout.addWidget(QLabel("Highlight Color:"))
         self.btn_color = QPushButton()
         self.btn_color.setFixedSize(45, 24)
+        self.btn_color.setToolTip("Click to select the monitor highlight border color.")
         self.btn_color.setStyleSheet(f"background-color: {self.main_win.overlay.border_color.name()}; border: 1px solid black; border-radius: 4px;")
         self.btn_color.clicked.connect(self.pick_color)
         color_layout.addWidget(self.btn_color)
         self.btn_pick_text = QPushButton("Select Color...")
+        self.btn_pick_text.setToolTip("Open color picker dialog to choose a custom border color.")
         self.btn_pick_text.clicked.connect(self.pick_color)
         color_layout.addWidget(self.btn_pick_text)
         color_layout.addStretch()
@@ -580,6 +592,7 @@ class AlertOverlayTab(QWidget):
         lay_app.addLayout(thick_header)
 
         self.slider_thickness = QSlider(Qt.Orientation.Horizontal)
+        self.slider_thickness.setToolTip("Adjust the thickness of the monitor border highlight (2px to 30px).")
         self.slider_thickness.setRange(2, 30)
         self.slider_thickness.setValue(self.main_win.overlay.border_thickness)
         self.slider_thickness.valueChanged.connect(self.adjust_thickness)
@@ -595,6 +608,7 @@ class AlertOverlayTab(QWidget):
         lay_app.addLayout(opac_header)
 
         self.slider_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.slider_opacity.setToolTip("Adjust transparency and opacity of the border highlight (10% to 100%).")
         self.slider_opacity.setRange(10, 100)
         self.slider_opacity.setValue(int(self.main_win.overlay.border_opacity * 100))
         self.slider_opacity.valueChanged.connect(self.adjust_opacity)
@@ -610,12 +624,14 @@ class AlertOverlayTab(QWidget):
         flash_state = "ON" if self.main_win.overlay.is_flashing else "OFF"
         self.btn_flash = QPushButton(f"Toggle Breathing/Flashing Effect: {flash_state}")
         self.btn_flash.setStyleSheet("font-weight: bold; padding: 3px 8px;")
+        self.btn_flash.setToolTip("Toggle breathing / pulsing animation for the border highlight.")
         self.btn_flash.clicked.connect(self.toggle_flash)
         lay_fx.addWidget(self.btn_flash)
 
         speed_layout = QHBoxLayout()
         speed_layout.addWidget(QLabel("Animation Speed:"))
         self.speed_combo = QComboBox()
+        self.speed_combo.setToolTip("Select the flashing / breathing cycle speed (Snail, Turtle, Squirrel, Cheetah, Lightning, or Always On).")
         for s in SPEED_MAPPING.keys():
             self.speed_combo.addItem(s)
         self.speed_combo.setCurrentText(self.main_win.overlay.flash_speed_name)
@@ -687,6 +703,7 @@ class TwitchTab(QWidget):
         self.txt_channel = QLineEdit()
         self.txt_channel.setFixedWidth(180)
         self.txt_channel.setPlaceholderText("e.g. channel_name")
+        self.txt_channel.setToolTip("Your Twitch channel / broadcaster login name.")
         self.txt_channel.setText(self.main_win.overlay.twitch_channel)
         self.txt_channel.textChanged.connect(self._on_broadcaster_channel_changed)
         channel_layout.addWidget(self.txt_channel)
@@ -696,11 +713,13 @@ class TwitchTab(QWidget):
         btn_box = QHBoxLayout()
         self.btn_login = QPushButton("🔑 Login / Link with Twitch Account")
         self.btn_login.setStyleSheet("background-color: #6441a5; color: white; font-weight: bold; padding: 3px 10px; border-radius: 4px;")
+        self.btn_login.setToolTip("Authenticate with Twitch using OAuth to enable chat macros and stream markers.")
         self.btn_login.clicked.connect(self.start_twitch_oauth)
         btn_box.addWidget(self.btn_login)
 
         self.btn_unlink = QPushButton("Disconnect")
         self.btn_unlink.setStyleSheet("background-color: #4b4b4e; color: white; padding: 3px 8px; border-radius: 4px;")
+        self.btn_unlink.setToolTip("Disconnect linked Twitch account and remove saved credentials.")
         self.btn_unlink.clicked.connect(self.unlink_twitch_account)
         btn_box.addWidget(self.btn_unlink)
         btn_box.addStretch()
@@ -719,11 +738,13 @@ class TwitchTab(QWidget):
 
         macro_actions_layout = QHBoxLayout()
         self.btn_add = QPushButton("➕ Add Hotkey Entry")
+        self.btn_add.setToolTip("Add a new Twitch chat macro shortcut row (up to 4 macros).")
         self.btn_add.clicked.connect(self.add_entry_row)
         macro_actions_layout.addWidget(self.btn_add)
 
         self.btn_save = QPushButton("💾 Save Twitch Hotkeys")
         self.btn_save.setStyleSheet("background-color: #2e6930; color: white; font-weight: bold; padding: 3px 10px;")
+        self.btn_save.setToolTip("Save all configured Twitch chat macro commands and hotkeys.")
         self.btn_save.clicked.connect(self.save_macros)
         macro_actions_layout.addWidget(self.btn_save)
         macro_actions_layout.addStretch()
@@ -958,10 +979,12 @@ class SystemTab(QWidget):
         btn_upd_box = QHBoxLayout()
         btn_upd_box.setSpacing(10)
         self.btn_check_update = QPushButton("🔄 Check for Updates Now")
+        self.btn_check_update.setToolTip("Query GitHub releases API to check if a newer version of Streamer Calyx is available.")
         self.btn_check_update.clicked.connect(self.check_updates_clicked)
         btn_upd_box.addWidget(self.btn_check_update)
 
         self.btn_view_release = QPushButton("View on GitHub")
+        self.btn_view_release.setToolTip("Open the release page on GitHub in your default web browser.")
         self.btn_view_release.clicked.connect(lambda: webbrowser.open(self.latest_release_url or f"https://github.com/{GITHUB_REPO}/releases"))
         btn_upd_box.addWidget(self.btn_view_release)
         lay_upd.addLayout(btn_upd_box)
@@ -969,6 +992,7 @@ class SystemTab(QWidget):
         # Prominent Download & Install Update Button (shown when update is available)
         self.btn_download_update = QPushButton("🚀 Download && Install Update")
         self.btn_download_update.setObjectName("btn_download_update")
+        self.btn_download_update.setToolTip("Download and automatically install the latest update.")
         self.btn_download_update.setStyleSheet("""
             QPushButton#btn_download_update {
                 background-color: #2e6930;
@@ -1006,6 +1030,7 @@ class SystemTab(QWidget):
         chan_row.setSpacing(10)
         chan_row.addWidget(QLabel("Update Channel:"))
         self.combo_channel = QComboBox()
+        self.combo_channel.setToolTip("Select update release channel: Stable (milestones) or Beta (v3.0 early access).")
         self.combo_channel.addItem("Stable (Recommended)", "stable")
         self.combo_channel.addItem("Beta / Early Access (v3.0 Preview)", "beta")
         cur_chan = getattr(self.main_win.overlay, "update_channel", "stable")
@@ -1023,16 +1048,19 @@ class SystemTab(QWidget):
 
         # Checkboxes
         self.chk_check_startup = QCheckBox("Check for updates automatically on startup")
+        self.chk_check_startup.setToolTip("Automatically check for new releases when Streamer Calyx launches.")
         self.chk_check_startup.setChecked(getattr(self.main_win.overlay, "check_updates_on_startup", True))
         self.chk_check_startup.toggled.connect(self.on_check_startup_toggled)
         lay_upd.addWidget(self.chk_check_startup)
 
         self.chk_auto_download = QCheckBox("Automatically download and apply updates when available")
+        self.chk_auto_download.setToolTip("Automatically download and install updates when detected.")
         self.chk_auto_download.setChecked(getattr(self.main_win.overlay, "auto_update_enabled", False))
         self.chk_auto_download.toggled.connect(self.on_auto_download_toggled)
         lay_upd.addWidget(self.chk_auto_download)
 
         self.chk_start_on_boot = QCheckBox("Start application automatically on Windows startup")
+        self.chk_start_on_boot.setToolTip("Start Streamer Calyx automatically when Windows boots.")
         self.chk_start_on_boot.setChecked(getattr(self.main_win.overlay, "start_on_boot", False))
         self.chk_start_on_boot.toggled.connect(self.on_start_on_boot_toggled)
         lay_upd.addWidget(self.chk_start_on_boot)
@@ -1048,6 +1076,7 @@ class SystemTab(QWidget):
         theme_row.setSpacing(10)
         theme_row.addWidget(QLabel("Interface Theme:"))
         self.combo_theme = QComboBox()
+        self.combo_theme.setToolTip("Select the application visual theme: Auto (Windows system), Dark Zinc, or Light.")
         self.combo_theme.addItem("Auto (Match Windows Theme)", "system")
         self.combo_theme.addItem("Dark Theme", "dark")
         self.combo_theme.addItem("Light Theme", "light")
@@ -1065,53 +1094,57 @@ class SystemTab(QWidget):
         lay_theme.addLayout(theme_row)
         layout.addWidget(grp_theme)
 
-        # Group 3: Diagnostics & Troubleshooting
-        grp_diag = QGroupBox("Diagnostics && Logs")
-        lay_diag = QVBoxLayout(grp_diag)
-        lay_diag.setSpacing(5)
+        # Group 3: Diagnostic Telemetry & Beta Policy
+        grp_beta = QGroupBox("Diagnostic Telemetry && Beta Policy")
+        lay_beta = QVBoxLayout(grp_beta)
+        lay_beta.setSpacing(6)
 
-        self.chk_debug = QCheckBox("Enable Debug Logging")
-        self.chk_debug.setChecked(getattr(self.main_win.overlay, "debug_mode", False))
-        self.chk_debug.toggled.connect(self.on_debug_toggled)
-        lay_diag.addWidget(self.chk_debug)
+        if is_beta_build():
+            card_notice = QFrame()
+            card_notice.setStyleSheet("background-color: #18181b; border: 1px solid #3f3f46; border-radius: 6px; padding: 8px;")
+            lay_card = QVBoxLayout(card_notice)
+            lbl_notice_title = QLabel("🛠️  <b>Beta Channel Testing Mode Active</b>")
+            lbl_notice_title.setStyleSheet("color: #a970ff; font-size: 12px; font-weight: bold;")
+            lbl_notice_desc = QLabel(
+                "Diagnostic debugging is automatically locked <b>ON</b> during Beta releases to ensure crash "
+                "reports and session logs are available for troubleshooting. Daily logs are retained locally "
+                "for up to 7 days in <code>%APPDATA%\\StreamerCalyx\\logs</code> and automatically pruned."
+            )
+            lbl_notice_desc.setWordWrap(True)
+            lbl_notice_desc.setTextFormat(Qt.TextFormat.RichText)
+            lbl_notice_desc.setStyleSheet("color: #adadb8; font-size: 11px;")
+            lay_card.addWidget(lbl_notice_title)
+            lay_card.addWidget(lbl_notice_desc)
+            lay_beta.addWidget(card_notice)
 
-        diag_btns = QHBoxLayout()
-        self.btn_open_debug = QPushButton("Open debug.txt")
-        self.btn_open_debug.clicked.connect(self.open_debug_log)
-        diag_btns.addWidget(self.btn_open_debug)
+            self.btn_view_beta_policy = QPushButton("📋 View Privacy & Telemetry Policy Disclosure...")
+            self.btn_view_beta_policy.setToolTip("Read the complete transparency disclosure of collected diagnostics.")
+            self.btn_view_beta_policy.setStyleSheet("background-color: #27272a; color: #efeff1; border: 1px solid #3f3f46; padding: 5px 12px; border-radius: 4px; font-size: 11px;")
+            self.btn_view_beta_policy.clicked.connect(self._show_telemetry_policy)
+            lay_beta.addWidget(self.btn_view_beta_policy)
+        else:
+            self.chk_debug = QCheckBox("Enable Debug Logging")
+            self.chk_debug.setChecked(getattr(self.main_win.overlay, "debug_mode", False))
+            self.chk_debug.toggled.connect(self.on_debug_toggled)
+            self.chk_debug.setToolTip("Logs application actions and errors to debug.txt for troubleshooting.")
+            lay_beta.addWidget(self.chk_debug)
 
-        self.btn_open_crash = QPushButton("Open crash_log.txt")
-        self.btn_open_crash.clicked.connect(self.open_crash_log)
-        diag_btns.addWidget(self.btn_open_crash)
+        # Quick navigation link to dedicated Logs tab and About tab
+        row_jump = QHBoxLayout()
+        btn_jump_logs = QPushButton("📑 Open Live Logs & Diagnostics Suite →")
+        btn_jump_logs.setToolTip("Switch to the dedicated Logs & Diagnostics tab to inspect active logs, run audio diagnostics, or report bugs.")
+        btn_jump_logs.setStyleSheet("background-color: #27272a; color: #38bdf8; border: 1px solid #0284c7; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold;")
+        btn_jump_logs.clicked.connect(lambda: self.main_win.set_view_index(12))
+        row_jump.addWidget(btn_jump_logs)
 
-        self.btn_open_appdata = QPushButton("Open App Folder")
-        self.btn_open_appdata.clicked.connect(self.open_appdata_folder)
-        diag_btns.addWidget(self.btn_open_appdata)
-        lay_diag.addLayout(diag_btns)
+        btn_jump_about = QPushButton("🌸 About Streamer Calyx →")
+        btn_jump_about.setToolTip("View botanical lore, build specifications, and development ledger.")
+        btn_jump_about.setStyleSheet("background-color: #27272a; color: #efeff1; border: 1px solid #3f3f46; padding: 6px 12px; border-radius: 4px; font-size: 11px;")
+        btn_jump_about.clicked.connect(lambda: self.main_win.set_view_index(13))
+        row_jump.addWidget(btn_jump_about)
+        lay_beta.addLayout(row_jump)
 
-        row_diag_tools = QHBoxLayout()
-        self.btn_audio_diag = QPushButton("🎤 Run Audio Diagnostics...")
-        self.btn_audio_diag.setObjectName("btn_audio_diag")
-        self.btn_audio_diag.clicked.connect(self.open_audio_diagnostics_dialog)
-        row_diag_tools.addWidget(self.btn_audio_diag)
-
-        self.btn_bug_report = QPushButton("🐞 Submit Bug Report...")
-        self.btn_bug_report.setObjectName("btn_bug_report")
-        self.btn_bug_report.clicked.connect(self.open_bug_report_dialog)
-        row_diag_tools.addWidget(self.btn_bug_report)
-        lay_diag.addLayout(row_diag_tools)
-
-        layout.addWidget(grp_diag)
-
-        # Group 4: About
-        grp_about = QGroupBox("About Application")
-        lay_about = QVBoxLayout(grp_about)
-        lay_about.setSpacing(4)
-        self.lbl_about_txt = QLabel()
-        self.lbl_about_txt.setTextFormat(Qt.TextFormat.RichText)
-        self.lbl_about_txt.setOpenExternalLinks(True)
-        lay_about.addWidget(self.lbl_about_txt)
-        layout.addWidget(grp_about)
+        layout.addWidget(grp_beta)
 
         layout.addStretch()
 
@@ -1234,11 +1267,12 @@ class SystemTab(QWidget):
                     }
                 """)
 
-        self.lbl_about_txt.setText(
-            f"<b>Streamer Calyx</b> – Version {CURRENT_VERSION} <span style='font-weight: normal; color: {tert_color};'>(Commit: <code>{get_build_commit()}</code>)</span><br>"
-            "Created by <b>ThaWizanator</b> • <a href='https://twitch.tv/thawizanator' style='color: #9146ff;'>twitch.tv/thawizanator</a><br>"
-            f"<span style='color: {tert_color};'>Licensed under the MIT License • Standalone Authenticode Signed</span>"
-        )
+        if hasattr(self, "lbl_about_txt") and self.lbl_about_txt:
+            self.lbl_about_txt.setText(
+                f"<b>Streamer Calyx</b> – Version {CURRENT_VERSION} <span style='font-weight: normal; color: {tert_color};'>(Commit: <code>{get_build_commit()}</code>)</span><br>"
+                "Created by <b>ThaWizanator</b> • <a href='https://twitch.tv/thawizanator' style='color: #9146ff;'>twitch.tv/thawizanator</a><br>"
+                f"<span style='color: {tert_color};'>Licensed under the MIT License • Standalone Authenticode Signed</span>"
+            )
 
     def check_updates_silently(self):
         chan = getattr(self.main_win.overlay, "update_channel", "stable")
@@ -1455,6 +1489,18 @@ class SystemTab(QWidget):
             except Exception:
                 pass
 
+    def _show_telemetry_policy(self):
+        if hasattr(self.main_win.overlay, "show_beta_telemetry_dialog"):
+            self.main_win.overlay.show_beta_telemetry_dialog(force=True)
+        else:
+            try:
+                from beta_telemetry_dialog import BetaTelemetryDialog
+                dlg = BetaTelemetryDialog(self, overlay=self.main_win.overlay, force_view=True)
+                dlg.exec()
+            except Exception as e:
+                log_debug("SETTINGS", f"Could not open telemetry dialog: {e}")
+
+
 
 # ==============================================================================
 # ==============================================================================
@@ -1490,14 +1536,19 @@ PAGE_TITLES = {
     1: "🖥️  Multi-Monitor Configuration",
     2: "🎨  Alert Overlay Styles & Effects",
     3: "🟣  Twitch Channel & Macro Hotkeys",
-    4: "⚙️  System, Updates & Diagnostics",
+    4: "⚙️  System Diagnostics & Settings",
     5: "⏱️  Chronos Live Stream Timers",
     6: "📜  Rotating Text & Trivia Cycler",
     7: "🎬  Stream Director Panel",
     8: "🎮  Unified Hotkeys & Peripherals",
     9: "🔊  Soundboard & Audio Cues",
-    10: "🎙️  Auto-Clip & Stream Markers"
+    10: "🎙️  Auto-Clip & Stream Markers",
+    11: "🚀  Stream Launchpad & Mission Control",
+    12: "📑  Logs & Diagnostics Suite",
+    13: "🌸  About Streamer Calyx"
 }
+
+SIDEBAR_NAV_ORDER = [11, 0, 1, 2, 3, 5, 6, 7, 9, 10, 8, 4, 12, 13]
 
 
 class SettingsWindow(QWidget):
@@ -1538,19 +1589,27 @@ class SettingsWindow(QWidget):
         self.nav_button_group = QButtonGroup(self)
         self.nav_button_group.setExclusive(True)
 
-        # Category 1: DISPLAY & ALERTS
-        lbl_cat_display = QLabel("DISPLAY & ALERTS")
+        # Category 1: MISSION CONTROL
+        lbl_cat_mission = QLabel("MISSION CONTROL")
+        lbl_cat_mission.setObjectName("navCatLabel")
+        sidebar_layout.addWidget(lbl_cat_mission)
+
+        self.btn_nav_launch = self._create_nav_btn("🚀  Launchpad", 11)
+        self.btn_nav_main = self._create_nav_btn("🏠  Main", 0)
+        sidebar_layout.addWidget(self.btn_nav_launch)
+        sidebar_layout.addWidget(self.btn_nav_main)
+
+        # Category 2: OVERLAY & DISPLAY
+        lbl_cat_display = QLabel("OVERLAY & DISPLAY")
         lbl_cat_display.setObjectName("navCatLabel")
         sidebar_layout.addWidget(lbl_cat_display)
 
-        self.btn_nav_main = self._create_nav_btn("🏠  Main", 0)
         self.btn_nav_monitor = self._create_nav_btn("🖥️  Monitor Setup", 1)
         self.btn_nav_alert = self._create_nav_btn("🎨  Alert Overlay", 2)
-        sidebar_layout.addWidget(self.btn_nav_main)
         sidebar_layout.addWidget(self.btn_nav_monitor)
         sidebar_layout.addWidget(self.btn_nav_alert)
 
-        # Category 2: STREAM TOOLS
+        # Category 3: STREAM TOOLS
         lbl_cat_tools = QLabel("STREAM TOOLS")
         lbl_cat_tools.setObjectName("navCatLabel")
         sidebar_layout.addWidget(lbl_cat_tools)
@@ -1568,15 +1627,19 @@ class SettingsWindow(QWidget):
         sidebar_layout.addWidget(self.btn_nav_soundboard)
         sidebar_layout.addWidget(self.btn_nav_autoclip)
 
-        # Category 3: SYSTEM & CONFIG
-        lbl_cat_sys = QLabel("APP & CONFIG")
+        # Category 4: SYSTEM & SETTINGS
+        lbl_cat_sys = QLabel("SYSTEM & SETTINGS")
         lbl_cat_sys.setObjectName("navCatLabel")
         sidebar_layout.addWidget(lbl_cat_sys)
 
         self.btn_nav_hotkeys = self._create_nav_btn("🎮  Hotkeys && Peripherals", 8)
-        self.btn_nav_system = self._create_nav_btn("⚙️  System && Logs", 4)
+        self.btn_nav_system = self._create_nav_btn("⚙️  System", 4)
+        self.btn_nav_logs = self._create_nav_btn("📑  Logs", 12)
+        self.btn_nav_about = self._create_nav_btn("🌸  About", 13)
         sidebar_layout.addWidget(self.btn_nav_hotkeys)
         sidebar_layout.addWidget(self.btn_nav_system)
+        sidebar_layout.addWidget(self.btn_nav_logs)
+        sidebar_layout.addWidget(self.btn_nav_about)
 
         sidebar_layout.addStretch()
 
@@ -1626,8 +1689,9 @@ class SettingsWindow(QWidget):
         self.combo_collapsed_nav = QComboBox()
         self.combo_collapsed_nav.setObjectName("comboCollapsedNav")
         self.combo_collapsed_nav.setToolTip("Switch active view")
-        for p_idx in sorted(PAGE_TITLES.keys()):
-            self.combo_collapsed_nav.addItem(PAGE_TITLES[p_idx], p_idx)
+        for p_idx in SIDEBAR_NAV_ORDER:
+            if p_idx in PAGE_TITLES:
+                self.combo_collapsed_nav.addItem(PAGE_TITLES[p_idx], p_idx)
         self.combo_collapsed_nav.currentIndexChanged.connect(self._on_collapsed_nav_changed)
         self.combo_collapsed_nav.setVisible(False)
         header_row.addWidget(self.combo_collapsed_nav)
@@ -1695,7 +1759,20 @@ class SettingsWindow(QWidget):
             self.tab_autoclip.settings_changed.connect(self.overlay.save_settings)
         self.stacked_pages.addWidget(self.tab_autoclip)          # 10
 
+        # Initialize Stream Launchpad & Mission Control (idx 11)
+        self.tab_launch = StreamLaunchTab(self)
+        self.stacked_pages.addWidget(self.tab_launch)            # 11
+
+        # Initialize Dedicated Logs & Diagnostics Suite (idx 12)
+        self.tab_logs = LogsTab(self)
+        self.stacked_pages.addWidget(self.tab_logs)              # 12
+
+        # Initialize Botanical About Tab (idx 13)
+        self.tab_about = AboutTab(self)
+        self.stacked_pages.addWidget(self.tab_about)             # 13
+
         content_layout.addWidget(self.stacked_pages)
+
 
         # Bottom Action Bar
         bottom_bar = QHBoxLayout()
@@ -1809,6 +1886,13 @@ class SettingsWindow(QWidget):
         if hasattr(self, "tab_director"):
             self.tab_director.refresh_monitors_list()
             self.tab_director.refresh_theme_labels(effective)
+        if hasattr(self, "tab_launch"):
+            self.tab_launch.refresh_theme_labels(effective)
+        if hasattr(self, "tab_logs"):
+            self.tab_logs.refresh_theme_labels(effective)
+        if hasattr(self, "tab_about"):
+            self.tab_about.refresh_theme_labels(effective)
+
 
         if hasattr(self, "btn_toggle_sidebar") and self.btn_toggle_sidebar:
             btn_border = "#3f3f46" if effective == "dark" else "#d4d4d8"

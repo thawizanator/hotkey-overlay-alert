@@ -1,43 +1,162 @@
 import sys
 import os
 import time
+import datetime
 import traceback
 import platform
 import faulthandler
 
-DEBUG_MODE = False
+def is_beta_build() -> bool:
+    try:
+        from updater import CURRENT_VERSION
+        return "beta" in CURRENT_VERSION.lower()
+    except Exception:
+        return False
+
+DEBUG_MODE = is_beta_build()
 DEBUG_LOG_FILE = None
 CRASH_LOG_FILE = None
+MIRROR_LOG_FILE = None
+LOGS_DIR = None
 CRASH_HANDLER_INSTALLED = False
+_current_log_date = None
+
+def get_logs_dir():
+    global LOGS_DIR
+    if not LOGS_DIR:
+        app_data = os.getenv("APPDATA") or os.path.expanduser("~")
+        LOGS_DIR = os.path.join(app_data, "StreamerCalyx", "logs")
+        try:
+            os.makedirs(LOGS_DIR, exist_ok=True)
+        except Exception:
+            pass
+    return LOGS_DIR
+
+def prune_old_logs(max_days=7):
+    """Deletes daily debug log files older than max_days (7-day rolling retention)."""
+    logs_dir = get_logs_dir()
+    if not logs_dir or not os.path.exists(logs_dir):
+        return
+    try:
+        now = time.time()
+        cutoff_sec = max_days * 86400
+        today_date = datetime.date.today()
+        for fname in os.listdir(logs_dir):
+            if fname.startswith("debug_") and fname.endswith(".txt"):
+                fpath = os.path.join(logs_dir, fname)
+                try:
+                    should_prune = False
+                    date_part = fname[6:14]
+                    if len(date_part) == 8 and date_part.isdigit():
+                        try:
+                            f_year = int(date_part[0:4])
+                            f_month = int(date_part[4:6])
+                            f_day = int(date_part[6:8])
+                            f_date = datetime.date(f_year, f_month, f_day)
+                            if (today_date - f_date).days > max_days:
+                                should_prune = True
+                        except Exception:
+                            pass
+                    
+                    if not should_prune:
+                        f_mtime = os.path.getmtime(fpath)
+                        if (now - f_mtime) > cutoff_sec:
+                            should_prune = True
+
+                    if should_prune:
+                        os.remove(fpath)
+                        print(f"[SYSTEM] Pruned expired debug log (>7 days): {fname}")
+                except Exception as ex:
+                    print(f"[SYSTEM] Error pruning log file {fname}: {ex}")
+    except Exception as e:
+        print(f"[SYSTEM] Error during log retention sweep: {e}")
 
 def init_debug_logger(log_file_path, enabled=False):
-    global DEBUG_LOG_FILE, DEBUG_MODE, CRASH_LOG_FILE
-    DEBUG_LOG_FILE = log_file_path
-    DEBUG_MODE = enabled
+    global DEBUG_LOG_FILE, DEBUG_MODE, CRASH_LOG_FILE, LOGS_DIR, MIRROR_LOG_FILE, _current_log_date
     if log_file_path:
-        CRASH_LOG_FILE = os.path.join(os.path.dirname(log_file_path), "crash_log.txt")
+        app_dir = os.path.dirname(os.path.abspath(log_file_path))
+        LOGS_DIR = os.path.join(app_dir, "logs")
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        MIRROR_LOG_FILE = log_file_path
+        CRASH_LOG_FILE = os.path.join(app_dir, "crash_log.txt")
+
+        _current_log_date = time.strftime("%Y%m%d")
+        DEBUG_LOG_FILE = os.path.join(LOGS_DIR, f"debug_{_current_log_date}.txt")
+    else:
+        DEBUG_LOG_FILE = None
+        MIRROR_LOG_FILE = None
+
+    if is_beta_build():
+        DEBUG_MODE = True
+    else:
+        DEBUG_MODE = enabled
+
+    # Sweep and prune logs older than 7 days
+    prune_old_logs(max_days=7)
 
 def set_debug_mode(enabled):
     global DEBUG_MODE
-    DEBUG_MODE = enabled
+    if is_beta_build():
+        # Debugging mode cannot be turned off in Beta builds
+        DEBUG_MODE = True
+    else:
+        DEBUG_MODE = bool(enabled)
 
 def is_debug_mode():
+    if is_beta_build():
+        return True
     return DEBUG_MODE
 
 def get_debug_log_path():
     return DEBUG_LOG_FILE
 
+def get_mirror_log_path():
+    return MIRROR_LOG_FILE
+
 def get_crash_log_path():
     return CRASH_LOG_FILE
 
-def log_debug(category, message):
+def get_all_log_files():
+    """Returns sorted list of absolute paths to daily log files in LOGS_DIR."""
+    logs_dir = get_logs_dir()
+    if not logs_dir or not os.path.exists(logs_dir):
+        return []
     try:
+        files = []
+        for f in os.listdir(logs_dir):
+            if f.startswith("debug_") and f.endswith(".txt"):
+                files.append(os.path.join(logs_dir, f))
+        return sorted(files, reverse=True)
+    except Exception:
+        return []
+
+def log_debug(category, message):
+    global DEBUG_LOG_FILE, _current_log_date, LOGS_DIR, MIRROR_LOG_FILE
+    try:
+        logs_dir = get_logs_dir()
+        today = time.strftime("%Y%m%d")
+        if _current_log_date != today or not DEBUG_LOG_FILE:
+            _current_log_date = today
+            if logs_dir:
+                DEBUG_LOG_FILE = os.path.join(logs_dir, f"debug_{today}.txt")
+                prune_old_logs(max_days=7)
+
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         log_line = f"[{timestamp}] [{category.upper()}] {message}\n"
         print(log_line.strip())
-        if DEBUG_LOG_FILE:
-            if DEBUG_MODE or category.upper() in ("SYSTEM", "DIRECTOR", "CRASH", "UPDATER", "HOTKEY", "LAN_SOUND_SERVER", "LAN_SOUND_CLIENT", "SOUNDBOARD", "WEBRTC", "HOST_BOUNCER", "BOUNCER"):
+
+        should_log = (DEBUG_MODE or is_beta_build() or category.upper() in (
+            "SYSTEM", "DIRECTOR", "CRASH", "UPDATER", "HOTKEY", "LAN_SOUND_SERVER",
+            "LAN_SOUND_CLIENT", "SOUNDBOARD", "WEBRTC", "HOST_BOUNCER", "BOUNCER",
+            "AUTOCLIP", "UI_ACTION"
+        ))
+
+        if should_log:
+            if DEBUG_LOG_FILE:
                 with open(DEBUG_LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write(log_line)
+            if MIRROR_LOG_FILE:
+                with open(MIRROR_LOG_FILE, "a", encoding="utf-8") as f:
                     f.write(log_line)
     except Exception:
         pass
@@ -69,7 +188,10 @@ Thread: {thread_name or 'MainThread'}
             with open(DEBUG_LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(header)
                 
-        # Show error dialog if possible
+        # Show error dialog if possible (skipped during automated testing)
+        if os.environ.get("STREAMER_CALYX_HEADLESS") == "1" or os.environ.get("STREAMER_CALYX_TEST") == "1":
+            return
+
         try:
             from PyQt6.QtWidgets import QMessageBox, QApplication
             if QApplication.instance():

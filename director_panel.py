@@ -116,7 +116,17 @@ class SceneCardButton(QPushButton):
             act_rem = menu.addAction("🗑️ Remove This Slot")
             act_rem.triggered.connect(lambda: panel.remove_scene_slot(self))
 
+        # Timed Scene Actions
+        menu.addSeparator()
+        timer_menu = menu.addMenu("⏱️ Switch Temporarily...")
+        for dur, label in [(15, "15 seconds"), (30, "30 seconds"), (60, "60 seconds"), (120, "2 minutes")]:
+            act_t = timer_menu.addAction(f"Switch for {label}")
+            act_t.triggered.connect(lambda chk, d=dur: panel.start_temporary_scene_switch(self.scene_name, getattr(self, "scene_raw_id", None), d))
+        act_custom = timer_menu.addAction("Custom Duration...")
+        act_custom.triggered.connect(lambda: panel.prompt_custom_scene_switch(self.scene_name, getattr(self, "scene_raw_id", None)))
+
         menu.exec(event.globalPos())
+
 
     def _swap_to_scene(self, sc: dict):
         panel = self.window()
@@ -403,6 +413,61 @@ class ViewToggleButton(QPushButton):
         self.is_locked = locked
         self.setEnabled(not locked)
         self._update_style()
+
+    def contextMenuEvent(self, event):
+        if getattr(self, "is_locked", False):
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #18181b;
+                border: 1px solid #3f3f46;
+                border-radius: 6px;
+                padding: 4px;
+                color: #ffffff;
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 4px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #0284c7;
+                color: #ffffff;
+            }
+        """)
+        t_title = menu.addAction(f"⏱️ Show '{self.source_name}' Temporarily:")
+        t_title.setEnabled(False)
+        menu.addSeparator()
+        for secs, label in [(30, "30 seconds"), (60, "1 minute"), (120, "2 minutes"), (300, "5 minutes")]:
+            act = menu.addAction(f"Show for {label} then auto-hide")
+            act.triggered.connect(lambda chk, s=secs: self.show_temporarily(s))
+        act_c = menu.addAction("Custom duration...")
+        act_c.triggered.connect(self._prompt_custom_duration)
+        menu.exec(event.globalPos())
+
+    def show_temporarily(self, seconds: int):
+        self.set_visibility_state(True)
+        self.toggled_visibility.emit(self.source_name, True)
+        if hasattr(self, "_auto_hide_timer") and self._auto_hide_timer:
+            self._auto_hide_timer.stop()
+        self._auto_hide_timer = QTimer(self)
+        self._auto_hide_timer.setSingleShot(True)
+        self._auto_hide_timer.timeout.connect(self._on_auto_hide_timeout)
+        self._auto_hide_timer.start(seconds * 1000)
+        log_debug("DIRECTOR", f"Timed source '{self.source_name}' active for {seconds}s; auto-hide timer armed.")
+
+    def _on_auto_hide_timeout(self):
+        self.set_visibility_state(False)
+        self.toggled_visibility.emit(self.source_name, False)
+        log_debug("DIRECTOR", f"Timed source '{self.source_name}' auto-hide triggered; source hidden.")
+
+    def _prompt_custom_duration(self):
+        from PyQt6.QtWidgets import QInputDialog
+        val, ok = QInputDialog.getInt(self, "Custom Source Duration", f"Enter minutes to display '{self.source_name}' before auto-hiding:", 3, 1, 60, 1)
+        if ok and val > 0:
+            self.show_temporarily(val * 60)
+
 
     def _update_style(self):
         disp_name = self.source_name
@@ -1048,8 +1113,9 @@ class DirectorPanelWindow(QWidget):
     resync_requested = pyqtSignal()
     scene_selected = pyqtSignal(int, str)
     audio_toggled = pyqtSignal(int, str, bool)
-    volume_adjusted = pyqtSignal(int, str, int)
     view_visibility_toggled = pyqtSignal(str, bool)
+    orientation_changed = pyqtSignal(str)
+
 
     DEFAULT_SCENES = [
         {"name": "Scene 1", "color": "#22c55e"},
@@ -1115,7 +1181,16 @@ class DirectorPanelWindow(QWidget):
         self._programmatic_resizing = False
         self._in_size_probe = False
 
+        self.orientation = "horizontal"
+        self._temp_scene_origin_name = ""
+        self._temp_scene_origin_id = ""
+        self._temp_scene_target_name = ""
+        self._temp_scene_seconds_remaining = 0
+        self._temp_scene_timer = None
+        self.banner_temp_scene = None
+
         self._build_ui()
+
 
         # Connect to StreamlabsClient for live IPC control & event sync
         self.slobs_client = get_streamlabs_client()
@@ -1142,9 +1217,9 @@ class DirectorPanelWindow(QWidget):
         top_bar.setContentsMargins(4, 0, 4, 0)
         top_bar.setSpacing(6)
 
-        lbl_drag = QLabel("🎬  <b>STREAM DIRECTOR DOCK</b>")
-        lbl_drag.setStyleSheet("font-size: 11px; color: #a1a1aa; letter-spacing: 0.5px;")
-        top_bar.addWidget(lbl_drag)
+        self.lbl_title = QLabel("🎬  <b>STREAM DIRECTOR DOCK</b>")
+        self.lbl_title.setStyleSheet("font-size: 11px; color: #a1a1aa; letter-spacing: 0.5px;")
+        top_bar.addWidget(self.lbl_title)
         top_bar.addStretch()
 
         self.lbl_status = QLabel("<span style='color: #22c55e;'>● Connected</span>")
@@ -1194,6 +1269,28 @@ class DirectorPanelWindow(QWidget):
         self.btn_resync.clicked.connect(self._on_resync_clicked)
         top_bar.addWidget(self.btn_resync)
 
+        self.btn_flip = QPushButton("⇄ Side")
+        self.btn_flip.setFixedSize(50, 20)
+        self.btn_flip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_flip.setToolTip("Toggle dock layout between Horizontal (taskbar) and Vertical (side-dock)")
+        self.btn_flip.setStyleSheet("""
+            QPushButton {
+                background: #27272a;
+                color: #eab308;
+                border: 1px solid #3f3f46;
+                border-radius: 10px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #3f3f46;
+                color: #facc15;
+                border-color: #eab308;
+            }
+        """)
+        self.btn_flip.clicked.connect(self.toggle_orientation)
+        top_bar.addWidget(self.btn_flip)
+
         btn_settings = QPushButton("⚙️")
         btn_settings.setFixedSize(20, 20)
         btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1237,11 +1334,14 @@ class DirectorPanelWindow(QWidget):
         btn_close.clicked.connect(self.close)
         top_bar.addWidget(btn_close)
         root.addLayout(top_bar)
+        self.root_layout = root
 
-        # ------------------ MAIN CONTENT ROW ------------------
-        content_row = QHBoxLayout()
-        content_row.setContentsMargins(0, 0, 0, 0)
-        content_row.setSpacing(8)
+        # ------------------ MAIN CONTENT ROW / CONTAINER ------------------
+        self.content_widget = QWidget()
+        self.content_layout = QHBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(8)
+
 
         # SECTION 1: SCENE TOGGLES (Limit: 5)
         self.grp_scenes = QFrame()
@@ -1267,7 +1367,7 @@ class DirectorPanelWindow(QWidget):
         self.lay_scenes_grid.setContentsMargins(0, 0, 0, 0)
         self.lay_scenes_grid.setSpacing(4)
         lay_scenes_box.addLayout(self.lay_scenes_grid)
-        content_row.addWidget(self.grp_scenes, 3)
+        self.content_layout.addWidget(self.grp_scenes, 3)
 
         # SECTION 2: IN-GAME VIEW TOGGLES (SLOBS Source Visibility)
         self.grp_view_toggles = QFrame()
@@ -1299,7 +1399,7 @@ class DirectorPanelWindow(QWidget):
             self.lay_views_row.addWidget(btn_v)
             self.view_toggle_buttons[v_name] = btn_v
 
-        content_row.addWidget(self.grp_view_toggles, 2)
+        self.content_layout.addWidget(self.grp_view_toggles, 2)
 
         # SECTION 3: AUDIO MUTE TOGGLES (2x3 Grid)
         self.grp_audio = QFrame()
@@ -1324,7 +1424,7 @@ class DirectorPanelWindow(QWidget):
         self.lay_audio_grid = QGridLayout()
         self.lay_audio_grid.setSpacing(4)
         lay_audio_box.addLayout(self.lay_audio_grid)
-        content_row.addWidget(self.grp_audio, 3)
+        self.content_layout.addWidget(self.grp_audio, 3)
 
         # SECTION 4: VOLUME ADJUST SLIDERS (Faders)
         self.grp_volume = QFrame()
@@ -1350,9 +1450,10 @@ class DirectorPanelWindow(QWidget):
         self.lay_vol_row.setSpacing(5)
         self.lay_vol_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay_vol_box.addLayout(self.lay_vol_row)
-        content_row.addWidget(self.grp_volume, 4)
+        self.content_layout.addWidget(self.grp_volume, 4)
 
-        root.addLayout(content_row)
+        root.addWidget(self.content_widget)
+
 
         # Apply dark sleek dock styling
         self.setStyleSheet("""
@@ -1488,13 +1589,16 @@ class DirectorPanelWindow(QWidget):
             self._reflow_scenes_grid()
 
     def _reflow_scenes_grid(self):
-        """Reflows visible scene buttons evenly into a 2-row grid with dynamic columns."""
+        """Reflows visible scene buttons evenly based on orientation (1 col vertical, 2 rows horizontal)."""
         while self.lay_scenes_grid.count():
             self.lay_scenes_grid.takeAt(0)
         visible_btns = [b for b in self.scene_buttons if not b.isHidden()]
         if not visible_btns:
             visible_btns = self.scene_buttons
-        cols = max(2, (len(visible_btns) + 1) // 2)
+        if getattr(self, "orientation", "horizontal") == "vertical":
+            cols = 1
+        else:
+            cols = max(2, (len(visible_btns) + 1) // 2)
         for i, b in enumerate(visible_btns):
             row = i // cols
             col = i % cols
@@ -1533,17 +1637,162 @@ class DirectorPanelWindow(QWidget):
             self._reflow_audio_grid()
 
     def _reflow_audio_grid(self):
-        """Reflows visible audio buttons evenly into a 2-row grid with dynamic columns."""
+        """Reflows visible audio buttons evenly into a grid with dynamic columns."""
         while self.lay_audio_grid.count():
             self.lay_audio_grid.takeAt(0)
         visible_btns = [b for b in self.audio_buttons if not b.isHidden()]
         if not visible_btns:
             visible_btns = self.audio_buttons
-        cols = max(1, (len(visible_btns) + 1) // 2)
+        if getattr(self, "orientation", "horizontal") == "vertical":
+            cols = 2
+        else:
+            cols = max(1, (len(visible_btns) + 1) // 2)
         for i, b in enumerate(visible_btns):
             row = i // cols
             col = i % cols
             self.lay_audio_grid.addWidget(b, row, col)
+
+    def toggle_orientation(self):
+        """Toggles layout orientation between 'horizontal' (taskbar) and 'vertical' (side-dock)."""
+        new_mode = "vertical" if getattr(self, "orientation", "horizontal") == "horizontal" else "horizontal"
+        self.set_orientation(new_mode)
+
+    def set_orientation(self, mode: str):
+        """Applies horizontal or vertical dock orientation, restructuring child groupboxes."""
+        if mode not in ("horizontal", "vertical"):
+            mode = "horizontal"
+        self.orientation = mode
+        if mode == "vertical":
+            if hasattr(self, "lbl_title") and self.lbl_title:
+                self.lbl_title.setText("🎬 <b>DOCK</b>")
+            if hasattr(self, "lbl_status") and self.lbl_status:
+                self.lbl_status.setText("<span style='color: #22c55e;'>●</span>")
+            if hasattr(self, "btn_flip") and self.btn_flip:
+                self.btn_flip.setText("⇄")
+                self.btn_flip.setFixedSize(22, 20)
+                self.btn_flip.setToolTip("Dock layout: Vertical. Click to switch to Horizontal (bottom-dock).")
+            self.setFixedWidth(230)
+        else:
+            self.setMinimumWidth(380)
+            self.setMaximumWidth(16777215)
+            if hasattr(self, "lbl_title") and self.lbl_title:
+                self.lbl_title.setText("🎬  <b>STREAM DIRECTOR DOCK</b>")
+            if hasattr(self, "lbl_status") and self.lbl_status:
+                self.lbl_status.setText("<span style='color: #22c55e;'>● Connected</span>")
+            if hasattr(self, "btn_flip") and self.btn_flip:
+                self.btn_flip.setText("⇄ Side")
+                self.btn_flip.setFixedSize(50, 20)
+                self.btn_flip.setToolTip("Dock layout: Horizontal. Click to switch to Vertical (side-dock).")
+
+        self._rebuild_orientation_layout()
+        self.reposition_above_taskbar()
+        self.orientation_changed.emit(self.orientation)
+        log_debug("DIRECTOR", f"Director dock layout orientation changed to: {self.orientation}")
+
+
+    def _rebuild_orientation_layout(self):
+        """Re-attaches the 4 tool groupboxes into horizontal row or vertical column."""
+        for grp in [self.grp_scenes, self.grp_view_toggles, self.grp_audio, self.grp_volume]:
+            self.content_layout.removeWidget(grp)
+
+        # Clear layout items cleanly
+        QWidget().setLayout(self.content_widget.layout())
+
+        if self.orientation == "vertical":
+            new_lay = QVBoxLayout(self.content_widget)
+            new_lay.setContentsMargins(0, 0, 0, 0)
+            new_lay.setSpacing(6)
+            new_lay.addWidget(self.grp_scenes)
+            new_lay.addWidget(self.grp_view_toggles)
+            new_lay.addWidget(self.grp_audio)
+            new_lay.addWidget(self.grp_volume)
+        else:
+            new_lay = QHBoxLayout(self.content_widget)
+            new_lay.setContentsMargins(0, 0, 0, 0)
+            new_lay.setSpacing(8)
+            new_lay.addWidget(self.grp_scenes, 3)
+            new_lay.addWidget(self.grp_view_toggles, 2)
+            new_lay.addWidget(self.grp_audio, 3)
+            new_lay.addWidget(self.grp_volume, 4)
+
+        self.content_layout = new_lay
+        self._reflow_scenes_grid()
+        self._reflow_audio_grid()
+
+    def start_temporary_scene_switch(self, target_scene_name: str, target_scene_raw_id: str = None, duration_seconds: int = 30):
+        """Switches to target scene for duration_seconds then automatically switches back to origin scene."""
+        self._temp_scene_origin_name = self._active_scene_name
+        self._temp_scene_origin_id = self._active_scene_id
+        self._temp_scene_target_name = target_scene_name
+        self._temp_scene_seconds_remaining = duration_seconds
+
+        target = target_scene_raw_id or target_scene_name
+        if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+            self.slobs_client.make_scene_active(target)
+        elif getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+            self.client_webrtc.send_command("SWITCH_SCENE", target=target_scene_name)
+
+        self._show_temp_scene_banner(target_scene_name, duration_seconds)
+        log_debug("DIRECTOR", f"Started temporary scene switch to '{target_scene_name}' for {duration_seconds}s (origin: '{self._temp_scene_origin_name}')")
+
+    def _show_temp_scene_banner(self, scene_name: str, duration: int):
+        if not hasattr(self, "banner_temp_scene") or self.banner_temp_scene is None:
+            self.banner_temp_scene = QFrame(self)
+            self.banner_temp_scene.setStyleSheet("background-color: #1e1b4b; border: 1px solid #6366f1; border-radius: 4px; padding: 2px 6px;")
+            b_lay = QHBoxLayout(self.banner_temp_scene)
+            b_lay.setContentsMargins(6, 2, 6, 2)
+            b_lay.setSpacing(6)
+            self.lbl_temp_scene_status = QLabel()
+            self.lbl_temp_scene_status.setStyleSheet("color: #c7d2fe; font-size: 10px; font-weight: bold;")
+            b_lay.addWidget(self.lbl_temp_scene_status, 1)
+
+            btn_cancel = QPushButton("Cancel")
+            btn_cancel.setFixedSize(50, 18)
+            btn_cancel.setStyleSheet("background-color: #ef4444; color: white; font-size: 9px; font-weight: bold; border-radius: 2px;")
+            btn_cancel.clicked.connect(self.cancel_temporary_scene_switch)
+            b_lay.addWidget(btn_cancel)
+
+            self.root_layout.insertWidget(1, self.banner_temp_scene)
+
+        self.lbl_temp_scene_status.setText(f"⏱️ Temp Switch: '{scene_name}' ({duration}s remaining)")
+        self.banner_temp_scene.show()
+
+        if hasattr(self, "_temp_scene_timer") and self._temp_scene_timer:
+            self._temp_scene_timer.stop()
+        self._temp_scene_timer = QTimer(self)
+        self._temp_scene_timer.timeout.connect(self._on_temp_scene_tick)
+        self._temp_scene_timer.start(1000)
+
+    def _on_temp_scene_tick(self):
+        self._temp_scene_seconds_remaining -= 1
+        if self._temp_scene_seconds_remaining <= 0:
+            self._temp_scene_timer.stop()
+            if hasattr(self, "banner_temp_scene") and self.banner_temp_scene:
+                self.banner_temp_scene.hide()
+            origin = self._temp_scene_origin_id or self._temp_scene_origin_name
+            if origin:
+                if hasattr(self, "slobs_client") and self.slobs_client and self.slobs_client.is_connected():
+                    self.slobs_client.make_scene_active(origin)
+                elif getattr(self, "client_webrtc", None) and self.client_webrtc.isRunning():
+                    self.client_webrtc.send_command("SWITCH_SCENE", target=self._temp_scene_origin_name)
+                log_debug("DIRECTOR", f"Temporary scene switch finished; auto-reverted to '{self._temp_scene_origin_name}'")
+        else:
+            if hasattr(self, "lbl_temp_scene_status"):
+                self.lbl_temp_scene_status.setText(f"⏱️ Temp Switch: '{self._temp_scene_target_name}' ({self._temp_scene_seconds_remaining}s remaining)")
+
+    def cancel_temporary_scene_switch(self):
+        if hasattr(self, "_temp_scene_timer") and self._temp_scene_timer:
+            self._temp_scene_timer.stop()
+        if hasattr(self, "banner_temp_scene") and self.banner_temp_scene:
+            self.banner_temp_scene.hide()
+        log_debug("DIRECTOR", "Temporary scene switch timer cancelled by user; staying on active scene.")
+
+    def prompt_custom_scene_switch(self, scene_name: str, scene_raw_id: str = None):
+        from PyQt6.QtWidgets import QInputDialog
+        val, ok = QInputDialog.getInt(self, "Custom Scene Switch Duration", f"Enter duration (in seconds) to remain on '{scene_name}':", 45, 5, 3600, 5)
+        if ok and val > 0:
+            self.start_temporary_scene_switch(scene_name, scene_raw_id, val)
+
 
     def add_fader_slot(self):
         """Adds another volume fader slot (up to 8) populated from pool_faders."""
@@ -2360,7 +2609,7 @@ class DirectorPanelWindow(QWidget):
                 pass
 
     def reposition_above_taskbar(self, monitor_index: int = -1):
-        """Places the dock horizontally centered directly above the taskbar on the target screen maintaining a fixed, stable width across scene switches."""
+        """Places the dock on the target screen (bottom-centered for horizontal, right-docked for vertical)."""
         if getattr(self, "_in_size_probe", False):
             return
 
@@ -2376,21 +2625,22 @@ class DirectorPanelWindow(QWidget):
         avail = screen.availableGeometry()
 
         hint = self.sizeHint()
-        dock_height = max(hint.height(), 172)
 
-        # Strictly clamp dock width so it never overflows the screen (especially narrow/vertical displays)
-        max_allowed_w = max(320, avail.width() - 16)
-
-        target_w = getattr(self, "_user_custom_width", None) or getattr(self, "_stable_dock_width", None)
-        if not target_w or target_w < 380:
-            target_w = max(hint.width(), 380)
-            self._stable_dock_width = target_w
-
-        dock_width = min(max_allowed_w, max(target_w, 380))
-
-        # Position X centered on that screen, Y right above the taskbar
-        pos_x = avail.x() + (avail.width() - dock_width) // 2
-        pos_y = avail.bottom() - dock_height + 1
+        if getattr(self, "orientation", "horizontal") == "vertical":
+            dock_width = 230
+            dock_height = min(avail.height() - 16, max(hint.height(), 600))
+            pos_x = avail.right() - dock_width - 8
+            pos_y = avail.y() + 8
+        else:
+            dock_height = max(hint.height(), 172)
+            max_allowed_w = max(320, avail.width() - 16)
+            target_w = getattr(self, "_user_custom_width", None) or getattr(self, "_stable_dock_width", None)
+            if not target_w or target_w < 380:
+                target_w = max(hint.width(), 380)
+                self._stable_dock_width = target_w
+            dock_width = min(max_allowed_w, max(target_w, 380))
+            pos_x = avail.x() + (avail.width() - dock_width) // 2
+            pos_y = avail.bottom() - dock_height + 1
 
         self._programmatic_resizing = True
         try:
@@ -2400,6 +2650,7 @@ class DirectorPanelWindow(QWidget):
 
         if hasattr(self, "soundboard_deck") and self.soundboard_deck and self.soundboard_deck.isVisible():
             self._reposition_soundboard_deck()
+
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

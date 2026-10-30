@@ -514,9 +514,20 @@ class RedBorderOverlay(QMainWindow):
         self.input_manager = InputManager(overlay=self, parent=self)
         self.input_manager.trigger_action.connect(self._handle_input_action)
         self.load_settings()
+
+        # Install UI action telemetry event filter on application
+        try:
+            from beta_telemetry_dialog import UIActionTelemetryFilter
+            self.ui_telemetry_filter = UIActionTelemetryFilter(self)
+            self.app.installEventFilter(self.ui_telemetry_filter)
+            log_debug("SYSTEM", "UIActionTelemetryFilter installed on application.")
+        except Exception as e:
+            log_debug("SYSTEM", f"Failed to install UIActionTelemetryFilter: {e}")
+
         self.is_visible = False
         self.id_windows = []
         self.current_toast = None
+
 
         if self.splash:
             self.splash.set_status("Detecting display monitors...", 50)
@@ -562,7 +573,10 @@ class RedBorderOverlay(QMainWindow):
             self._on_splash_done()
 
     def _on_splash_done(self):
-        if self.is_first_run:
+        from debug_logger import is_beta_build
+        if is_beta_build() and not getattr(self, "beta_telemetry_acknowledged", False):
+            QTimer.singleShot(250, lambda: self.show_beta_telemetry_dialog(force=False))
+        elif self.is_first_run:
             self.show_welcome_message()
 
         if "--settings" in sys.argv or "--hotkeys" in sys.argv:
@@ -572,6 +586,16 @@ class RedBorderOverlay(QMainWindow):
 
         if getattr(self, "check_updates_on_startup", True):
             QTimer.singleShot(2500, self.run_startup_update_check)
+
+    def show_beta_telemetry_dialog(self, force=False):
+        try:
+            from beta_telemetry_dialog import BetaTelemetryDialog
+            parent_w = getattr(self, "settings_window", None) or self
+            dlg = BetaTelemetryDialog(parent_w, overlay=self, force_view=force)
+            dlg.exec()
+        except Exception as e:
+            log_debug("SYSTEM", f"Error displaying beta telemetry dialog: {e}")
+
 
     def on_system_theme_changed(self):
         pref = getattr(self, "theme_preference", "system")
@@ -606,6 +630,9 @@ class RedBorderOverlay(QMainWindow):
         self.twitch_token = ""
         self.twitch_macros = []
         self.director_settings = {}
+        self.beta_telemetry_acknowledged = False
+        self.launch_checklist = []
+
 
         cfg_to_read = None
         if os.path.exists(CONFIG_FILE):
@@ -634,7 +661,10 @@ class RedBorderOverlay(QMainWindow):
                     self.theme_preference = d.get("theme_preference", "system")
                     self.sidebar_collapsed = d.get("sidebar_collapsed", False)
                     self.dpi_mode = d.get("dpi_mode", "system")
+                    self.beta_telemetry_acknowledged = d.get("beta_telemetry_acknowledged", False)
+                    self.launch_checklist = d.get("launch_checklist", [])
                     set_debug_mode(self.debug_mode)
+
                     self.twitch_channel = d.get("twitch_channel", "")
                     self.twitch_login = d.get("twitch_login", "")
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
@@ -702,7 +732,9 @@ class RedBorderOverlay(QMainWindow):
             "twitch_user_id": self.twitch_user_id,
             "twitch_display_name": self.twitch_display_name,
             "twitch_token_obf": obfuscate(self.twitch_token),
-            "twitch_macros": self.twitch_macros
+            "twitch_macros": self.twitch_macros,
+            "beta_telemetry_acknowledged": getattr(self, "beta_telemetry_acknowledged", False),
+            "launch_checklist": getattr(self, "launch_checklist", [])
         }
         if hasattr(self, "chronos_engine") and self.chronos_engine:
             d["chronos"] = self.chronos_engine.export_settings()
@@ -714,8 +746,14 @@ class RedBorderOverlay(QMainWindow):
             self.director_settings = self.settings_window.tab_director.export_settings()
         if hasattr(self, "director_settings") and self.director_settings:
             d["director"] = self.director_settings
+        if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_launch"):
+            chks = getattr(self.settings_window.tab_launch, "_custom_checkboxes", [])
+            if chks:
+                self.launch_checklist = [{"text": chk.text(), "checked": chk.isChecked()} for chk, _ in chks]
+                d["launch_checklist"] = self.launch_checklist
         if hasattr(self, "input_manager") and self.input_manager:
             self.input_manager.save_bindings_to_config(d)
+
         # Save to primary APPDATA location
         try:
             with open(CONFIG_FILE, 'w') as f:

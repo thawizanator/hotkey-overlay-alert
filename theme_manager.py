@@ -208,6 +208,14 @@ LIGHT_STYLESHEET = """
         padding: 0 4px;
         color: #18181b;
     }
+    QToolTip {
+        background-color: #f4f4f5;
+        color: #18181b;
+        border: 1px solid #d4d4d8;
+        border-radius: 4px;
+        padding: 5px 8px;
+        font-size: 11px;
+    }
     QPushButton {
         background-color: #f4f4f5;
         color: #18181b;
@@ -437,6 +445,14 @@ DARK_STYLESHEET = """
         padding: 4px 14px;
         font-weight: 600;
     }
+    QToolTip {
+        background-color: #18181b;
+        color: #efeff1;
+        border: 1px solid #3f3f46;
+        border-radius: 4px;
+        padding: 5px 8px;
+        font-size: 11px;
+    }
     QWidget {
         color: #efeff1;
         font-family: 'Segoe UI', -apple-system, sans-serif;
@@ -481,7 +497,16 @@ DARK_STYLESHEET = """
         padding: 0 4px;
         color: #ffffff;
     }
+    QToolTip {
+        background-color: #18181b;
+        color: #efeff1;
+        border: 1px solid #3f3f46;
+        border-radius: 4px;
+        padding: 5px 8px;
+        font-size: 11px;
+    }
     QPushButton {
+
         background-color: #27272a;
         color: #efeff1;
         border: 1px solid #3f3f46;
