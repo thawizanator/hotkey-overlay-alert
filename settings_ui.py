@@ -450,11 +450,22 @@ class MonitorTab(QWidget):
         self.monitor_combo.currentIndexChanged.connect(self.change_monitor)
         lay_mon.addWidget(self.monitor_combo)
 
-        self.btn_identify = QPushButton("🔍 Identify Displays (Show Numbers On-Screen)")
-        self.btn_identify.setStyleSheet("padding: 3px 8px; font-weight: bold;")
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        self.btn_identify = QPushButton("🔍 Identify Displays")
+        self.btn_identify.setStyleSheet("padding: 5px 10px; font-weight: bold;")
         self.btn_identify.setToolTip("Flash large numbered badges on each connected display to identify screen numbers.")
         self.btn_identify.clicked.connect(self.main_win.overlay.identify_monitors)
-        lay_mon.addWidget(self.btn_identify)
+        btn_row.addWidget(self.btn_identify)
+
+        self.btn_test_highlight = QPushButton("⚡ Test Highlight on Target (2s)")
+        self.btn_test_highlight.setStyleSheet("padding: 5px 10px; font-weight: bold; background-color: #27272a; border: 1px solid #9146ff; color: #efeff1;")
+        self.btn_test_highlight.setToolTip("Flash a 2-second temporary highlight border on the currently selected monitor to visually verify alignment.")
+        self.btn_test_highlight.clicked.connect(self.test_highlight_clicked)
+        btn_row.addWidget(self.btn_test_highlight)
+
+        lay_mon.addLayout(btn_row)
 
         layout.addWidget(grp_mon)
 
@@ -515,14 +526,24 @@ class MonitorTab(QWidget):
         self.monitor_combo.blockSignals(True)
         self.monitor_combo.clear()
         screens = QApplication.screens()
+        primary_screen = QApplication.primaryScreen()
         for i, s in enumerate(screens):
             geom = s.geometry()
             name = s.name() or f"Display #{i+1}"
-            self.monitor_combo.addItem(f"Monitor #{i + 1}: {geom.width()}x{geom.height()} ({name})")
+            is_primary = (s == primary_screen)
+            primary_tag = " [Primary Display]" if is_primary else ""
+            self.monitor_combo.addItem(f"Monitor #{i + 1}: {name} ({geom.width()}x{geom.height()}){primary_tag}")
         idx = getattr(self.main_win.overlay, "target_monitor_index", 0)
         if idx < len(screens):
             self.monitor_combo.setCurrentIndex(idx)
         self.monitor_combo.blockSignals(False)
+
+    def test_highlight_clicked(self):
+        idx = self.monitor_combo.currentIndex()
+        if idx >= 0:
+            self.main_win.overlay.target_monitor_index = idx
+            self.main_win.overlay.update_monitor_geometry(idx)
+            self.main_win.overlay.flash_temporary_alert(duration_ms=2000, color=self.main_win.overlay.border_color)
 
     def change_monitor(self, idx):
         if idx >= 0:
@@ -640,7 +661,19 @@ class AlertOverlayTab(QWidget):
         lay_fx.addLayout(speed_layout)
 
         layout.addWidget(grp_fx)
+
+        # Test Highlight Preview Button
+        self.btn_preview_alert = QPushButton("⚡ Test Highlight Preview (2s)")
+        self.btn_preview_alert.setStyleSheet("padding: 6px 12px; font-weight: bold; background-color: #27272a; border: 1px solid #9146ff; color: #efeff1;")
+        self.btn_preview_alert.setToolTip("Temporarily display the current border styling and animation on the target monitor for 2 seconds.")
+        self.btn_preview_alert.clicked.connect(self.preview_alert_clicked)
+        layout.addWidget(self.btn_preview_alert)
+
         layout.addStretch()
+
+    def preview_alert_clicked(self):
+        if hasattr(self.main_win.overlay, "flash_temporary_alert"):
+            self.main_win.overlay.flash_temporary_alert(duration_ms=2000, color=self.main_win.overlay.border_color)
 
     def pick_color(self):
         color = QColorDialog.getColor(self.main_win.overlay.border_color, self, "Select Border Color")

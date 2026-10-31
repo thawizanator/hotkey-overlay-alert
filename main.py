@@ -479,9 +479,9 @@ class StandardInputModal(QDialog):
 class IdentificationOverlay(QMainWindow):
     def __init__(self, number, geometry):
         super().__init__()
-        self.setGeometry(geometry)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setGeometry(geometry)
         lbl = QLabel(f"MONITOR #{number}", self)
         lbl.setStyleSheet("font-size: 72px; color: white; background: rgba(0,0,0,180); padding: 20px;")
         self.setCentralWidget(lbl)
@@ -532,10 +532,10 @@ class RedBorderOverlay(QMainWindow):
         if self.splash:
             self.splash.set_status("Detecting display monitors...", 50)
         
-        self.update_monitor_geometry(self.target_monitor_index)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool | Qt.WindowType.WindowTransparentForInput)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowIcon(get_app_icon())
+        self.update_monitor_geometry(self.target_monitor_index)
         
         self.signaler = HotkeySignaler()
         self.signaler.trigger.connect(lambda: self.toggle_visibility())
@@ -1225,9 +1225,25 @@ class RedBorderOverlay(QMainWindow):
 
     def update_monitor_geometry(self, idx):
         screens = QApplication.screens()
-        if idx < len(screens):
-            self.setGeometry(screens[idx].geometry())
+        if 0 <= idx < len(screens):
+            screen = screens[idx]
+            geom = screen.geometry()
+            self.setGeometry(geom)
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    hwnd = int(self.winId())
+                    # SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOACTIVATE = 0x0010, HWND_TOPMOST = -1
+                    # Retain Qt's DPI-aware window geometry and assert topmost order
+                    ctypes.windll.user32.SetWindowPos(
+                        hwnd, -1,
+                        0, 0, 0, 0,
+                        0x0001 | 0x0002 | 0x0010
+                    )
+                except Exception:
+                    pass
             self.update()
+            log_debug("OVERLAY", f"Updated monitor #{idx+1} geometry to ({geom.x()},{geom.y()},{geom.width()}x{geom.height()}) on screen '{screen.name()}'")
 
     def identify_monitors(self):
         self.id_windows.clear()
@@ -1238,9 +1254,20 @@ class RedBorderOverlay(QMainWindow):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setPen(QPen(self.border_color, self.border_thickness))
-        offset = self.border_thickness // 2
-        painter.drawRect(offset, offset, self.width() - self.border_thickness, self.height() - self.border_thickness)
+        w = self.width()
+        h = self.height()
+        t = max(1, int(self.border_thickness))
+        c = self.border_color
+
+        # 4 pixel-perfect solid bars to eliminate half-pixel pen rounding or DPI scaling offset gaps
+        # Top bar
+        painter.fillRect(0, 0, w, t, c)
+        # Bottom bar
+        painter.fillRect(0, max(0, h - t), w, t, c)
+        # Left bar
+        painter.fillRect(0, t, t, max(0, h - 2 * t), c)
+        # Right bar
+        painter.fillRect(max(0, w - t), t, t, max(0, h - 2 * t), c)
 
     def toggle_visibility(self):
         if self.is_visible:
@@ -1248,9 +1275,17 @@ class RedBorderOverlay(QMainWindow):
             self.flash_timer.stop()
             log_debug("OVERLAY", "Overlay hidden")
         else:
+            self.update_monitor_geometry(self.target_monitor_index)
             self.setWindowOpacity(self.border_opacity)
             self.show()
             self.raise_()
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    hwnd = int(self.winId())
+                    ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
+                except Exception:
+                    pass
             if self.is_flashing and self.flash_speed_name != "Always On":
                 self.flash_timer.start(30)
             log_debug("OVERLAY", f"Overlay displayed on monitor #{self.target_monitor_index + 1} (thickness={self.border_thickness}, opacity={self.border_opacity}, flashing={self.is_flashing})")
@@ -1293,12 +1328,20 @@ class RedBorderOverlay(QMainWindow):
                 "opacity": self.windowOpacity()
             }
 
+        self.update_monitor_geometry(self.target_monitor_index)
         if color:
             self.border_color = QColor(color)
 
         self.setWindowOpacity(self.border_opacity)
         self.show()
         self.raise_()
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
+            except Exception:
+                pass
         self.update()
 
         self._temp_alert_timer.stop()

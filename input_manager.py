@@ -11,6 +11,7 @@ import json
 import ctypes
 from ctypes import wintypes, WINFUNCTYPE
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, QTimer
+from debug_logger import log_debug
 
 # Windows User32 for mouse and keyboard modifier polling
 user32 = ctypes.windll.user32 if sys.platform == "win32" else None
@@ -589,7 +590,7 @@ class InputManager(QObject):
         return None
 
     def _sync_keyboard_hooks(self):
-        """Re-registers keyboard hooks using python's keyboard library."""
+        """Re-registers keyboard hooks using python's keyboard library with dual-alias support."""
         try:
             import keyboard
         except ImportError:
@@ -604,21 +605,50 @@ class InputManager(QObject):
             if not k_str or k_str.lower() in ["not set", "set hotkey...", "press key...", "press key(s)..."]:
                 continue
 
-            try:
-                # Add hotkey callback
-                keyboard.add_hotkey(k_str, lambda aid=action_id: self.trigger_action.emit(aid))
-                self.bound_keyboard_hooks[action_id] = k_str
-            except Exception as e:
-                print(f"[INPUT_MANAGER] Could not bind keyboard shortcut '{k_str}' for {action_id}: {e}")
+            # Dual-alias normalization: allow both 'ctrl+add' and 'ctrl++'
+            keys_to_bind = [k_str]
+            k_lower = k_str.lower()
+            if "+add" in k_lower:
+                keys_to_bind.append(k_lower.replace("+add", "++"))
+            elif "++" in k_lower:
+                keys_to_bind.append(k_lower.replace("++", "+add"))
+            elif "+plus" in k_lower:
+                keys_to_bind.append(k_lower.replace("+plus", "+add"))
+
+            registered = []
+            for candidate in set(keys_to_bind):
+                try:
+                    def make_callback(aid=action_id, key_name=candidate):
+                        return lambda: self._on_keyboard_triggered(aid, key_name)
+
+                    keyboard.add_hotkey(candidate, make_callback(action_id, candidate))
+                    registered.append(candidate)
+                    log_debug("INPUT", f"Successfully registered keyboard hook: action='{action_id}', key='{candidate}'")
+                except Exception as e:
+                    log_debug("INPUT_ERR", f"Could not bind keyboard shortcut '{candidate}' for {action_id}: {e}")
+
+            if registered:
+                self.bound_keyboard_hooks[action_id] = registered
+
+    def _on_keyboard_triggered(self, action_id, key_name):
+        log_debug("INPUT", f"Keyboard hotkey triggered: action_id='{action_id}', key='{key_name}'")
+        self.trigger_action.emit(action_id)
 
     def unbind_all_keyboard(self):
         try:
             import keyboard
-            for aid, k_str in list(self.bound_keyboard_hooks.items()):
-                try:
-                    keyboard.remove_hotkey(k_str)
-                except Exception:
-                    pass
+            for aid, hooks in list(self.bound_keyboard_hooks.items()):
+                if isinstance(hooks, list):
+                    for k_str in hooks:
+                        try:
+                            keyboard.remove_hotkey(k_str)
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        keyboard.remove_hotkey(hooks)
+                    except Exception:
+                        pass
             self.bound_keyboard_hooks.clear()
         except Exception:
             pass

@@ -449,6 +449,14 @@ class AutoClipTab(QWidget):
         self.lbl_color_hex = QLabel("#f59e0b")
         self.lbl_color_hex.setStyleSheet("font-family: monospace; font-size: 10px; color: #a1a1aa;")
         row_flash.addWidget(self.lbl_color_hex)
+
+        self.btn_test_flash = QPushButton("⚡ Test Flash (2s)")
+        self.btn_test_flash.setFixedHeight(22)
+        self.btn_test_flash.setStyleSheet("font-size: 10px; padding: 2px 8px; font-weight: bold; background-color: #27272a; border: 1px solid #9146ff; color: #efeff1; border-radius: 3px;")
+        self.btn_test_flash.setToolTip("Temporarily flash the border alert on the target monitor to preview positioning and color.")
+        self.btn_test_flash.clicked.connect(self._on_test_flash_clicked)
+        row_flash.addWidget(self.btn_test_flash)
+
         lay_actions.addLayout(row_flash)
 
         # Sound Chime
@@ -694,6 +702,11 @@ class AutoClipTab(QWidget):
         if chosen.isValid():
             self._update_color_preview(chosen.name())
             self.settings_changed.emit()
+
+    def _on_test_flash_clicked(self):
+        overlay = getattr(self.main_win, "overlay", None) if self.main_win else None
+        if overlay and hasattr(overlay, "flash_temporary_alert"):
+            overlay.flash_temporary_alert(duration_ms=2000, color=QColor(self.engine.alert_color))
 
     def _on_scene_toggled(self):
         active = [name for name, chk in self.scene_checkboxes.items() if chk.isChecked()]
