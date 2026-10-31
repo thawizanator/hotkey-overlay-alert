@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import json
 import keyboard
 
@@ -1270,6 +1271,13 @@ class RedBorderOverlay(QMainWindow):
         painter.fillRect(max(0, w - t), t, t, max(0, h - 2 * t), c)
 
     def toggle_visibility(self):
+        now = time.time()
+        last_t = getattr(self, "_last_toggle_time", 0.0)
+        if (now - last_t) < 0.25:
+            log_debug("OVERLAY", f"Debounced rapid toggle call ({now - last_t:.3f}s)")
+            return
+        self._last_toggle_time = now
+
         if self.is_visible:
             self.hide()
             self.flash_timer.stop()

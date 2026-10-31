@@ -405,6 +405,7 @@ class InputManager(QObject):
         self.overlay = overlay
         self.bindings = {}
         self.bound_keyboard_hooks = {} # action_id -> hook_ref
+        self._last_trigger_times = {} # action_id -> timestamp for debounce
         
         # Initialize background worker for mouse & gamepad
         self.worker = PeripheralWorker()
@@ -631,6 +632,14 @@ class InputManager(QObject):
                 self.bound_keyboard_hooks[action_id] = registered
 
     def _on_keyboard_triggered(self, action_id, key_name):
+        now = time.time()
+        last_t = getattr(self, "_last_trigger_times", {}).get(action_id, 0.0)
+        if (now - last_t) < 0.25:
+            log_debug("INPUT", f"Debounced duplicate hotkey: action='{action_id}', key='{key_name}' (interval={now - last_t:.3f}s)")
+            return
+        if not hasattr(self, "_last_trigger_times"):
+            self._last_trigger_times = {}
+        self._last_trigger_times[action_id] = now
         log_debug("INPUT", f"Keyboard hotkey triggered: action_id='{action_id}', key='{key_name}'")
         self.trigger_action.emit(action_id)
 
