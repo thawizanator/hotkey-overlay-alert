@@ -605,13 +605,13 @@ class InputManager(QObject):
             if not k_str or k_str.lower() in ["not set", "set hotkey...", "press key...", "press key(s)..."]:
                 continue
 
-            # Dual-alias normalization: allow both 'ctrl+add' and 'ctrl++'
+            # Dual-alias normalization: allow both 'ctrl+add' and 'ctrl+plus'
             keys_to_bind = [k_str]
             k_lower = k_str.lower()
             if "+add" in k_lower:
-                keys_to_bind.append(k_lower.replace("+add", "++"))
+                keys_to_bind.append(k_lower.replace("+add", "+plus"))
             elif "++" in k_lower:
-                keys_to_bind.append(k_lower.replace("++", "+add"))
+                keys_to_bind = [k_lower.replace("++", "+plus"), k_lower.replace("++", "+add")]
             elif "+plus" in k_lower:
                 keys_to_bind.append(k_lower.replace("+plus", "+add"))
 
