@@ -88,6 +88,52 @@ class StreamLaunchTab(QWidget):
         desc_lbl.setWordWrap(True)
         lay_launch.addWidget(desc_lbl)
 
+        # Automated Launch Actions Options Box
+        opt_box = QFrame()
+        opt_box.setStyleSheet("""
+            QFrame {
+                background-color: rgba(18, 18, 20, 0.6);
+                border: 1px solid #3f3f46;
+                border-radius: 6px;
+                padding: 6px 10px;
+            }
+        """)
+        opt_layout = QVBoxLayout(opt_box)
+        opt_layout.setContentsMargins(6, 6, 6, 6)
+        opt_layout.setSpacing(6)
+
+        lbl_opt_title = QLabel("⚡ <b>Automated Actions on 'Go for Launch':</b>")
+        lbl_opt_title.setStyleSheet("font-size: 11px; color: #efeff1;")
+        lbl_opt_title.setToolTip("Select which background streamer tools trigger automatically when Go for Launch is clicked.")
+        opt_layout.addWidget(lbl_opt_title)
+
+        chk_row = QHBoxLayout()
+        chk_row.setSpacing(16)
+
+        self.chk_launch_chrono = QCheckBox("⏱️ Start Chronos Stream Timer")
+        self.chk_launch_chrono.setToolTip("Automatically starts or resumes your Chronos stream timer when Go for Launch is clicked.")
+        self.chk_launch_chrono.setStyleSheet("font-size: 11px; color: #efeff1;")
+
+        self.chk_launch_trivia = QCheckBox("📜 Start Trivia / Text Cycler")
+        self.chk_launch_trivia.setToolTip("Automatically starts or resumes your Rotating Trivia / Text Cycler when Go for Launch is clicked.")
+        self.chk_launch_trivia.setStyleSheet("font-size: 11px; color: #efeff1;")
+
+        # Initialize from overlay / config
+        start_chrono = getattr(self.overlay, "launch_start_chrono", True) if self.overlay else True
+        start_trivia = getattr(self.overlay, "launch_start_trivia", True) if self.overlay else True
+        self.chk_launch_chrono.setChecked(bool(start_chrono))
+        self.chk_launch_trivia.setChecked(bool(start_trivia))
+
+        self.chk_launch_chrono.toggled.connect(self._on_launch_options_changed)
+        self.chk_launch_trivia.toggled.connect(self._on_launch_options_changed)
+
+        chk_row.addWidget(self.chk_launch_chrono)
+        chk_row.addWidget(self.chk_launch_trivia)
+        chk_row.addStretch()
+        opt_layout.addLayout(chk_row)
+
+        lay_launch.addWidget(opt_box)
+
         # Big Master Launch Button
         self.btn_master_launch = QPushButton("🚀  GO FOR LAUNCH")
         self.btn_master_launch.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -144,8 +190,12 @@ class StreamLaunchTab(QWidget):
         self.lbl_chk_audio.setToolTip("Input capture device status and background level tracking.")
         self.lbl_chk_overlay = QLabel("• 🖼️ Monitor Highlight Overlay: Checking...")
         self.lbl_chk_overlay.setToolTip("Hardware border highlight readiness.")
+        self.lbl_chk_chrono = QLabel("• ⏱️ Chronos Stream Timer: Checking...")
+        self.lbl_chk_chrono.setToolTip("Stream clock status and Go for Launch automation readiness.")
+        self.lbl_chk_trivia = QLabel("• 📜 Trivia / Text Cycler: Checking...")
+        self.lbl_chk_trivia.setToolTip("Trivia rotation status and Go for Launch automation readiness.")
 
-        for lbl in [self.lbl_chk_slobs, self.lbl_chk_scene, self.lbl_chk_twitch, self.lbl_chk_audio, self.lbl_chk_overlay]:
+        for lbl in [self.lbl_chk_slobs, self.lbl_chk_scene, self.lbl_chk_twitch, self.lbl_chk_audio, self.lbl_chk_overlay, self.lbl_chk_chrono, self.lbl_chk_trivia]:
             lbl.setStyleSheet("font-size: 11px; color: #adadb8;")
             lbl.setTextFormat(Qt.TextFormat.RichText)
             lay_auto.addWidget(lbl)
@@ -269,8 +319,46 @@ class StreamLaunchTab(QWidget):
             else:
                 self.lbl_chk_overlay.setText("• 🖼️ Monitor Highlight: <span style='color: #a1a1aa;'>Ready (Hotkeys Disabled)</span>")
 
+            # 5. Chronos Status
+            c_auto = self.chk_launch_chrono.isChecked() if hasattr(self, "chk_launch_chrono") else True
+            auto_str_c = "<span style='color: #22c55e;'>[Auto-Start: ON]</span>" if c_auto else "<span style='color: #71717a;'>[Auto-Start: OFF]</span>"
+            if hasattr(self.overlay, "chronos_engine") and self.overlay.chronos_engine:
+                c_state = getattr(self.overlay.chronos_engine, "state", "stopped")
+                c_mode = getattr(self.overlay.chronos_engine, "mode", "count_up")
+                mode_label = "Count-Down" if c_mode == "count_down" else "Count-Up"
+                if c_state == "running":
+                    self.lbl_chk_chrono.setText(f"• ⏱️ Chronos Stream Timer: <b style='color: #22c55e;'>Running ({mode_label})</b> {auto_str_c}")
+                else:
+                    self.lbl_chk_chrono.setText(f"• ⏱️ Chronos Stream Timer: <b style='color: #38bdf8;'>Ready ({mode_label})</b> {auto_str_c}")
+            else:
+                self.lbl_chk_chrono.setText(f"• ⏱️ Chronos Stream Timer: <span style='color: #a1a1aa;'>Standby</span> {auto_str_c}")
+
+            # 6. Trivia Cycler Status
+            t_auto = self.chk_launch_trivia.isChecked() if hasattr(self, "chk_launch_trivia") else True
+            auto_str_t = "<span style='color: #22c55e;'>[Auto-Start: ON]</span>" if t_auto else "<span style='color: #71717a;'>[Auto-Start: OFF]</span>"
+            if hasattr(self.overlay, "cycler_engine") and self.overlay.cycler_engine:
+                t_state = getattr(self.overlay.cycler_engine, "state", "stopped")
+                item_count = len(getattr(self.overlay.cycler_engine, "items", []))
+                if t_state == "running":
+                    self.lbl_chk_trivia.setText(f"• 📜 Trivia / Text Cycler: <b style='color: #22c55e;'>Running ({item_count} items)</b> {auto_str_t}")
+                else:
+                    self.lbl_chk_trivia.setText(f"• 📜 Trivia / Text Cycler: <b style='color: #38bdf8;'>Ready ({item_count} items loaded)</b> {auto_str_t}")
+            else:
+                self.lbl_chk_trivia.setText(f"• 📜 Trivia / Text Cycler: <span style='color: #a1a1aa;'>Standby</span> {auto_str_t}")
+
         except Exception as e:
             log_debug("LAUNCHPAD", f"Telemetry refresh notice: {e}")
+
+    def _on_launch_options_changed(self):
+        c_val = self.chk_launch_chrono.isChecked()
+        t_val = self.chk_launch_trivia.isChecked()
+        if self.overlay:
+            self.overlay.launch_start_chrono = c_val
+            self.overlay.launch_start_trivia = t_val
+            if hasattr(self.overlay, "save_settings"):
+                self.overlay.save_settings()
+        log_debug("LAUNCHPAD", f"Launch options updated: start_chrono={c_val}, start_trivia={t_val}")
+        self.refresh_telemetry()
 
     def _populate_checklist(self):
         # Clear existing
@@ -360,21 +448,29 @@ class StreamLaunchTab(QWidget):
             else:
                 log_debug("LAUNCHPAD", "Streamlabs not connected; continuing local timers.")
 
-            # 2. Start Chronos Timers
-            if hasattr(self.overlay, "chronos_engine") and self.overlay.chronos_engine:
-                try:
-                    self.overlay.chronos_engine.start()
-                    log_debug("LAUNCHPAD", "Started Chronos stream timers.")
-                except Exception as e:
-                    log_debug("LAUNCHPAD", f"Chronos start error: {e}")
+            # 2. Start Chronos Timers (if option enabled)
+            start_chrono = self.chk_launch_chrono.isChecked() if hasattr(self, "chk_launch_chrono") else True
+            if start_chrono:
+                if hasattr(self.overlay, "chronos_engine") and self.overlay.chronos_engine:
+                    try:
+                        self.overlay.chronos_engine.start()
+                        log_debug("LAUNCHPAD", "Started Chronos stream timers.")
+                    except Exception as e:
+                        log_debug("LAUNCHPAD", f"Chronos start error: {e}")
+            else:
+                log_debug("LAUNCHPAD", "Skipping Chronos start (launch option unchecked).")
 
-            # 3. Start Rotating Trivia Cycler
-            if hasattr(self.overlay, "cycler_engine") and self.overlay.cycler_engine:
-                try:
-                    self.overlay.cycler_engine.start()
-                    log_debug("LAUNCHPAD", "Started Trivia / Rotating Text cycler.")
-                except Exception as e:
-                    log_debug("LAUNCHPAD", f"Cycler start error: {e}")
+            # 3. Start Rotating Trivia Cycler (if option enabled)
+            start_trivia = self.chk_launch_trivia.isChecked() if hasattr(self, "chk_launch_trivia") else True
+            if start_trivia:
+                if hasattr(self.overlay, "cycler_engine") and self.overlay.cycler_engine:
+                    try:
+                        self.overlay.cycler_engine.start()
+                        log_debug("LAUNCHPAD", "Started Trivia / Rotating Text cycler.")
+                    except Exception as e:
+                        log_debug("LAUNCHPAD", f"Cycler start error: {e}")
+            else:
+                log_debug("LAUNCHPAD", "Skipping Trivia Cycler start (launch option unchecked).")
 
             # 4. Flash temporary green confirmation border
             if hasattr(self.overlay, "flash_temporary_alert"):

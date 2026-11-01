@@ -633,6 +633,8 @@ class RedBorderOverlay(QMainWindow):
         self.director_settings = {}
         self.beta_telemetry_acknowledged = False
         self.launch_checklist = []
+        self.launch_start_chrono = True
+        self.launch_start_trivia = True
 
 
         cfg_to_read = None
@@ -664,6 +666,8 @@ class RedBorderOverlay(QMainWindow):
                     self.dpi_mode = d.get("dpi_mode", "system")
                     self.beta_telemetry_acknowledged = d.get("beta_telemetry_acknowledged", False)
                     self.launch_checklist = d.get("launch_checklist", [])
+                    self.launch_start_chrono = d.get("launch_start_chrono", True)
+                    self.launch_start_trivia = d.get("launch_start_trivia", True)
                     set_debug_mode(self.debug_mode)
 
                     self.twitch_channel = d.get("twitch_channel", "")
@@ -735,7 +739,9 @@ class RedBorderOverlay(QMainWindow):
             "twitch_token_obf": obfuscate(self.twitch_token),
             "twitch_macros": self.twitch_macros,
             "beta_telemetry_acknowledged": getattr(self, "beta_telemetry_acknowledged", False),
-            "launch_checklist": getattr(self, "launch_checklist", [])
+            "launch_checklist": getattr(self, "launch_checklist", []),
+            "launch_start_chrono": getattr(self, "launch_start_chrono", True),
+            "launch_start_trivia": getattr(self, "launch_start_trivia", True)
         }
         if hasattr(self, "chronos_engine") and self.chronos_engine:
             d["chronos"] = self.chronos_engine.export_settings()
@@ -748,10 +754,17 @@ class RedBorderOverlay(QMainWindow):
         if hasattr(self, "director_settings") and self.director_settings:
             d["director"] = self.director_settings
         if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_launch"):
-            chks = getattr(self.settings_window.tab_launch, "_custom_checkboxes", [])
+            tl = self.settings_window.tab_launch
+            chks = getattr(tl, "_custom_checkboxes", [])
             if chks:
                 self.launch_checklist = [{"text": chk.text(), "checked": chk.isChecked()} for chk, _ in chks]
                 d["launch_checklist"] = self.launch_checklist
+            if hasattr(tl, "chk_launch_chrono"):
+                self.launch_start_chrono = tl.chk_launch_chrono.isChecked()
+                d["launch_start_chrono"] = self.launch_start_chrono
+            if hasattr(tl, "chk_launch_trivia"):
+                self.launch_start_trivia = tl.chk_launch_trivia.isChecked()
+                d["launch_start_trivia"] = self.launch_start_trivia
         if hasattr(self, "input_manager") and self.input_manager:
             self.input_manager.save_bindings_to_config(d)
 

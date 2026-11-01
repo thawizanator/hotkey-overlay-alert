@@ -108,6 +108,10 @@ class ChronosEngine(QObject):
         else:
             self._publish_current_state()
 
+    def stop(self):
+        """Stops and resets the chronometer."""
+        self.reset()
+
     def add_seconds(self, delta_sec: int):
         """Adds or subtracts seconds dynamically (e.g. +60 for +1 Min, +300 for +5 Min)."""
         if self.mode == ChronosMode.COUNT_DOWN:
