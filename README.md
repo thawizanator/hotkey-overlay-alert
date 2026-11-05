@@ -1,154 +1,172 @@
-# Streamer Calyx 🌿
+﻿# 🌿 Streamer Calyx
 
-A comprehensive, lightweight, and high-performance Windows backstage broadcast suite for streamers, co-hosts, and producers! **Streamer Calyx** (formerly *HotKey Overlay Alert*) combines real-time screen-border visual indicators, encrypted WebRTC P2P remote producer docking, live OBS Studio and Streamlabs Desktop dual-bridge scene control, and Twitch Helix API automation.
+[![Release](https://img.shields.io/github/v/release/thawizanator/hotkey-overlay-alert?label=release&color=10b981)](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4.svg)](https://github.com/thawizanator/hotkey-overlay-alert)
+[![Code Signing](https://img.shields.io/badge/code%20signing-DigiCert%20EV%20Signed-green)](https://github.com/thawizanator/hotkey-overlay-alert)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org/)
 
----
+**Streamer Calyx** is a high-performance, native Windows backstage command center and multitool suite for streamers, co-hosts, and broadcast producers.
 
-## ✨ Features
-
-### 🖥️ Visual Monitor Alert
-- **Stay Alert While Streaming**: Designed primarily to prevent muted-mic blunders, but can monitor any toggle hotkey.
-- **Multi-Monitor Support**: Automatically identifies monitors and renders the border overlay on the exact display you select.
-- **Customizable Appearance**:
-  - Full RGB color picker
-  - Border thickness slider (2px – 30px)
-  - Opacity and transparency adjustments (10% – 100%)
-  - Breathing/flashing animation effect with adjustable speeds (*Snail, Turtle, Squirrel, Cheetah, Lightning, or Always On*)
-- **Non-Intrusive**: Runs with WindowTransparentForInput and WindowStaysOnTopHint so it never steals focus or intercepts mouse clicks during gameplay.
-
-### ⌨️ Flexible Hotkey Recorder (1 to 5 Keys)
-- Record simple single keys (*e.g., F8, F12*) or combinations up to 5 keys (*e.g., Ctrl+Alt+Shift+1*).
-- **Click-to-Record Workflow**:
-  1. Click **Change Hotkey** or any Twitch hotkey button.
-  2. Press your desired keys (modifiers or standard keys).
-  3. Click the button again with your mouse to lock and save.
-  4. Press **Esc** anytime during recording to cancel without saving.
-- Dedicated **Reset Default** button to restore the primary activation hotkey (*Ctrl + Numpad +*).
-- **Enable / Disable Toggle**: Dedicated checkbox on the Main tab to enable or disable the primary monitor highlight hotkey entirely without losing your saved key combination.
-
-### 🟣 Twitch Helix Integration
-- **Zero-Setup OAuth**: One-click login using a self-contained local web server callback. Automatically validates your token and discovers your Twitch User ID and Channel Name.
-- **Broadcaster & Moderator Role Support**: Seamlessly executes commands whether you are the channel owner or an authorized Twitch Channel Moderator.
-- **Up to 4 Customizable Hotkeys**:
-  - `/marker [username]` or `/marker [description]` – Instantly places stream video markers for quick VOD review and clipping.
-  - `/announce [description]` – Sends highlighted chat announcements (*Primary, Blue, Green, Orange, Purple*).
-  - `/shoutout [username]` – Issues native Twitch streamer follow shoutout cards.
-- **Streamer Mode vs. Desktop Modal Popups**:
-  - **Streamer Mode (Enabled by default)**: Uses non-intrusive transparent HUD overlays and auto-fading toasts so game captures and full-screen streaming are never interrupted.
-  - **Non-Streamer Mode (Disabled)**: Switches to standard desktop modal dialogs with title bars, context prompts, and message boxes with "OK" confirmation buttons so desktop users and mods can read responses at their own pace.
-- **Instant Auto-Focused Modal**: When an action requires text input, the input prompt appears with immediate keyboard focus—start typing right away without touching your mouse:
-  - Text input is auto-focused with typing cursor active immediately via Win32 foreground activation.
-  - Press **Enter** to submit • Press **Esc** or click outside / Cancel to dismiss.
-- **HUD Toast & System Tray Feedback**: Real-time on-screen HUD alerts and balloon notifications confirm action status (*e.g., marker timestamp, chat message status, cooldown warnings*).
-- **Diagnostics, Debug Logging & Automated Crash Capture**:
-  - Checkbox and "debug.txt" button on the System settings screen logs all hotkey events, window actions, Twitch API requests, and responses.
-  - Global crash interceptor (`sys.excepthook`, `threading.excepthook`, and `faulthandler`) catches unexpected errors and writes full stack traces to `%APPDATA%\StreamerCalyx\crash_log.txt` with one-click access in Settings.
-
-### 🗂️ Clean 5-Tab Modern Settings Layout
-- **Main Tab (🏠)**: Streamer Mode toggle (in-game HUD vs. desktop modals) and primary activation hotkey recorder.
-- **Monitor Tab (🖥️)**: Display selection dropdown and on-screen monitor identification overlay.
-- **Alert Overlay Tab (🎨)**: Border RGB color picker, thickness slider, opacity/transparency slider, and breathing/flashing effects.
-- **Twitch Tab (🟣)**: Account linking, broadcaster channel name, and up to 4 custom macro hotkeys with safe row management.
-- **System Tab (⚙️)**: Integrated updater, startup update checks, Windows startup launch option, diagnostics/logging, crash logs, and app folder shortcuts. Compact 520x545 size cleanly fits on any monitor.
-
-### 🔄 GitHub Application Updates & Auto-Updater
-- **Direct GitHub Releases Integration**: Checks for new versions directly against GitHub Releases without requiring manual downloads.
-- **Interactive Update Prompts**: When an update is detected, presents an alert asking whether to update now or later.
-- **Opt-In Auto-Updating**: Checkbox option to automatically download new versions in the background when available and prompt for restart.
-- **Safe Self-Replacing Executable**: Standalone builds safely swap out the running `.exe` via a detached PowerShell updater process and relaunch the new version.
+In botany, the *calyx* is the protective outer whorl of sepals that encloses, protects, and supports the budding flower as it blossoms. In that same spirit, **Streamer Calyx** holds and protects all your essential streaming tools—**replacing multiple separate utilities** with a single unified, lightweight, sub-second application.
 
 ---
 
-## 🗺️ Project Roadmap
+## ⚡ Quick Download
 
-Track upcoming milestones, completed phases, and design plans in **[ROADMAP.md](ROADMAP.md)**:
-- **Phase 1 (Completed)**: Modern Left Sidebar Navigation Shell (`v3.0.0-alpha`)
-- **Phase 2 (Completed)**: Chronos Timers Engine & OBS Text Sync (`v3.0.0-beta.1`)
-- **Phase 3 (Completed)**: Rotating Text & Trivia Cycler Engine (`v3.0.0-beta.2`)
-- **Phase 4 (Completed)**: Stream Director & Secure Remote OBS/Streamlabs Integration (`v3.0.0-beta.3`)
-- **Phase 5 (Completed)**: Unified Hotkey Center, Per-Scene Shortcuts & Controller Support (`v3.0.0-beta.4.2`)
-- **Phase 6 (Completed)**: Soundboard Deck, Troll Shield & Auto-Clip Stream Markers (`v3.0.0-beta.5.0`)
-- **Phase 7 (v3 Finale)**: Optimization & Debloating Architecture
-- **v4 Backlog**: Mobile & Local Web Deck Companion, Chrome Extension
+Download the latest production release directly from [GitHub Releases](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest):
+
+| Package | Filename | Size | Description |
+| :--- | :--- | :---: | :--- |
+| **Installer (Recommended)** | [**`StreamerCalyx_Setup.exe`**](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest/download/StreamerCalyx_Setup.exe) | **~52 MB** | Modern NSIS installer, sub-second boot time, zero UAC elevation, Start Menu & Desktop shortcuts. |
+| **Standalone Portable** | [**`StreamerCalyx_Portable.exe`**](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest/download/StreamerCalyx_Portable.exe) | **~71 MB** | Single-file zero-install executable for USB flash drives and portable workflows. |
+| **Standalone Mirror** | [**`StreamerCalyx.exe`**](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest/download/StreamerCalyx.exe) | **~71 MB** | Standalone mirror executable. |
+| **Update Encyclopedia** | [**`StreamerCalyx_Ledger.html`**](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest/download/StreamerCalyx_Ledger.html) | **~1 MB** | Complete interactive development ledger & commit encyclopedia. |
+
+*All binaries are Authenticode digitally signed with a **DigiCert EV Hardware Token** and RFC 3161 timestamps.*
 
 ---
 
-## 🚀 Getting Started
+## 🧰 The Streamer Multitool Suite ("One Tool to Replace Multiples")
+
+Streamer Calyx unifies 10 core broadcast modules into a modern, collapsible left-sidebar interface:
+
+### 1. 🖥️ Monitor Highlight Border Alerts
+- **Visual Toggle Feedback**: Full-screen or per-monitor edge-to-edge glowing border highlight (ideal for muted mic indicators, active recording, or live broadcast status).
+- **Per-Monitor V2 DPI Awareness**: Pixel-perfect alignment across mixed-DPI displays (100%, 125%, 175%) using explicit Win32 `SetWindowPos` locking.
+- **Customizable Appearance**: Full RGB color palette, thickness slider (2px–30px), transparency (10%–100%), and breathing/flashing effects (*Snail, Turtle, Squirrel, Cheetah, Lightning, or Static*).
+- **Zero Input Interception**: Uses `WS_EX_TRANSPARENT` (`WindowTransparentForInput`) so the overlay never steals mouse focus or clicks during gameplay.
+
+### 2. 🚀 Stream Launchpad ("Go for Launch")
+- **Mission Control Pre-Flight**: Centralized broadcast readiness dashboard.
+- **1-Click Broadcast Launch**: Streamlined initiation with optional automatic start for Chronos countdown timers and Trivia cyclers.
+- **Real-Time SLOBS Watchdog**: Listens for Streamlabs Desktop `streamingStatusChange` RPC events and automatically resets the launch button back to **Standby** whenever a stream ends.
+
+### 3. 🎛️ Stream Director & Remote Co-Host Dock
+- **Dual WebSocket & RPC Bridge**: Simultaneous native control for OBS Studio (`ws://localhost:4455`) and Streamlabs Desktop (SLOBS).
+- **Encrypted WebRTC P2P**: Zero-port-forward WAN and LAN remote co-host docking over secure WebRTC data channels with signaling bouncer verification.
+- **Live 5-Fader Mixer & 8-Scene Grid**: Responsive floating monitor dock with smooth 1:1 fader tracking and scene switching.
+- **Granular Permissions Matrix**: Windows-style permission checklist per co-host with instant visual locking (`[🔒 LOCKED]`).
+
+### 4. 🔊 Soundboard Deck & LAN Bridge
+- **Ultra-Low Latency Soundboard**: Native audio playback via `PyQt6.QtMultimedia` with zero external audio engine bloat.
+- **Mobile LAN Bridge**: Trigger sound effects directly from your phone, tablet, or secondary device over local network.
+- **SandMan Anti-Spam Troll Shield**: Rate-limiting rapid-fire playback, panic lock, and loud alarm buzzer protection for remote soundboard access.
+
+### 5. 🎙️ Voice Session Anchoring & Auto-Clip Engine
+- **Dynamic Voice Anchoring**: Dual-baseline acoustic engine that anchors microphone levels dynamically above background game audio and music.
+- **40-Segment LED VU Meter**: Hardware-accurate peak and RMS visual audio feedback.
+- **Twitch Stream Marker Auto-Tagging**: Dispatches instant stream markers during hype audio peaks.
+- **60-Second Replay Clip Buffer**: Automatically logs 40 seconds before and 20 seconds after reaction peaks.
+
+### 6. ⏱️ Chronos Timers Engine
+- **Multi-Timer Operations**: Countdowns, stopwatches, and interval timers.
+- **OBS Text Synchronization**: Automatically updates on-stream text files (`timer_display.txt`) in real time.
+- **Audio Chimes & Toasts**: Synthesized alert beeps and custom WAV audio triggers on completion.
+
+### 7. 💬 Rotating Text & Trivia Cycler
+- **Timed Line Rotator**: Cycles community rules, sponsor banners, social links, and stream schedules.
+- **Interactive Trivia Q&A**: Question-to-answer countdown reveals synchronized to OBS text overlays.
+
+### 8. 🎮 Hotkeys & Gamepad Center (XInput)
+- **Zero-Dependency Gamepad Polling**: Native Windows `xinput1_4.dll` integration with Xbox Guide button support.
+- **Streamer Chords & Hold Delays**: Supports combination buttons (e.g., `LT + LS Click + Y`, `LB + RB`) and hold thresholds to prevent accidental mid-game triggers.
+- **Peak Chord Accumulator**: Prevents misfires during sequential button releases.
+- **Multi-Device Input Hooks**: Mouse 3, 4, 5, and arbitrary 1-to-5 keyboard key combinations.
+
+### 9. 🟣 Twitch Helix API Automation
+- **Zero-Setup Local OAuth**: One-click authentication with automated token discovery.
+- **Broadcaster & Mod Role Support**: Execute `/marker`, `/announce`, and `/shoutout` commands from custom hotkeys.
+- **Streamer Mode HUD**: Non-intrusive transparent toasts and auto-fading overlays that never disrupt full-screen gameplay.
+
+### 10. ⚙️ System Settings, Privacy & Auto-Updater
+- **Integrated Auto-Updater**: Direct update checks and seamless self-replacing upgrades via GitHub Releases.
+- **Privacy First**: Optional local session diagnostics toggle; keystrokes are never recorded or transmitted.
+- **Automated Crash Logging**: Silently captures unhandled exceptions into `%APPDATA%\StreamerCalyx\logs\crash_log.txt` for fast troubleshooting.
+
+---
+
+## 🛡️ Antivirus, SmartScreen & Digital Signing
+
+Every release of Streamer Calyx is **100% open source** and digitally signed:
+
+- **DigiCert EV Hardware Token Signed**: Verified with Authenticode SHA-256 and RFC 3161 timestamps.
+- **Avast CyberCapture**: Because each newly compiled release has a brand-new SHA-256 hash, Avast's cloud scanner will hold the file for ~60 seconds to inspect the digital signature. Once verified, it opens normally.
+- **Behavior Shield Hardening**: Process startup low-level hooks (`WH_KEYBOARD_LL`) and command-line termination scripts have been eliminated to prevent false-positive heuristic flags (`IDP.HELU`).
+- **Installed Edition Recommended**: The NSIS Modern Installer runs directly from `%LOCALAPPDATA%\Programs\StreamerCalyx`, avoiding `%TEMP%` extraction and launching in sub-second time.
+
+---
+
+## 🚀 Running from Source
 
 ### Prerequisites
-- **Operating System**: Windows 10 or Windows 11
-- **Python**: Version 3.10 or newer (tested up to Python 3.14)
+- **Operating System**: Windows 10 or Windows 11 (64-bit)
+- **Python**: Version 3.10 to 3.14
 
 ### Installation
-1. Clone this repository:
-   `ash
+1. Clone the repository:
+   ```powershell
    git clone https://github.com/thawizanator/hotkey-overlay-alert.git
    cd hotkey-overlay-alert
-   `
+   ```
 
-2. Create and activate a Python virtual environment:
-   `powershell
+2. Create and activate a virtual environment:
+   ```powershell
    python -m venv venv
    .\venv\Scripts\Activate.ps1
-   `
+   ```
 
-3. Install required dependencies:
-   `powershell
+3. Install dependencies:
+   ```powershell
    pip install -r requirements.txt
-   `
+   ```
 
-4. Launch the application:
-   `powershell
+4. Launch Streamer Calyx:
+   ```powershell
    python main.py
-   `
+   ```
 
 ---
 
-## 🛠️ Building Standalone Executable
+## 🔨 Building Release Binaries
 
-To compile a standalone .exe with embedded icon and resources using PyInstaller:
+To build the debloated onedir application, the standalone portable `.exe`, the NSIS Modern Installer, and run Authenticode code-signing:
 
 ```powershell
-.\venv\Scripts\pyinstaller.exe --noconfirm main.spec
+python build_release.py
 ```
 
-The compiled binary will be placed in `dist\StreamerCalyx.exe`.
-
----
-
-## 🛡️ Antivirus & Windows SmartScreen Notice
-
-If Windows Defender SmartScreen, Avast CyberCapture, or other antivirus software displays an alert or popup when first launching the standalone `.exe`, **this is a normal false positive common to newly compiled Python tools**.
-
-### Why does this happen?
-1. **PyInstaller Packaging**: The standalone executable is bundled using PyInstaller, which packs Python and dependencies into a self-extracting archive in `%TEMP%`. Many heuristic scanners flag newly seen packed executables until they gain public reputation.
-2. **Global Hotkey Hooks**: The app listens for global hotkeys across Windows using standard low-level Windows keyboard hooks (`SetWindowsHookEx`), an API heuristic security tools monitor closely.
-3. **New Release & Zero Cloud Reputation**: Antivirus cloud networks (such as Avast Cloud or Microsoft SmartScreen) rely on crowd-sourced download telemetry. Brand-new releases have not yet accumulated enough worldwide downloads to be automatically whitelisted by cloud engines.
-
-### How to verify & proceed safely:
-- **100% Open Source**: You can review and inspect every line of Python code directly in this repository.
-- **Digitally Signed**: The binary is Authenticode signed and timestamped with a DigiCert timestamp server.
-- **Run from Source**: If you prefer not to run the pre-compiled `.exe`, you can run the app directly with Python (`python main.py`) or compile it yourself (`pyinstaller --noconfirm main.spec`).
-- **In Avast**: Allow the CyberCapture analysis to complete (it will verify the file clean), or click **More Details** → **Run Anyway**.
-- **In Windows SmartScreen**: Click **More Info** → **Run anyway**.
+Outputs will be placed in `dist/`:
+- `dist/StreamerCalyx_Setup.exe` (NSIS Installer, ~52 MB)
+- `dist/StreamerCalyx_Portable.exe` (Standalone Portable, ~71 MB)
+- `dist/StreamerCalyx.exe` (Standalone Mirror, ~71 MB)
 
 ---
 
 ## ⚙️ Configuration & Storage
 
-Settings are automatically synchronized to:
-- `%APPDATA%\StreamerCalyx\config.json`
-- `./config.json` *(local fallback)*
+Settings and user data are stored per-user at:
+```
+%APPDATA%\StreamerCalyx\
+├── config.json               # Main application settings
+├── soundboard_config.json    # Soundboard deck slots and audio paths
+├── director_permissions.json # Co-host permissions matrix
+└── logs\
+    └── crash_log.txt         # Crash diagnostic handler
+```
 
-Sensitive OAuth credentials are obfuscated and stored locally only. A template is provided in [config.example.json](config.example.json).
+---
+
+## 🗺️ Project Roadmap
+For past milestones and upcoming v4 planning (mobile web deck companion, browser extension), see **[ROADMAP.md](ROADMAP.md)**.
 
 ---
 
 ## 👤 Author & Support
-
 - **Created by**: ThaWizanator
 - **Twitch**: [twitch.tv/thawizanator](https://twitch.tv/thawizanator)
-- **Version**: v3.0.0-beta.4 (October 2026)
+- **GitHub**: [github.com/thawizanator](https://github.com/thawizanator)
+- **Version**: `v3.0.0` (Stable)
 
 ---
 

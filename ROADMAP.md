@@ -6,8 +6,8 @@ Welcome to the development roadmap for **Streamer Calyx** (formerly *HotKey Over
 
 ## 🧭 Release Architecture & Branches
 
-- **`main` Branch**: Tracks stable production releases (currently **`v2.5.2`**).
-- **`develop` Branch**: Tracks active feature branches, alpha builds, and early access previews (currently **`v3.0.0-beta.5.0`**).
+- **`main` Branch**: Tracks stable production releases (currently **`v3.0.0`**).
+- **`develop` Branch**: Tracks active feature branches, updates, and previews (currently **`v3.0.0`**).
 
 ---
 
@@ -86,18 +86,23 @@ Welcome to the development roadmap for **Streamer Calyx** (formerly *HotKey Over
 
 ---
 
-### Phase 7: Optimization & Debloating Architecture (v3.x Roadmap Conclusion)
-
-> [!NOTE]
-> **v3.x Roadmap Finale**: Phase 7 serves as the final phase concluding the v3 architecture roadmap, debloating dependencies, slimming binaries, and delivering polished installer distributions before transitioning to v4.
-
-- **Binary Slimming & Codec Debloating**:
-  - Exclude heavy, unused FFmpeg video codec DLLs from PyInstaller bundle (`libx265.dll` [12 MB], `libSvtAv1Enc.dll` [7.3 MB], `libvpx.dll`, etc.) since P2P WebRTC Director only requires RTCDataChannel JSON messaging.
-  - Exclude unused Qt6 components (`opengl32sw.dll` [19.7 MB], `Qt6Pdf.dll` [4.4 MB]) to shave ~25 MB off the standalone executable size.
-- **Dual-Distribution Packaging**:
-  - **Portable Standalone Executable**: `StreamerCalyx-Portable.exe` for streamers who prefer zero-installation portability.
-  - **Lightweight Windows Installer**: `StreamerCalyx-Setup.exe` (via Inno Setup with LZMA2 compression) for instant boot without `%TEMP%` extraction, Start Menu integration, desktop shortcuts, and a download size under 30 MB.
-- **Runtime Optimization & Debloating**: Clean background thread lifecycle management, memory footprint reduction, and startup latency optimization.
+### Phase 7: Optimization, Debloating Architecture & NSIS Installer (`v3.0.0`) — *Completed*
+- **Binary Debloating & Trimming**:
+  - Excluded unused Qt6 modules (`Qt6Qml`, `Qt6Quick`, `Qt6Designer`, `Qt6Pdf`, `Qt6VirtualKeyboard`).
+  - Stripped `opengl32sw.dll` (19.68 MB) software OpenGL fallback and transitively pulled `numpy`/`scipy` dependencies.
+  - Slashed installer footprint by ~45% down to **~52 MB**.
+- **Dual-Distribution Packaging Pipeline**:
+  - **NSIS Modern Installer (`StreamerCalyx_Setup.exe`)**: Solid LZMA-compressed per-user installer (`%LOCALAPPDATA%\Programs\StreamerCalyx`) with zero UAC elevation, Start Menu/Desktop shortcuts, and Add/Remove Programs integration.
+  - **Instant Sub-Second Boot (Hybrid Engine)**: Unpacked onedir execution eliminates PyInstaller's 2–3 second `%TEMP%` extraction latency.
+  - **Standalone Portable (`StreamerCalyx_Portable.exe`)**: Single-file portable edition for flash drives and zero-install environments.
+- **Antivirus Heuristic Hardening**:
+  - Eliminated process startup `WH_KEYBOARD_LL` hooks, preventing behavioral scanner false positives (`IDP.HELU`).
+  - Restored clean bytecode introspection (`optimize=0`) and removed command-line process-killing scripts.
+- **Dual Authenticode EV Hardware Signing**:
+  - All executables and installers are cryptographically signed with a DigiCert Extended Validation (EV) hardware token and RFC 3161 timestamps.
+- **Per-Monitor V2 DPI Awareness & SLOBS Broadcast State Sync**:
+  - Pixel-perfect edge-to-edge monitor border locking via explicit Win32 `SetWindowPos` coordinates.
+  - Real-time RPC `streamingStatusChange` listener auto-resetting the "Go for Launch" mission control button when streams end in SLOBS.
 
 ---
 
