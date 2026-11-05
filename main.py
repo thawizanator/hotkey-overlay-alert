@@ -2,7 +2,6 @@ import sys
 import os
 import time
 import json
-import keyboard
 
 # Configure Multi-Monitor DPI scaling before Qt platform plugin initializes
 def get_initial_dpi_mode():

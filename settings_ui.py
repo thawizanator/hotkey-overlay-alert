@@ -1156,10 +1156,10 @@ class SystemTab(QWidget):
             self.btn_view_beta_policy.clicked.connect(self._show_telemetry_policy)
             lay_beta.addWidget(self.btn_view_beta_policy)
         else:
-            self.chk_debug = QCheckBox("Enable Debug Logging")
+            self.chk_debug = QCheckBox("Enable Extended Session Diagnostics & Local Telemetry")
             self.chk_debug.setChecked(getattr(self.main_win.overlay, "debug_mode", False))
             self.chk_debug.toggled.connect(self.on_debug_toggled)
-            self.chk_debug.setToolTip("Logs application actions and errors to debug.txt for troubleshooting.")
+            self.chk_debug.setToolTip("Logs local operational actions and telemetry to assist in troubleshooting. Never sends data externally or logs keystrokes.")
             lay_beta.addWidget(self.chk_debug)
 
         # Quick navigation link to dedicated Logs tab and About tab
