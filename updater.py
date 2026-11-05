@@ -51,7 +51,7 @@ def get_full_version_string():
         return f"v{CURRENT_VERSION} ({commit})"
     return f"v{CURRENT_VERSION}"
 
-GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
+GITHUB_REPO = "thawizanator/streamer-calyx"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 def get_commit_url():

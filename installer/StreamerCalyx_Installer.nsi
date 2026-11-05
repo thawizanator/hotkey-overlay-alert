@@ -8,7 +8,7 @@ SetCompressor /SOLID lzma
 !define PRODUCT_NAME "Streamer Calyx"
 !define PRODUCT_VERSION "3.0.0"
 !define PRODUCT_PUBLISHER "ThaWizanator"
-!define PRODUCT_WEB_SITE "https://github.com/thawizanator/hotkey-overlay-alert"
+!define PRODUCT_WEB_SITE "https://github.com/thawizanator/streamer-calyx"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\StreamerCalyx.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Streamer Calyx"
 !define PRODUCT_UNINST_ROOT_KEY "HKCU"

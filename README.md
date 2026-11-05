@@ -1,8 +1,8 @@
-﻿# 🌿 Streamer Calyx
+# 🌿 Streamer Calyx
 
-[![Release](https://img.shields.io/github/v/release/thawizanator/hotkey-overlay-alert?label=release&color=10b981)](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4.svg)](https://github.com/thawizanator/hotkey-overlay-alert)
-[![Code Signing](https://img.shields.io/badge/code%20signing-DigiCert%20EV%20Signed-green)](https://github.com/thawizanator/hotkey-overlay-alert)
+[![Release](https://img.shields.io/github/v/release/thawizanator/streamer-calyx?label=release&color=10b981)](https://github.com/thawizanator/streamer-calyx/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4.svg)](https://github.com/thawizanator/streamer-calyx)
+[![Code Signing](https://img.shields.io/badge/code%20signing-DigiCert%20EV%20Signed-green)](https://github.com/thawizanator/streamer-calyx)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](https://www.python.org/)
 
@@ -14,14 +14,14 @@ In botany, the *calyx* is the protective outer whorl of sepals that encloses, pr
 
 ## ⚡ Quick Download
 
-Download the latest production release directly from [GitHub Releases](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest):
+Download the latest production release directly from [GitHub Releases](https://github.com/thawizanator/streamer-calyx/releases/latest):
 
 | Package | Filename | Size | Description |
 | :--- | :--- | :---: | :--- |
-| **Installer (Recommended)** | [**`StreamerCalyx_Setup.exe`**](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest/download/StreamerCalyx_Setup.exe) | **~52 MB** | Modern NSIS installer, sub-second boot time, zero UAC elevation, Start Menu & Desktop shortcuts. |
-| **Standalone Portable** | [**`StreamerCalyx_Portable.exe`**](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest/download/StreamerCalyx_Portable.exe) | **~71 MB** | Single-file zero-install executable for USB flash drives and portable workflows. |
-| **Standalone Mirror** | [**`StreamerCalyx.exe`**](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest/download/StreamerCalyx.exe) | **~71 MB** | Standalone mirror executable. |
-| **Update Encyclopedia** | [**`StreamerCalyx_Ledger.html`**](https://github.com/thawizanator/hotkey-overlay-alert/releases/latest/download/StreamerCalyx_Ledger.html) | **~1 MB** | Complete interactive development ledger & commit encyclopedia. |
+| **Installer (Recommended)** | [**`StreamerCalyx_Setup.exe`**](https://github.com/thawizanator/streamer-calyx/releases/latest/download/StreamerCalyx_Setup.exe) | **~52 MB** | Modern NSIS installer, sub-second boot time, zero UAC elevation, Start Menu & Desktop shortcuts. |
+| **Standalone Portable** | [**`StreamerCalyx_Portable.exe`**](https://github.com/thawizanator/streamer-calyx/releases/latest/download/StreamerCalyx_Portable.exe) | **~71 MB** | Single-file zero-install executable for USB flash drives and portable workflows. |
+| **Standalone Mirror** | [**`StreamerCalyx.exe`**](https://github.com/thawizanator/streamer-calyx/releases/latest/download/StreamerCalyx.exe) | **~71 MB** | Standalone mirror executable. |
+| **Update Encyclopedia** | [**`StreamerCalyx_Ledger.html`**](https://github.com/thawizanator/streamer-calyx/releases/latest/download/StreamerCalyx_Ledger.html) | **~1 MB** | Complete interactive development ledger & commit encyclopedia. |
 
 *All binaries are Authenticode digitally signed with a **DigiCert EV Hardware Token** and RFC 3161 timestamps.*
 
@@ -106,8 +106,8 @@ Every release of Streamer Calyx is **100% open source** and digitally signed:
 ### Installation
 1. Clone the repository:
    ```powershell
-   git clone https://github.com/thawizanator/hotkey-overlay-alert.git
-   cd hotkey-overlay-alert
+   git clone https://github.com/thawizanator/streamer-calyx.git
+   cd streamer-calyx
    ```
 
 2. Create and activate a virtual environment:
