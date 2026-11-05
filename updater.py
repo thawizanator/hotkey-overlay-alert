@@ -7,9 +7,68 @@ import urllib.request
 import urllib.error
 from PyQt6.QtCore import QThread, pyqtSignal
 
-CURRENT_VERSION = "2.5.2"
+CURRENT_VERSION = "3.0.0"
+BUILD_COMMIT = "4b3979c"
+BUILD_DATE = "2026-11-04"
+
+_cached_build_commit = None
+
+def get_build_commit():
+    """Returns short git commit hash, checking live git first with fallback to baked BUILD_COMMIT."""
+    global _cached_build_commit
+    if _cached_build_commit is not None:
+        return _cached_build_commit
+
+    if getattr(sys, "frozen", False):
+        _cached_build_commit = BUILD_COMMIT
+        return _cached_build_commit
+
+    try:
+        cur_dir = os.path.dirname(os.path.abspath(__file__))
+        flags = 0
+        if sys.platform == "win32":
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        res = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=cur_dir,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            creationflags=flags
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            _cached_build_commit = res.stdout.strip()
+            return _cached_build_commit
+    except Exception:
+        pass
+    _cached_build_commit = BUILD_COMMIT
+    return _cached_build_commit
+
+def get_full_version_string():
+    """Returns formatted version string with commit, e.g. 'v3.0.0-beta.2 (207ecc5)'."""
+    commit = get_build_commit()
+    if commit:
+        return f"v{CURRENT_VERSION} ({commit})"
+    return f"v{CURRENT_VERSION}"
+
 GITHUB_REPO = "thawizanator/hotkey-overlay-alert"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+def get_commit_url():
+    """Returns direct GitHub URL to the current build commit."""
+    commit = get_build_commit()
+    if commit:
+        return f"https://github.com/{GITHUB_REPO}/commit/{commit}"
+    return f"https://github.com/{GITHUB_REPO}"
+
+def get_clickable_version_html(color="#a1a1aa", underline=True):
+    """Returns HTML link to the exact GitHub commit for this build."""
+    commit = get_build_commit()
+    style = f"color: {color};" + (" text-decoration: underline;" if underline else " text-decoration: none;")
+    if commit:
+        url = get_commit_url()
+        return f"<a href='{url}' style='{style}' title='View commit {commit} on GitHub'>v{CURRENT_VERSION} ({commit})</a>"
+    return f"<span style='color: {color};'>v{CURRENT_VERSION}</span>"
 
 import re
 
@@ -33,7 +92,7 @@ def parse_version(v_str):
     major, minor, patch = parts[:3]
     
     if not pre_tag:
-        return (major, minor, patch, 999, 0)
+        return (major, minor, patch, 999, 0, 0)
         
     pre_lower = pre_tag.lower()
     pre_type = 1
@@ -46,16 +105,17 @@ def parse_version(v_str):
     elif "alpha" in pre_lower or "preview" in pre_lower:
         pre_type = 1
         
-    pre_nums = re.findall(r'\d+', pre_lower)
-    pre_num = int(pre_nums[-1]) if pre_nums else 0
-    return (major, minor, patch, pre_type, pre_num)
+    pre_nums = tuple(int(x) for x in re.findall(r'\d+', pre_lower)) or (0,)
+    while len(pre_nums) < 2:
+        pre_nums = pre_nums + (0,)
+    return (major, minor, patch, pre_type) + pre_nums[:2]
 
 def is_newer_version(latest_tag, current_ver=CURRENT_VERSION):
     return parse_version(latest_tag) > parse_version(current_ver)
 
 class UpdateCheckWorker(QThread):
     update_available = pyqtSignal(str, str, str, str)  # latest_tag, release_url, download_url, release_notes
-    up_to_date = pyqtSignal(str)                       # current_version
+    up_to_date = pyqtSignal(str, str)                  # current_version, latest_channel_version
     check_error = pyqtSignal(str)                      # error message
 
     def __init__(self, current_version=CURRENT_VERSION, channel="stable"):
@@ -67,15 +127,15 @@ class UpdateCheckWorker(QThread):
         try:
             if self.channel == "beta":
                 api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=50"
-                req = urllib.request.Request(api_url, headers={"User-Agent": "HotKeyOverlayAlert"})
+                req = urllib.request.Request(api_url, headers={"User-Agent": "StreamerCalyx"})
                 with urllib.request.urlopen(req, timeout=10) as res:
                     releases = json.loads(res.read().decode("utf-8"))
                     if not isinstance(releases, list) or not releases:
-                        self.up_to_date.emit(self.current_version)
+                        self.up_to_date.emit(self.current_version, "")
                         return
                     valid = [r for r in releases if not r.get("draft", False)]
                     if not valid:
-                        self.up_to_date.emit(self.current_version)
+                        self.up_to_date.emit(self.current_version, "")
                         return
                     newest = max(valid, key=lambda r: parse_version(r.get("tag_name", "")))
                     tag_name = newest.get("tag_name", "")
@@ -86,16 +146,16 @@ class UpdateCheckWorker(QThread):
                         name = asset.get("name", "").lower()
                         if name.endswith(".exe"):
                             download_url = asset.get("browser_download_url", "")
-                            if "hotkeyoverlayalert" in name:
+                            if "streamercalyx" in name or "hotkeyoverlayalert" in name:
                                 break
                     if is_newer_version(tag_name, self.current_version):
                         self.update_available.emit(tag_name, release_url, download_url, notes)
                     else:
-                        self.up_to_date.emit(self.current_version)
+                        self.up_to_date.emit(self.current_version, tag_name)
             else:
                 # Stable channel: GitHub's /releases/latest automatically filters out pre-releases
                 api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-                req = urllib.request.Request(api_url, headers={"User-Agent": "HotKeyOverlayAlert"})
+                req = urllib.request.Request(api_url, headers={"User-Agent": "StreamerCalyx"})
                 with urllib.request.urlopen(req, timeout=10) as res:
                     data = json.loads(res.read().decode("utf-8"))
                     tag_name = data.get("tag_name", "")
@@ -106,12 +166,12 @@ class UpdateCheckWorker(QThread):
                         name = asset.get("name", "").lower()
                         if name.endswith(".exe"):
                             download_url = asset.get("browser_download_url", "")
-                            if "hotkeyoverlayalert" in name:
+                            if "streamercalyx" in name or "hotkeyoverlayalert" in name:
                                 break
                     if is_newer_version(tag_name, self.current_version):
                         self.update_available.emit(tag_name, release_url, download_url, notes)
                     else:
-                        self.up_to_date.emit(self.current_version)
+                        self.up_to_date.emit(self.current_version, tag_name)
         except Exception as e:
             self.check_error.emit(str(e))
 
@@ -131,7 +191,7 @@ class DownloadWorker(QThread):
 
     def run(self):
         try:
-            req = urllib.request.Request(self.download_url, headers={"User-Agent": "HotKeyOverlayAlert"})
+            req = urllib.request.Request(self.download_url, headers={"User-Agent": "StreamerCalyx"})
             with urllib.request.urlopen(req, timeout=30) as response:
                 total_size = int(response.headers.get("content-length", 0))
                 downloaded = 0
@@ -211,29 +271,33 @@ if ($parentPid) {{
     }}
 }}
 
-# Wait for ALL instances of HotKeyOverlayAlert (including parent bootloader) to fully terminate
+# Wait for ALL instances of StreamerCalyx or HotKeyOverlayAlert to fully terminate
 $maxWait = 10
 while ($maxWait -gt 0) {{
-    $running = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
+    $running = Get-Process -Name "StreamerCalyx", "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
     if (-not $running) {{ break }}
-    Log-Update "Waiting for running HotKeyOverlayAlert instances to terminate ($maxWait remaining)..."
+    Log-Update "Waiting for running application instances to terminate ($maxWait remaining)..."
     Start-Sleep -Milliseconds 500
     $maxWait--
 }}
 
 # If any lingering instance (such as an antivirus-suspended bootloader) is still alive, forcefully terminate it
-$lingering = Get-Process -Name "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
+$lingering = Get-Process -Name "StreamerCalyx", "HotKeyOverlayAlert" -ErrorAction SilentlyContinue
 if ($lingering) {{
-    Log-Update "Forcefully terminating lingering HotKeyOverlayAlert instance(s)..."
+    Log-Update "Forcefully terminating lingering application instance(s)..."
     $lingering | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 }}
 
 # Clean any lingering stale app.lock file
-$lockFile = "$env:APPDATA\\ThaWizanator_Overlay\\app.lock"
+$lockFile = "$env:APPDATA\\StreamerCalyx\\app.lock"
 if (Test-Path -LiteralPath $lockFile) {{
     Log-Update "Removing stale app.lock file..."
     Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+}}
+$legacyLockFile = "$env:APPDATA\\ThaWizanator_Overlay\\app.lock"
+if (Test-Path -LiteralPath $legacyLockFile) {{
+    Remove-Item -LiteralPath $legacyLockFile -Force -ErrorAction SilentlyContinue
 }}
 
 # Grace period for Windows OS and Defender filesystem release

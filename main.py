@@ -1,15 +1,48 @@
 import sys
 import os
+import time
 import json
-import keyboard
 
-from updater import CURRENT_VERSION, UpdateCheckWorker, DownloadWorker, apply_update_and_restart
+# Configure Multi-Monitor DPI scaling before Qt platform plugin initializes
+def get_initial_dpi_mode():
+    try:
+        appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
+        cfg_path = os.path.join(appdata_root, "StreamerCalyx", "config.json")
+        if not os.path.exists(cfg_path):
+            cfg_path = os.path.join(appdata_root, "ThaWizanator_Overlay", "config.json")
+        if not os.path.exists(cfg_path):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            cfg_path = os.path.join(script_dir, "config.json")
+        if os.path.exists(cfg_path):
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("dpi_mode", "system")
+    except Exception:
+        pass
+    return "system"
+
+_initial_dpi_mode = get_initial_dpi_mode()
+if sys.platform == "win32":
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        user32.SetProcessDpiAwarenessContext.restype = ctypes.c_bool
+        # Per-Monitor V2 awareness ensures exact multi-monitor edge-to-edge alignment across mixed DPI displays
+        user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        pass
+
+os.environ["QT_QPA_PLATFORM"] = "windows:dpiawareness=-1"
+
+# Import components from our other local workspace files
+from updater import CURRENT_VERSION, BUILD_COMMIT, get_build_commit, get_full_version_string, UpdateCheckWorker, DownloadWorker, apply_update_and_restart
 
 # Ensure Windows Taskbar displays the application icon instead of Python's default icon
 if sys.platform == "win32":
     try:
         import ctypes
-        app_user_model_id = f"thawizanator.hotkeyoverlayalert.app.{CURRENT_VERSION}"
+        app_user_model_id = f"thawizanator.streamercalyx.app.{CURRENT_VERSION}"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_user_model_id)
     except Exception:
         pass
@@ -20,17 +53,28 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QSystemTrayIcon, QMenu,
                              QMessageBox, QDialog, QPushButton)
 from PyQt6.QtGui import QPainter, QPen, QColor, QIcon, QAction, QPixmap, QCursor
 
-# Import components from our other local workspace files
 from twitch_worker import TwitchCommandWorker
 from settings_ui import SettingsWindow, SPEED_MAPPING, normalize_hotkey, format_hotkey_display, ICON_PATH, get_app_icon
 import theme_manager
+from chronos_engine import ChronosEngine
+from cycler_engine import CyclerEngine
+from soundboard_engine import SoundboardEngine
+from input_manager import InputManager
+from auto_clip_engine import AutoClipEngine
 
 def get_app_directory():
     appdata_root = os.environ.get("APPDATA") or os.path.expanduser("~")
-    app_folder = os.path.join(appdata_root, "ThaWizanator_Overlay")
-    if not os.path.exists(app_folder): 
-        os.makedirs(app_folder)
-    return app_folder
+    new_dir = os.path.join(appdata_root, "StreamerCalyx")
+    old_dir = os.path.join(appdata_root, "ThaWizanator_Overlay")
+    if not os.path.exists(new_dir) and os.path.exists(old_dir):
+        try:
+            import shutil
+            shutil.copytree(old_dir, new_dir)
+        except Exception:
+            pass
+    if not os.path.exists(new_dir): 
+        os.makedirs(new_dir, exist_ok=True)
+    return new_dir
 
 APP_DIR = get_app_directory()
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
@@ -103,7 +147,13 @@ def set_autostart_registry(enable: bool) -> bool:
             0,
             winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE
         )
-        app_name = "HotKeyOverlayAlert"
+        app_name = "StreamerCalyx"
+        # Always clean up legacy registry value if present
+        try:
+            winreg.DeleteValue(key, "HotKeyOverlayAlert")
+        except FileNotFoundError:
+            pass
+
         if enable:
             if getattr(sys, "frozen", False):
                 exe_path = f'"{sys.executable}"'
@@ -134,7 +184,10 @@ def is_autostart_registry_enabled() -> bool:
             0,
             winreg.KEY_QUERY_VALUE
         )
-        val, _ = winreg.QueryValueEx(key, "HotKeyOverlayAlert")
+        try:
+            val, _ = winreg.QueryValueEx(key, "StreamerCalyx")
+        except FileNotFoundError:
+            val, _ = winreg.QueryValueEx(key, "HotKeyOverlayAlert")
         winreg.CloseKey(key)
         return bool(val)
     except Exception:
@@ -419,34 +472,79 @@ class StandardInputModal(QDialog):
         self.accept()
 
 class IdentificationOverlay(QMainWindow):
-    def __init__(self, number, geometry):
+    def __init__(self, number, geometry, screen=None):
         super().__init__()
-        self.setGeometry(geometry)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.winId()
+        if screen and self.windowHandle():
+            self.windowHandle().setScreen(screen)
+        self.setGeometry(geometry)
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd, -1,
+                    geometry.x(), geometry.y(), geometry.width(), geometry.height(),
+                    0x0010 | 0x0040
+                )
+            except Exception:
+                pass
         lbl = QLabel(f"MONITOR #{number}", self)
         lbl.setStyleSheet("font-size: 72px; color: white; background: rgba(0,0,0,180); padding: 20px;")
         self.setCentralWidget(lbl)
         QTimer.singleShot(3000, self.close)
 
 class RedBorderOverlay(QMainWindow):
-    def __init__(self, app):
+    def __init__(self, app, splash=None):
         super().__init__()
         self.app = app
         self.app_dir = APP_DIR
+        self.splash = splash
         
         # Check first run status before loading settings or writing files
         self.is_first_run = not os.path.exists(CONFIG_FILE)
+
+        if self.splash:
+            self.splash.set_status("Loading configuration...", 25)
         
+        self.chronos_engine = ChronosEngine(self)
+        self.cycler_engine = CyclerEngine(self)
+        self.soundboard_engine = SoundboardEngine(self)
+        self.auto_clip_engine = AutoClipEngine(self, app_dir=self.app_dir)
+        self.auto_clip_engine.marker_triggered.connect(self._handle_auto_clip_marker)
+        self.auto_clip_engine.secondary_peak_logged.connect(self._handle_auto_clip_secondary)
+        self.auto_clip_engine.possible_peak_logged.connect(self._handle_auto_clip_possible)
+        self._temp_alert_timer = QTimer(self)
+        self._temp_alert_timer.setSingleShot(True)
+        self._temp_alert_timer.timeout.connect(self._restore_from_temporary_alert)
+        self._saved_overlay_state = None
+        self.input_manager = InputManager(overlay=self, parent=self)
+        self.input_manager.trigger_action.connect(self._handle_input_action)
         self.load_settings()
+
+        # Install UI action telemetry event filter on application
+        try:
+            from beta_telemetry_dialog import UIActionTelemetryFilter
+            self.ui_telemetry_filter = UIActionTelemetryFilter(self)
+            self.app.installEventFilter(self.ui_telemetry_filter)
+            log_debug("SYSTEM", "UIActionTelemetryFilter installed on application.")
+        except Exception as e:
+            log_debug("SYSTEM", f"Failed to install UIActionTelemetryFilter: {e}")
+
         self.is_visible = False
         self.id_windows = []
         self.current_toast = None
+
+
+        if self.splash:
+            self.splash.set_status("Detecting display monitors...", 50)
         
-        self.update_monitor_geometry(self.target_monitor_index)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool | Qt.WindowType.WindowTransparentForInput)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowIcon(get_app_icon())
+        self.update_monitor_geometry(self.target_monitor_index)
         
         self.signaler = HotkeySignaler()
         self.signaler.trigger.connect(lambda: self.toggle_visibility())
@@ -459,6 +557,10 @@ class RedBorderOverlay(QMainWindow):
         self.flash_timer = QTimer(self)
         self.flash_timer.timeout.connect(self.process_flash_step)
         self.flash_direction = -1
+
+        if self.splash:
+            self.splash.set_status("Initializing system tray & hub...", 75)
+
         self.init_system_tray()
         self.settings_window = SettingsWindow(self)
         theme_manager.apply_theme_to_window(self.settings_window, getattr(self, "theme_preference", "system"))
@@ -471,14 +573,38 @@ class RedBorderOverlay(QMainWindow):
             except Exception:
                 pass
 
-        if self.is_first_run:
-            QTimer.singleShot(800, self.show_welcome_message)
-
-        if getattr(self, "check_updates_on_startup", True):
-            QTimer.singleShot(4000, self.run_startup_update_check)
-
         if getattr(self, "start_on_boot", False):
             set_autostart_registry(True)
+
+        if self.splash:
+            self.splash.finish_loading(callback=self._on_splash_done)
+        else:
+            self._on_splash_done()
+
+    def _on_splash_done(self):
+        from debug_logger import is_beta_build
+        if is_beta_build() and not getattr(self, "beta_telemetry_acknowledged", False):
+            QTimer.singleShot(250, lambda: self.show_beta_telemetry_dialog(force=False))
+        elif self.is_first_run:
+            self.show_welcome_message()
+
+        if "--settings" in sys.argv or "--hotkeys" in sys.argv:
+            QTimer.singleShot(150, lambda: self.open_settings())
+            if "--hotkeys" in sys.argv and hasattr(self, "settings_window"):
+                QTimer.singleShot(250, lambda: self.settings_window.set_view_index(8))
+
+        if getattr(self, "check_updates_on_startup", True):
+            QTimer.singleShot(2500, self.run_startup_update_check)
+
+    def show_beta_telemetry_dialog(self, force=False):
+        try:
+            from beta_telemetry_dialog import BetaTelemetryDialog
+            parent_w = getattr(self, "settings_window", None) or self
+            dlg = BetaTelemetryDialog(parent_w, overlay=self, force_view=force)
+            dlg.exec()
+        except Exception as e:
+            log_debug("SYSTEM", f"Error displaying beta telemetry dialog: {e}")
+
 
     def on_system_theme_changed(self):
         pref = getattr(self, "theme_preference", "system")
@@ -502,13 +628,22 @@ class RedBorderOverlay(QMainWindow):
         self.auto_update_enabled = False
         self.update_channel = "stable"
         self.theme_preference = "system"
-        self.twitch_channel = "thawizanator"
+        self.sidebar_collapsed = False
+        self.dpi_mode = "system"
+        self.twitch_channel = ""
+        self.twitch_login = ""
         self.twitch_client_id = "09inz20qnc8wbc7qemz9jl6kqf8iad"
         self.twitch_redirect_uri = "http://localhost:17563"
         self.twitch_user_id = ""
         self.twitch_display_name = ""
         self.twitch_token = ""
         self.twitch_macros = []
+        self.director_settings = {}
+        self.beta_telemetry_acknowledged = False
+        self.launch_checklist = []
+        self.launch_start_chrono = True
+        self.launch_start_trivia = True
+
 
         cfg_to_read = None
         if os.path.exists(CONFIG_FILE):
@@ -535,7 +670,16 @@ class RedBorderOverlay(QMainWindow):
                     self.auto_update_enabled = d.get("auto_update_enabled", False)
                     self.update_channel = d.get("update_channel", "stable")
                     self.theme_preference = d.get("theme_preference", "system")
+                    self.sidebar_collapsed = d.get("sidebar_collapsed", False)
+                    self.dpi_mode = d.get("dpi_mode", "system")
+                    self.beta_telemetry_acknowledged = d.get("beta_telemetry_acknowledged", False)
+                    self.launch_checklist = d.get("launch_checklist", [])
+                    self.launch_start_chrono = d.get("launch_start_chrono", True)
+                    self.launch_start_trivia = d.get("launch_start_trivia", True)
                     set_debug_mode(self.debug_mode)
+
+                    self.twitch_channel = d.get("twitch_channel", "")
+                    self.twitch_login = d.get("twitch_login", "")
                     loaded_client_id = d.get("twitch_client_id", self.twitch_client_id)
                     if loaded_client_id and loaded_client_id != "testclientid":
                         self.twitch_client_id = loaded_client_id
@@ -546,14 +690,27 @@ class RedBorderOverlay(QMainWindow):
                     self.twitch_display_name = d.get("twitch_display_name", "")
                     self.twitch_token = obfuscate(d.get("twitch_token_obf", ""))
                     self.twitch_macros = d.get("twitch_macros", [])
+                    if not self.twitch_channel and (self.twitch_login or self.twitch_display_name):
+                        self.twitch_channel = self.twitch_login or self.twitch_display_name
                     for m in self.twitch_macros:
                         if isinstance(m, dict):
                             if "hotkey" in m:
                                 m["hotkey"] = normalize_hotkey(m["hotkey"])
                             if m.get("command") == "/marker":
                                 m["command"] = "/marker [username]"
+                    if hasattr(self, "chronos_engine") and self.chronos_engine and "chronos" in d:
+                        self.chronos_engine.import_settings(d.get("chronos", {}))
+                    if hasattr(self, "cycler_engine") and self.cycler_engine and "cycler" in d:
+                        self.cycler_engine.import_settings(d.get("cycler", {}))
+                    if hasattr(self, "auto_clip_engine") and self.auto_clip_engine and "autoclip" in d:
+                        self.auto_clip_engine.import_settings(d.get("autoclip", {}))
+                    self.director_settings = d.get("director", {})
+                    if hasattr(self, "input_manager") and self.input_manager:
+                        self.input_manager.load_bindings(d)
             except Exception as e:
                 print(f"Error loading configuration: {e}")
+        elif hasattr(self, "input_manager") and self.input_manager:
+            self.input_manager.load_bindings({})
 
     def save_settings(self):
         for m in self.twitch_macros:
@@ -579,14 +736,46 @@ class RedBorderOverlay(QMainWindow):
             "auto_update_enabled": self.auto_update_enabled,
             "update_channel": getattr(self, "update_channel", "stable"),
             "theme_preference": getattr(self, "theme_preference", "system"),
+            "sidebar_collapsed": getattr(self, "sidebar_collapsed", False),
+            "dpi_mode": getattr(self, "dpi_mode", "system"),
             "twitch_channel": self.twitch_channel,
+            "twitch_login": getattr(self, "twitch_login", ""),
             "twitch_client_id": self.twitch_client_id,
             "twitch_redirect_uri": self.twitch_redirect_uri,
             "twitch_user_id": self.twitch_user_id,
             "twitch_display_name": self.twitch_display_name,
             "twitch_token_obf": obfuscate(self.twitch_token),
-            "twitch_macros": self.twitch_macros
+            "twitch_macros": self.twitch_macros,
+            "beta_telemetry_acknowledged": getattr(self, "beta_telemetry_acknowledged", False),
+            "launch_checklist": getattr(self, "launch_checklist", []),
+            "launch_start_chrono": getattr(self, "launch_start_chrono", True),
+            "launch_start_trivia": getattr(self, "launch_start_trivia", True)
         }
+        if hasattr(self, "chronos_engine") and self.chronos_engine:
+            d["chronos"] = self.chronos_engine.export_settings()
+        if hasattr(self, "cycler_engine") and self.cycler_engine:
+            d["cycler"] = self.cycler_engine.export_settings()
+        if hasattr(self, "auto_clip_engine") and self.auto_clip_engine:
+            d["autoclip"] = self.auto_clip_engine.export_settings()
+        if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+            self.director_settings = self.settings_window.tab_director.export_settings()
+        if hasattr(self, "director_settings") and self.director_settings:
+            d["director"] = self.director_settings
+        if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_launch"):
+            tl = self.settings_window.tab_launch
+            chks = getattr(tl, "_custom_checkboxes", [])
+            if chks:
+                self.launch_checklist = [{"text": chk.text(), "checked": chk.isChecked()} for chk, _ in chks]
+                d["launch_checklist"] = self.launch_checklist
+            if hasattr(tl, "chk_launch_chrono"):
+                self.launch_start_chrono = tl.chk_launch_chrono.isChecked()
+                d["launch_start_chrono"] = self.launch_start_chrono
+            if hasattr(tl, "chk_launch_trivia"):
+                self.launch_start_trivia = tl.chk_launch_trivia.isChecked()
+                d["launch_start_trivia"] = self.launch_start_trivia
+        if hasattr(self, "input_manager") and self.input_manager:
+            self.input_manager.save_bindings_to_config(d)
+
         # Save to primary APPDATA location
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -603,6 +792,8 @@ class RedBorderOverlay(QMainWindow):
 
     def set_streamer_mode(self, enabled):
         self.streamer_mode = bool(enabled)
+        if hasattr(self, "auto_clip_engine") and self.auto_clip_engine:
+            self.auto_clip_engine.set_streamer_mode(self.streamer_mode)
         self.save_settings()
         log_debug("SYSTEM", f"Streamer mode toggled: {'ENABLED' if self.streamer_mode else 'DISABLED'}")
 
@@ -632,7 +823,7 @@ class RedBorderOverlay(QMainWindow):
         log_debug("UPDATER", f"Startup check found update: {latest_tag}")
         if self.auto_update_enabled and download_url:
             log_debug("UPDATER", f"Auto-update enabled. Starting background download for {latest_tag}...")
-            temp_exe = os.path.join(APP_DIR, f"HotKeyOverlayAlert_new_{latest_tag}.exe")
+            temp_exe = os.path.join(APP_DIR, f"StreamerCalyx_new_{latest_tag}.exe")
             self.bg_download_worker = DownloadWorker(download_url, temp_exe)
             self.bg_download_worker.finished.connect(lambda p: self.on_bg_download_finished(p, latest_tag))
             self.bg_download_worker.start()
@@ -642,8 +833,8 @@ class RedBorderOverlay(QMainWindow):
             msg_box.setWindowIcon(get_app_icon())
             theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
             msg_box.setText(
-                f"<b>A new version of HotKey Overlay Alert is available!</b><br><br>"
-                f"Installed Version: <b>v{CURRENT_VERSION}</b><br>"
+                f"<b>A new version of Streamer Calyx is available!</b><br><br>"
+                f"Installed Version: <b>{get_full_version_string()}</b><br>"
                 f"Latest Version: <b>{latest_tag}</b><br><br>"
                 f"Would you like to download and install this update now?"
             )
@@ -696,7 +887,7 @@ class RedBorderOverlay(QMainWindow):
         try:
             if not os.path.exists(DEBUG_LOG_FILE):
                 with open(DEBUG_LOG_FILE, "w", encoding="utf-8") as f:
-                    f.write(f"=== HotKey Overlay Alert Debug Log (v{CURRENT_VERSION}) ===\n")
+                    f.write(f"=== Streamer Calyx Debug Log ({get_full_version_string()}) ===\n")
             os.startfile(DEBUG_LOG_FILE)
             log_debug("SYSTEM", "Opened debug.txt in default viewer")
         except Exception as e:
@@ -709,7 +900,7 @@ class RedBorderOverlay(QMainWindow):
             if p:
                 if not os.path.exists(p):
                     with open(p, "w", encoding="utf-8") as f:
-                        f.write("=== HotKey Overlay Alert Crash Log ===\nNo crashes recorded.\n")
+                        f.write("=== Streamer Calyx Crash Log ===\nNo crashes recorded.\n")
                 os.startfile(p)
                 log_debug("SYSTEM", "Opened crash_log.txt in default viewer")
         except Exception as e:
@@ -731,6 +922,16 @@ class RedBorderOverlay(QMainWindow):
         if new_hotkey is not None:
             self.activation_hotkey = normalize_hotkey(new_hotkey)
 
+        if hasattr(self, "input_manager") and self.input_manager:
+            self.input_manager.set_binding(
+                "primary_overlay",
+                "keyboard",
+                self.activation_hotkey,
+                hold=0.0,
+                enabled=self.primary_hotkey_enabled
+            )
+            return
+
         if hasattr(self, "_bound_activation_hotkey") and self._bound_activation_hotkey:
             try:
                 keyboard.remove_hotkey(self._bound_activation_hotkey)
@@ -751,6 +952,21 @@ class RedBorderOverlay(QMainWindow):
             log_debug("HOTKEY", "Primary activation hotkey is disabled or empty")
 
     def rebind_twitch_macros(self):
+        if hasattr(self, "input_manager") and self.input_manager:
+            for i in range(10):
+                aid = f"macro_{i}"
+                if i < len(self.twitch_macros):
+                    hk = self.twitch_macros[i].get("hotkey", "")
+                    if hk and hk not in ["set hotkey...", "Press Key...", "Press key(s)..."]:
+                        norm_hk = normalize_hotkey(hk)
+                        self.twitch_macros[i]["hotkey"] = norm_hk
+                        self.input_manager.set_binding(aid, "keyboard", norm_hk, hold=0.0, enabled=True)
+                    else:
+                        self.input_manager.clear_binding(aid)
+                else:
+                    self.input_manager.clear_binding(aid)
+            return
+
         for m in self.twitch_macros:
             try:
                 raw_hk = m.get("hotkey", "")
@@ -768,6 +984,88 @@ class RedBorderOverlay(QMainWindow):
                     keyboard.add_hotkey(norm_hk, lambda idx=i: self.macro_signaler.trigger.emit(idx))
                 except Exception as e:
                     print(f"Warning: Could not bind macro hotkey '{norm_hk}': {e}")
+
+    def _handle_input_action(self, action_id):
+        log_debug("INPUT", f"Unified input action triggered: {action_id}")
+        if action_id == "primary_overlay":
+            self.signaler.trigger.emit(0)
+        elif action_id.startswith("macro_"):
+            try:
+                idx = int(action_id.split("_")[1])
+                self.macro_signaler.trigger.emit(idx)
+            except Exception as e:
+                log_debug("INPUT_ERR", f"Error dispatching macro {action_id}: {e}")
+        elif action_id == "chronos_toggle":
+            if hasattr(self, "chronos_engine") and self.chronos_engine:
+                self.chronos_engine.toggle_start_pause()
+                log_debug("CHRONOS", "Toggled Chronos timer via hotkey/peripheral")
+        elif action_id == "chronos_reset":
+            if hasattr(self, "chronos_engine") and self.chronos_engine:
+                self.chronos_engine.reset()
+                log_debug("CHRONOS", "Reset Chronos timer via hotkey/peripheral")
+        elif action_id == "cycler_next":
+            if hasattr(self, "cycler_engine") and self.cycler_engine:
+                self.cycler_engine.next_item()
+                log_debug("CYCLER", "Next cycler item via hotkey/peripheral")
+        elif action_id == "cycler_prev":
+            if hasattr(self, "cycler_engine") and self.cycler_engine:
+                self.cycler_engine.prev_item()
+                log_debug("CYCLER", "Prev cycler item via hotkey/peripheral")
+        elif action_id == "cycler_pause":
+            if hasattr(self, "cycler_engine") and self.cycler_engine:
+                self.cycler_engine.toggle_start_pause()
+                log_debug("CYCLER", "Toggled cycler pause via hotkey/peripheral")
+        elif action_id == "director_toggle":
+            if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+                self.settings_window.tab_director.toggle_director_panel()
+                log_debug("DIRECTOR", "Toggled Director Panel dock via hotkey/peripheral")
+        elif action_id.startswith("director_scene_"):
+            try:
+                sc_idx = int(action_id.split("_")[-1]) - 1
+                if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+                    td = self.settings_window.tab_director
+                    if 0 <= sc_idx < len(td.scenes):
+                        sc = td.scenes[sc_idx]
+                        target = sc.get("id") or sc.get("name")
+                        if td.slobs_client and td.slobs_client.is_connected():
+                            td.slobs_client.make_scene_active(target)
+                        if td.panel_window:
+                            for btn in td.panel_window.scene_buttons:
+                                if btn.scene_id == sc_idx:
+                                    td.panel_window._on_scene_clicked(sc_idx, sc.get("name"), btn)
+                                    break
+                        log_debug("DIRECTOR", f"Switched scene {sc_idx + 1} ({target}) via hotkey/peripheral")
+            except Exception as e:
+                log_debug("INPUT_ERR", f"Error dispatching scene switch {action_id}: {e}")
+        elif action_id.startswith("director_mute_"):
+            try:
+                aud_idx = int(action_id.split("_")[-1]) - 1
+                if hasattr(self, "settings_window") and self.settings_window and hasattr(self.settings_window, "tab_director"):
+                    td = self.settings_window.tab_director
+                    if 0 <= aud_idx < len(td.audio_toggles):
+                        aud = td.audio_toggles[aud_idx]
+                        new_state = not aud.get("muted", False)
+                        aud["muted"] = new_state
+                        target = aud.get("id") or aud.get("name")
+                        if td.slobs_client and td.slobs_client.is_connected():
+                            td.slobs_client.set_audio_muted(target, new_state)
+                        if td.panel_window:
+                            for abtn in td.panel_window.audio_buttons:
+                                if abtn.audio_id == aud_idx:
+                                    abtn.set_muted(new_state)
+                                    break
+                        log_debug("DIRECTOR", f"Toggled audio mute {aud_idx + 1} ({target} -> {new_state}) via hotkey/peripheral")
+            except Exception as e:
+                log_debug("INPUT_ERR", f"Error dispatching audio mute {action_id}: {e}")
+        elif action_id == "soundboard_stop_all":
+            if hasattr(self, "soundboard_engine") and self.soundboard_engine:
+                self.soundboard_engine.stop_all()
+                log_debug("SOUNDBOARD", "Emergency silence: stopped all soundboard playback via hotkey/peripheral")
+        elif action_id.startswith("soundboard_clip_"):
+            clip_id = action_id.replace("soundboard_clip_", "")
+            if hasattr(self, "soundboard_engine") and self.soundboard_engine:
+                self.soundboard_engine.toggle_clip(clip_id)
+                log_debug("SOUNDBOARD", f"Toggled soundboard clip {clip_id} via hotkey/peripheral")
 
     def evaluate_macro_trigger(self, slot_index):
         if slot_index >= len(self.twitch_macros): return
@@ -817,26 +1115,75 @@ class RedBorderOverlay(QMainWindow):
 
     def on_twitch_worker_result(self, message, is_success):
         log_debug("TWITCH_RESPONSE", f"Success={is_success} | message='{message}'")
+        msg_lower = message.lower()
+        is_offline = any(k in msg_lower for k in ["offline", "not currently live", "not live", "cannot create marker"])
+
         if self.streamer_mode:
             self.show_hud_toast(message, is_success)
         else:
-            icon = QMessageBox.Icon.Information if is_success else QMessageBox.Icon.Warning
-            title = "Twitch Action Complete" if is_success else "Twitch Action Notice"
-            msg_box = QMessageBox(icon, title, message)
-            msg_box.setWindowIcon(get_app_icon())
-            theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
-            msg_box.setText(f"<b>{title}</b><br><br>{message}")
-            msg_box.setTextFormat(Qt.TextFormat.RichText)
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
-            msg_box.exec()
+            if is_offline:
+                log_debug("TWITCH_RESPONSE", f"Suppressed blocking modal dialog for offline stream notice: '{message}'")
+            else:
+                icon = QMessageBox.Icon.Information if is_success else QMessageBox.Icon.Warning
+                title = "Twitch Action Complete" if is_success else "Twitch Action Notice"
+                msg_box = QMessageBox(icon, title, message)
+                msg_box.setWindowIcon(get_app_icon())
+                theme_manager.apply_theme_to_window(msg_box, getattr(self, "theme_preference", "system"))
+                msg_box.setText(f"<b>{title}</b><br><br>{message}")
+                msg_box.setTextFormat(Qt.TextFormat.RichText)
+                msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg_box.exec()
 
         icon = QSystemTrayIcon.MessageIcon.Information if is_success else QSystemTrayIcon.MessageIcon.Warning
         if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
-            self.tray_icon.showMessage("HotKey Overlay Alert - Twitch", message, icon, 4000)
+            self.tray_icon.showMessage("Streamer Calyx - Twitch", message, icon, 4000)
+
+    def _handle_auto_clip_marker(self, payload: dict):
+        """Handles a primary peak event triggered by AutoClipEngine."""
+        log_debug("AUTOCLIP", f"Handling primary peak marker event: {payload}")
+        eng = getattr(self, "auto_clip_engine", None)
+        play_chime = getattr(eng, "play_chime", True) if eng else True
+        flash_overlay = getattr(eng, "flash_overlay", True) if eng else True
+        alert_color = getattr(eng, "alert_color", "#f59e0b") if eng else "#f59e0b"
+        desc = getattr(eng, "marker_description", "Auto-Clip/Markers") if eng else "Auto-Clip/Markers"
+
+        # 1. Play audio chime in headphones via Soundboard Engine
+        if play_chime and hasattr(self, "soundboard_engine") and self.soundboard_engine:
+            try:
+                self.soundboard_engine.play_marker_chime()
+            except Exception as e:
+                log_debug("AUTOCLIP", f"Error playing marker chime: {e}")
+
+        # 2. Flash temporary monitor border alert
+        if flash_overlay:
+            self.flash_temporary_alert(duration_ms=1500, color=QColor(alert_color))
+
+        # 3. Drop Twitch Stream Marker
+        if self.twitch_token and self.twitch_channel:
+            log_debug("AUTOCLIP", f"Dropping Twitch Stream Marker: '{desc}' on channel '{self.twitch_channel}'")
+            self.dispatch_twitch_call("/marker", desc)
+
+        # 4. Display In-Game HUD Toast notification
+        ts_str = payload.get("timestamp_str", "")
+        clip_range = payload.get("clip_range_str", "")
+        toast_msg = f"🎙️ Auto-Clip Marker Dropped! [{ts_str}]\n{clip_range}"
+        self.show_hud_toast(toast_msg, True)
+
+    def _handle_auto_clip_secondary(self, payload: dict):
+        """Handles a secondary peak event during cooldown (logged to file)."""
+        log_debug("AUTOCLIP", f"Handling cooldown secondary peak logged: {payload}")
+        ts_str = payload.get("timestamp_str", "")
+        clip_range = payload.get("clip_range_str", "")
+        toast_msg = f"📝 Cooldown Clip Logged: [{ts_str}]\n{clip_range}"
+        self.show_hud_toast(toast_msg, True)
+
+    def _handle_auto_clip_possible(self, payload: dict):
+        """Handles an orange possible moment logged to file."""
+        log_debug("AUTOCLIP", f"Handling orange possible moment logged: {payload}")
 
     def show_welcome_message(self):
         msg = QMessageBox()
-        msg.setWindowTitle("HotKey Overlay Alert Loaded")
+        msg.setWindowTitle("Streamer Calyx Loaded")
         msg.setWindowIcon(get_app_icon())
         pref = getattr(self, "theme_preference", "system")
         effective = theme_manager.apply_theme_to_window(msg, pref)
@@ -852,7 +1199,7 @@ class RedBorderOverlay(QMainWindow):
 
         msg.setText(
             f"<div style='color: {text_color}; font-family: Segoe UI, -apple-system, sans-serif; font-size: 13px; line-height: 1.5;'>"
-            f"<b style='font-size: 15px; color: {accent_color};'>Thanks for using HotKey Overlay Alert!</b><br><br>"
+            f"<b style='font-size: 15px; color: {accent_color};'>Thanks for using Streamer Calyx!</b><br><br>"
             "The program is now active and running quietly in your background. You can "
             "find it anytime down in your taskbar's hidden system tray drawer (click the little "
             "<b>^</b> arrow near your system clock).<br><br>"
@@ -879,7 +1226,7 @@ class RedBorderOverlay(QMainWindow):
     def init_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(get_app_icon())
-        self.tray_icon.setToolTip("HotKey Overlay Alert")
+        self.tray_icon.setToolTip("Streamer Calyx")
         self.tray_menu = QMenu()
         theme_manager.apply_theme_to_window(self.tray_menu, getattr(self, "theme_preference", "system"))
         self.settings_action = QAction("Settings", self.tray_menu)
@@ -900,32 +1247,84 @@ class RedBorderOverlay(QMainWindow):
 
     def update_monitor_geometry(self, idx):
         screens = QApplication.screens()
-        if idx < len(screens):
-            self.setGeometry(screens[idx].geometry())
+        if 0 <= idx < len(screens):
+            screen = screens[idx]
+            geom = screen.geometry()
+            self.winId()
+            if self.windowHandle():
+                self.windowHandle().setScreen(screen)
+            self.setGeometry(geom)
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    hwnd = int(self.winId())
+                    # HWND_TOPMOST = -1, SWP_NOACTIVATE = 0x0010
+                    # Explicitly pass exact monitor coordinates and dimensions to Win32 SetWindowPos
+                    ctypes.windll.user32.SetWindowPos(
+                        hwnd, -1,
+                        geom.x(), geom.y(), geom.width(), geom.height(),
+                        0x0010
+                    )
+                except Exception as e:
+                    log_debug("OVERLAY", f"SetWindowPos geometry error: {e}")
             self.update()
+            log_debug("OVERLAY", f"Updated monitor #{idx+1} geometry to ({geom.x()},{geom.y()},{geom.width()}x{geom.height()}) on screen '{screen.name()}'")
 
     def identify_monitors(self):
         self.id_windows.clear()
         for i, s in enumerate(QApplication.screens()):
-            win = IdentificationOverlay(i + 1, s.geometry())
+            win = IdentificationOverlay(i + 1, s.geometry(), s)
             win.show()
             self.id_windows.append(win)
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setPen(QPen(self.border_color, self.border_thickness))
-        offset = self.border_thickness // 2
-        painter.drawRect(offset, offset, self.width() - self.border_thickness, self.height() - self.border_thickness)
+        w = self.width()
+        h = self.height()
+        t = max(1, int(self.border_thickness))
+        c = self.border_color
+
+        # 4 pixel-perfect solid bars to eliminate half-pixel pen rounding or DPI scaling offset gaps
+        # Top bar
+        painter.fillRect(0, 0, w, t, c)
+        # Bottom bar
+        painter.fillRect(0, max(0, h - t), w, t, c)
+        # Left bar
+        painter.fillRect(0, t, t, max(0, h - 2 * t), c)
+        # Right bar
+        painter.fillRect(max(0, w - t), t, t, max(0, h - 2 * t), c)
 
     def toggle_visibility(self):
+        now = time.time()
+        last_t = getattr(self, "_last_toggle_time", 0.0)
+        if (now - last_t) < 0.25:
+            log_debug("OVERLAY", f"Debounced rapid toggle call ({now - last_t:.3f}s)")
+            return
+        self._last_toggle_time = now
+
         if self.is_visible:
             self.hide()
             self.flash_timer.stop()
             log_debug("OVERLAY", "Overlay hidden")
         else:
+            self.update_monitor_geometry(self.target_monitor_index)
             self.setWindowOpacity(self.border_opacity)
             self.show()
             self.raise_()
+            if sys.platform == "win32":
+                try:
+                    import ctypes
+                    hwnd = int(self.winId())
+                    screens = QApplication.screens()
+                    if 0 <= self.target_monitor_index < len(screens):
+                        geom = screens[self.target_monitor_index].geometry()
+                        ctypes.windll.user32.SetWindowPos(
+                            hwnd, -1,
+                            geom.x(), geom.y(), geom.width(), geom.height(),
+                            0x0010 | 0x0040
+                        )
+                except Exception:
+                    pass
             if self.is_flashing and self.flash_speed_name != "Always On":
                 self.flash_timer.start(30)
             log_debug("OVERLAY", f"Overlay displayed on monitor #{self.target_monitor_index + 1} (thickness={self.border_thickness}, opacity={self.border_opacity}, flashing={self.is_flashing})")
@@ -955,20 +1354,90 @@ class RedBorderOverlay(QMainWindow):
             self.flash_direction = -1
         self.setWindowOpacity(new_op)
 
+    def flash_temporary_alert(self, duration_ms=1500, color=None):
+        """
+        Temporarily flashes the border overlay in a specific highlight color (e.g. Marker Alert Gold)
+        without permanently modifying the streamer's saved border color or overlay visibility state.
+        """
+        if self._saved_overlay_state is None:
+            self._saved_overlay_state = {
+                "color": QColor(self.border_color),
+                "is_visible": self.is_visible,
+                "is_flashing": self.is_flashing,
+                "opacity": self.windowOpacity()
+            }
+
+        self.update_monitor_geometry(self.target_monitor_index)
+        if color:
+            self.border_color = QColor(color)
+
+        self.setWindowOpacity(self.border_opacity)
+        self.show()
+        self.raise_()
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                screens = QApplication.screens()
+                if 0 <= self.target_monitor_index < len(screens):
+                    geom = screens[self.target_monitor_index].geometry()
+                    ctypes.windll.user32.SetWindowPos(
+                        hwnd, -1,
+                        geom.x(), geom.y(), geom.width(), geom.height(),
+                        0x0010 | 0x0040
+                    )
+            except Exception:
+                pass
+        self.update()
+
+        self._temp_alert_timer.stop()
+        self._temp_alert_timer.start(duration_ms)
+
+    def _restore_from_temporary_alert(self):
+        """Restores the border overlay to its pre-alert color and visibility state."""
+        if not self._saved_overlay_state:
+            return
+        state = self._saved_overlay_state
+        self._saved_overlay_state = None
+        self.border_color = state["color"]
+        if not state["is_visible"]:
+            self.hide()
+            self.flash_timer.stop()
+        else:
+            self.setWindowOpacity(state["opacity"])
+            if state["is_flashing"] and self.flash_speed_name != "Always On":
+                self.flash_timer.start(30)
+        self.update()
+
     def open_settings(self):
         if hasattr(self.settings_window, "tab_monitor"):
             self.settings_window.tab_monitor.refresh_monitors()
             self.settings_window.tab_monitor.monitor_combo.setCurrentIndex(self.target_monitor_index)
         elif hasattr(self.settings_window, "view_visual"):
             self.settings_window.view_visual.monitor_combo.setCurrentIndex(self.target_monitor_index)
+        if hasattr(self.settings_window, "tab_director"):
+            self.settings_window.tab_director.refresh_monitors_list()
         self.settings_window.show()
         self.settings_window.raise_()
         self.settings_window.activateWindow()
 
     def close_application(self):
         global lock_file_handle
+        if hasattr(self, "auto_clip_engine") and self.auto_clip_engine:
+            try:
+                self.auto_clip_engine.stop_monitoring()
+            except Exception:
+                pass
+        if hasattr(self, "input_manager") and self.input_manager:
+            try:
+                self.input_manager.shutdown()
+            except Exception:
+                pass
         keyboard.unhook_all()
         self.tray_icon.hide()
+        if hasattr(self, "settings_window") and self.settings_window:
+            if hasattr(self.settings_window, "tab_director") and self.settings_window.tab_director.panel_window:
+                self.settings_window.tab_director.panel_window.close()
         self.settings_window.close()
         if lock_file_handle:
             lock_file_handle.close()
@@ -983,10 +1452,11 @@ if __name__ == '__main__':
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("thawizanator.hotkeyoverlayalert.app.2.5.0")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"thawizanator.streamercalyx.app.{CURRENT_VERSION}")
         except Exception:
             pass
 
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
     app.setWindowIcon(get_app_icon())
 
@@ -996,6 +1466,15 @@ if __name__ == '__main__':
         msg.setText("Application is already running! Check hidden system tray icons.")
         msg.exec()
         sys.exit(0)
+
+    # Initialize and display loading splash screen immediately
+    from splash_screen import LoadingSplashScreen, get_resource_path
+    splash_img = get_resource_path("splash-image.png")
+    splash = LoadingSplashScreen(splash_img, min_duration_sec=5.0)
+    splash.show()
+    splash.set_status("Starting up...", 10)
+    app.processEvents()
+
     app.setQuitOnLastWindowClosed(False)
-    overlay = RedBorderOverlay(app)
+    overlay = RedBorderOverlay(app, splash=splash)
     sys.exit(app.exec())

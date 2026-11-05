@@ -6,9 +6,9 @@ import re
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import PYQT_VERSION_STR
 
-from updater import CURRENT_VERSION
+from updater import CURRENT_VERSION, get_full_version_string, get_build_commit
 
-APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "ThaWizanator_Overlay")
+APP_DIR = os.path.join(os.environ.get("APPDATA", ""), "StreamerCalyx")
 
 def check_vcredist():
     """Checks for presence of Microsoft Visual C++ 2015-2022 Redistributable (msvcp140.dll)."""
@@ -37,20 +37,23 @@ def get_system_info(overlay_app=None) -> dict:
         for i, s in enumerate(screens):
             geom = s.geometry()
             is_pri = (s == QApplication.primaryScreen())
-            screen_info.append(f"Monitor #{i+1}: {geom.width()}x{geom.height()} @ ({geom.x()},{geom.y()}){' [Primary]' if is_pri else ''}")
+            screen_info.append(f"Monitor #{i+1}: {geom.width()}x{geom.height()} @ ({geom.x()},{geom.y()}){' [Primary]' if is_pri else ''} [DPR: {s.devicePixelRatio():.2f}]")
     except Exception:
         screen_info.append("Unable to detect display geometry")
 
     theme_pref = "system"
     streamer_mode = False
     update_chan = "stable"
+    dpi_mode = "system"
     if overlay_app:
         theme_pref = getattr(overlay_app, "theme_preference", "system")
         streamer_mode = getattr(overlay_app, "streamer_mode", False)
         update_chan = getattr(overlay_app, "update_channel", "stable")
+        dpi_mode = getattr(overlay_app, "dpi_mode", "system")
 
     info = {
-        "Application Version": f"v{CURRENT_VERSION}",
+        "Application Version": get_full_version_string(),
+        "Git Build Commit": get_build_commit(),
         "Operating System": f"{platform.system()} {platform.release()} (Build {platform.version()}) - {platform.machine()}",
         "Date & Time": now.strftime("%Y-%m-%d %H:%M:%S"),
         "Python Runtime": f"{platform.python_implementation()} {platform.python_version()} ({platform.architecture()[0]})",
@@ -59,6 +62,7 @@ def get_system_info(overlay_app=None) -> dict:
         "Packaging": "PyInstaller Standalone Executable" if getattr(sys, "frozen", False) else "Python Source",
         "Update Channel": update_chan.capitalize(),
         "Theme Preference": theme_pref.capitalize(),
+        "DPI Scaling Mode": dpi_mode.capitalize(),
         "Streamer Mode": "Enabled (Transparent HUDs)" if streamer_mode else "Disabled (Standard Modals)",
         "Monitors": screen_info
     }
@@ -90,7 +94,7 @@ def bundle_logs(overlay_app=None, target_dir=None) -> tuple:
     
     lines = []
     lines.append("=" * 80)
-    lines.append("HOTKEY OVERLAY ALERT - BUG REPORT DIAGNOSTICS BUNDLE")
+    lines.append("STREAMER CALYX - BUG REPORT DIAGNOSTICS BUNDLE")
     lines.append("=" * 80)
     for k, v in sys_info.items():
         if isinstance(v, list):
@@ -106,6 +110,7 @@ def bundle_logs(overlay_app=None, target_dir=None) -> tuple:
         ("CRASH LOG (crash_log.txt)", os.path.join(APP_DIR, "crash_log.txt")),
         ("DEBUG LOG (debug.txt)", os.path.join(APP_DIR, "debug.txt")),
         ("UPDATER LOG (updater_log.txt)", os.path.join(APP_DIR, "updater_log.txt")),
+        ("AUDIO DIAGNOSTICS (audio_diagnostic.txt)", os.path.join(APP_DIR, "audio_diagnostic.txt")),
     ]
 
     for title, log_path in log_files:

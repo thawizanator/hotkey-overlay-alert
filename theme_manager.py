@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt
 def get_checkmark_icon_path() -> str:
     """Returns absolute path with forward slashes to the checkmark icon, creating it if needed."""
     app_data = os.environ.get("APPDATA", "")
-    target_dir = os.path.join(app_data, "ThaWizanator_Overlay") if app_data else os.path.dirname(__file__)
+    target_dir = os.path.join(app_data, "StreamerCalyx") if app_data else os.path.dirname(__file__)
     try:
         os.makedirs(target_dir, exist_ok=True)
     except Exception:
@@ -25,6 +25,42 @@ def get_checkmark_icon_path() -> str:
             path.moveTo(7, 16)
             path.lineTo(13, 22)
             path.lineTo(25, 10)
+            painter.drawPath(path)
+            painter.end()
+            pix.save(icon_path)
+        except Exception:
+            pass
+    return icon_path.replace("\\", "/")
+
+def get_dropdown_arrow_path(theme: str = "dark", disabled: bool = False) -> str:
+    """Returns absolute path with forward slashes to the dropdown chevron icon, creating it if needed."""
+    app_data = os.environ.get("APPDATA", "")
+    target_dir = os.path.join(app_data, "StreamerCalyx") if app_data else os.path.dirname(__file__)
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+    except Exception:
+        pass
+
+    if disabled:
+        filename = f"dropdown_arrow_{theme}_disabled.png"
+        color_hex = "#52525b" if theme == "dark" else "#a1a1aa"
+    else:
+        filename = f"dropdown_arrow_{theme}.png"
+        color_hex = "#efeff1" if theme == "dark" else "#52525b"
+
+    icon_path = os.path.join(target_dir, filename)
+    if not os.path.exists(icon_path):
+        try:
+            pix = QPixmap(32, 32)
+            pix.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pix)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            pen = QPen(QColor(color_hex), 3.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            path = QPainterPath()
+            path.moveTo(8, 12)
+            path.lineTo(16, 20)
+            path.lineTo(24, 12)
             painter.drawPath(path)
             painter.end()
             pix.save(icon_path)
@@ -172,6 +208,14 @@ LIGHT_STYLESHEET = """
         padding: 0 4px;
         color: #18181b;
     }
+    QToolTip {
+        background-color: #f4f4f5;
+        color: #18181b;
+        border: 1px solid #d4d4d8;
+        border-radius: 4px;
+        padding: 5px 8px;
+        font-size: 11px;
+    }
     QPushButton {
         background-color: #f4f4f5;
         color: #18181b;
@@ -213,23 +257,37 @@ LIGHT_STYLESHEET = """
         border-color: #9146ff;
         image: url("__CHECKMARK_URL__");
     }
-    QComboBox {
+    QComboBox, QSpinBox, QDateTimeEdit {
         background-color: #ffffff;
         color: #18181b;
         border: 1px solid #d4d4d8;
-        border-radius: 5px;
-        padding: 4px 8px;
-        min-height: 24px;
+        border-radius: 4px;
+        padding: 2px 6px;
+        min-height: 18px;
+        max-height: 22px;
     }
-    QComboBox:hover {
+    QComboBox {
+        padding-right: 22px;
+    }
+    QComboBox:hover, QSpinBox:hover, QDateTimeEdit:hover {
         border-color: #a1a1aa;
     }
-    QComboBox:focus {
+    QComboBox:focus, QSpinBox:focus, QDateTimeEdit:focus {
         border: 1px solid #9146ff;
     }
     QComboBox::drop-down {
-        border: none;
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
         width: 20px;
+        border: none;
+    }
+    QComboBox::down-arrow {
+        image: url("__DROPDOWN_ARROW_URL__");
+        width: 12px;
+        height: 12px;
+    }
+    QComboBox::down-arrow:disabled {
+        image: url("__DROPDOWN_ARROW_DISABLED_URL__");
     }
     QComboBox QAbstractItemView {
         background-color: #ffffff;
@@ -315,6 +373,61 @@ LIGHT_STYLESHEET = """
         background-color: #e4e4e7;
         margin: 4px 6px;
     }
+    /* Modern Left Sidebar Styles (Light) */
+    QWidget#sidebarContainer {
+        background-color: #f0f0f3;
+        border-right: 1px solid #d4d4d8;
+    }
+    QLabel#sidebarBrand {
+        color: #18181b;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    QLabel#sidebarSub {
+        color: #71717a;
+        font-size: 11px;
+    }
+    QLabel#navCatLabel {
+        color: #71717a;
+        font-size: 10px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        padding-top: 8px;
+        padding-bottom: 2px;
+        padding-left: 6px;
+    }
+    QPushButton[isNav="true"] {
+        text-align: left;
+        background-color: transparent;
+        color: #52525b;
+        border: none;
+        border-left: 3px solid transparent;
+        border-radius: 4px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        min-height: 20px;
+    }
+    QPushButton[isNav="true"]:hover:!checked {
+        background-color: #e4e4e7;
+        color: #18181b;
+    }
+    QPushButton[isNav="true"]:checked {
+        background-color: #ffffff;
+        color: #18181b;
+        border-left: 3px solid #9146ff;
+    }
+    QPushButton[isNav="true"]:disabled {
+        color: #a1a1aa;
+        background-color: transparent;
+        border-left: 3px solid transparent;
+    }
+    QLabel#contentHeaderLabel {
+        color: #18181b;
+        font-size: 15px;
+        font-weight: bold;
+        padding-bottom: 4px;
+    }
 """
 
 DARK_STYLESHEET = """
@@ -331,6 +444,14 @@ DARK_STYLESHEET = """
         min-height: 24px;
         padding: 4px 14px;
         font-weight: 600;
+    }
+    QToolTip {
+        background-color: #18181b;
+        color: #efeff1;
+        border: 1px solid #3f3f46;
+        border-radius: 4px;
+        padding: 5px 8px;
+        font-size: 11px;
     }
     QWidget {
         color: #efeff1;
@@ -376,7 +497,16 @@ DARK_STYLESHEET = """
         padding: 0 4px;
         color: #ffffff;
     }
+    QToolTip {
+        background-color: #18181b;
+        color: #efeff1;
+        border: 1px solid #3f3f46;
+        border-radius: 4px;
+        padding: 5px 8px;
+        font-size: 11px;
+    }
     QPushButton {
+
         background-color: #27272a;
         color: #efeff1;
         border: 1px solid #3f3f46;
@@ -417,23 +547,37 @@ DARK_STYLESHEET = """
         border-color: #9146ff;
         image: url("__CHECKMARK_URL__");
     }
-    QComboBox {
+    QComboBox, QSpinBox, QDateTimeEdit {
         background-color: #27272a;
         color: #efeff1;
         border: 1px solid #3f3f46;
-        border-radius: 5px;
-        padding: 4px 8px;
-        min-height: 24px;
+        border-radius: 4px;
+        padding: 2px 6px;
+        min-height: 18px;
+        max-height: 22px;
     }
-    QComboBox:hover {
+    QComboBox {
+        padding-right: 22px;
+    }
+    QComboBox:hover, QSpinBox:hover, QDateTimeEdit:hover {
         border-color: #52525b;
     }
-    QComboBox:focus {
+    QComboBox:focus, QSpinBox:focus, QDateTimeEdit:focus {
         border: 1px solid #9146ff;
     }
     QComboBox::drop-down {
-        border: none;
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
         width: 20px;
+        border: none;
+    }
+    QComboBox::down-arrow {
+        image: url("__DROPDOWN_ARROW_URL__");
+        width: 12px;
+        height: 12px;
+    }
+    QComboBox::down-arrow:disabled {
+        image: url("__DROPDOWN_ARROW_DISABLED_URL__");
     }
     QComboBox QAbstractItemView {
         background-color: #18181b;
@@ -519,13 +663,73 @@ DARK_STYLESHEET = """
         background-color: #3f3f46;
         margin: 4px 6px;
     }
+    /* Modern Left Sidebar Styles (Dark) */
+    QWidget#sidebarContainer {
+        background-color: #18181b;
+        border-right: 1px solid #2d2d30;
+    }
+    QLabel#sidebarBrand {
+        color: #efeff1;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    QLabel#sidebarSub {
+        color: #a1a1aa;
+        font-size: 11px;
+    }
+    QLabel#navCatLabel {
+        color: #a1a1aa;
+        font-size: 10px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        padding-top: 8px;
+        padding-bottom: 2px;
+        padding-left: 6px;
+    }
+    QPushButton[isNav="true"] {
+        text-align: left;
+        background-color: transparent;
+        color: #a1a1aa;
+        border: none;
+        border-left: 3px solid transparent;
+        border-radius: 4px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        min-height: 20px;
+    }
+    QPushButton[isNav="true"]:hover:!checked {
+        background-color: #27272a;
+        color: #efeff1;
+    }
+    QPushButton[isNav="true"]:checked {
+        background-color: #27272a;
+        color: #ffffff;
+        border-left: 3px solid #9146ff;
+    }
+    QPushButton[isNav="true"]:disabled {
+        color: #52525b;
+        background-color: transparent;
+        border-left: 3px solid transparent;
+    }
+    QLabel#contentHeaderLabel {
+        color: #efeff1;
+        font-size: 15px;
+        font-weight: bold;
+        padding-bottom: 4px;
+    }
 """
 
 def get_theme_stylesheet(theme: str) -> str:
     """Returns the CSS stylesheet matching the given theme ('dark' or 'light')."""
     chk_icon = get_checkmark_icon_path()
+    arrow_icon = get_dropdown_arrow_path(theme, disabled=False)
+    arrow_disabled = get_dropdown_arrow_path(theme, disabled=True)
     raw = LIGHT_STYLESHEET if theme == "light" else DARK_STYLESHEET
-    return raw.replace("__CHECKMARK_URL__", chk_icon)
+    return (raw
+            .replace("__CHECKMARK_URL__", chk_icon)
+            .replace("__DROPDOWN_ARROW_URL__", arrow_icon)
+            .replace("__DROPDOWN_ARROW_DISABLED_URL__", arrow_disabled))
 
 def set_window_immersive_dark_mode(hwnd, is_dark: bool):
     """
@@ -572,8 +776,15 @@ def apply_theme_to_window(window: QWidget, preference: str = "system") -> str:
     if window:
         window.setPalette(palette)
         window.setStyleSheet(stylesheet)
-        if hasattr(window, "tabs") and window.tabs:
-            window.tabs.setStyleSheet(stylesheet)
+        if hasattr(window, "tabs") and window.tabs and hasattr(window.tabs, "setStyleSheet"):
+            try:
+                window.tabs.setStyleSheet(stylesheet)
+            except Exception:
+                pass
+        if hasattr(window, "stacked_pages") and window.stacked_pages:
+            window.stacked_pages.setStyleSheet(stylesheet)
+        if hasattr(window, "sidebar_widget") and window.sidebar_widget:
+            window.sidebar_widget.setStyleSheet(stylesheet)
         
         # Apply Windows 10/11 title bar dark mode
         try:

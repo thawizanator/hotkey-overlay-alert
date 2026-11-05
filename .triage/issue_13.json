@@ -1,0 +1,17 @@
+{
+  "issue_number": 13,
+  "issue_url": "https://github.com/thawizanator/hotkey-overlay-alert/issues/13",
+  "title": "getting a popup error stream offline",
+  "urgency_estimate": "High / Urgent",
+  "component": "twitch macro's",
+  "author": "thawizanator (250346821250056192)",
+  "source": "discord",
+  "is_feature_request": false,
+  "description": "on legalsec58's pc she does not have any macros set for stream markers, when i ended my stream she started getting the notice that the stream is off line like as if she is hitting a hotkey for a mcaro for a stream marker which she does not have set",
+  "steps": "the app auto started wtih pc start\nrunning in background",
+  "diagnostics": {},
+  "logs": "📷 User attached screenshot: image.png\nURL: https://cdn.discordapp.com/ephemeral-attachments/1562566562047860839/1565150103810085015/image.png?ex=6ae3db1f&is=6ae2899f&hm=ed10525fe5660d834769ef9d2a56cefda9264fd5a4d5992b0688aa5f44c66db8&",
+  "ai_diagnosis": "Report filed for component **twitch macro's**. Logs have been attached and security-sanitized for maintainer review.",
+  "created_at": "2026-10-28T18:50:08.995368",
+  "status": "pending_solution"
+}
