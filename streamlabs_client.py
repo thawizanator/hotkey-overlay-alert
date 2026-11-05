@@ -32,6 +32,7 @@ class StreamlabsClient(QObject):
     audio_volume_changed = pyqtSignal(str, float)  # (source_name_or_id, deflection 0.0-1.0)
     source_updated = pyqtSignal(dict)              # source event dict
     source_visibility_changed = pyqtSignal(str, bool) # (source_name_or_id, is_visible)
+    streaming_status_changed = pyqtSignal(str)        # "live", "offline", "starting", "ending"
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -283,6 +284,7 @@ class StreamlabsClient(QObject):
             ("sourceUpdated", "SourcesService"),
             ("audioSourceUpdated", "AudioService"),
             ("itemUpdated", "ScenesService"),
+            ("streamingStatusChange", "StreamingService"),
         ]
 
         for method, resource in events:
@@ -401,6 +403,7 @@ class StreamlabsClient(QObject):
             ("sourceUpdated", "SourcesService"),
             ("audioSourceUpdated", "AudioService"),
             ("itemUpdated", "ScenesService"),
+            ("streamingStatusChange", "StreamingService"),
         ]
 
         for method, resource in events:
@@ -575,6 +578,40 @@ class StreamlabsClient(QObject):
                         break
                 log_debug("SLOBS", f"EVENT: Item Visibility Updated -> '{item_name or item_id}': {is_vis}")
                 self.source_visibility_changed.emit(item_name or item_id, is_vis)
+
+        # 4. Streaming Status Changed (live, offline, starting, ending)
+        elif "streamingStatusChange" in res_id:
+            status = ""
+            if isinstance(data, str):
+                status = data.lower()
+            elif isinstance(data, dict):
+                status = str(data.get("streamingStatus", "")).lower()
+            log_debug("SLOBS", f"EVENT: Streaming Status Changed -> '{status}'")
+            if status:
+                self._streaming_status = status
+                self.streaming_status_changed.emit(status)
+
+    def get_streaming_status(self) -> str:
+        """
+        Queries Streamlabs StreamingService.getModel for live broadcast status.
+        Returns 'live', 'offline', 'starting', 'ending', or 'unknown'.
+        """
+        if self.is_connected():
+            try:
+                res = self._call_rpc("getModel", "StreamingService")
+                if isinstance(res, dict):
+                    status = str(res.get("streamingStatus", "")).lower()
+                    if status:
+                        self._streaming_status = status
+                        return status
+            except Exception as e:
+                log_debug("SLOBS", f"Error querying StreamingService.getModel: {e}")
+        return getattr(self, "_streaming_status", "offline")
+
+    def is_streaming(self) -> bool:
+        """Returns True if Streamlabs is currently actively broadcasting live."""
+        status = self.get_streaming_status()
+        return status in ["live", "starting"]
 
     def _check_watchdog(self):
         """Watchdog checks if connection is alive; if not, attempts reconnect."""

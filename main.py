@@ -23,23 +23,18 @@ def get_initial_dpi_mode():
     return "system"
 
 _initial_dpi_mode = get_initial_dpi_mode()
-if _initial_dpi_mode == "per_monitor":
-    os.environ["QT_QPA_PLATFORM"] = "windows:dpiawareness=-1"
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-        except Exception:
-            pass
-else:
-    # "system" mode: Uniform virtual coordinate space, prevents cross-monitor resize/blowup glitch
-    os.environ["QT_QPA_PLATFORM"] = "windows:dpiawareness=1"
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-2))
-        except Exception:
-            pass
+if sys.platform == "win32":
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        user32.SetProcessDpiAwarenessContext.restype = ctypes.c_bool
+        # Per-Monitor V2 awareness ensures exact multi-monitor edge-to-edge alignment across mixed DPI displays
+        user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        pass
+
+os.environ["QT_QPA_PLATFORM"] = "windows:dpiawareness=-1"
 
 # Import components from our other local workspace files
 from updater import CURRENT_VERSION, BUILD_COMMIT, get_build_commit, get_full_version_string, UpdateCheckWorker, DownloadWorker, apply_update_and_restart
@@ -478,11 +473,25 @@ class StandardInputModal(QDialog):
         self.accept()
 
 class IdentificationOverlay(QMainWindow):
-    def __init__(self, number, geometry):
+    def __init__(self, number, geometry, screen=None):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.winId()
+        if screen and self.windowHandle():
+            self.windowHandle().setScreen(screen)
         self.setGeometry(geometry)
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd, -1,
+                    geometry.x(), geometry.y(), geometry.width(), geometry.height(),
+                    0x0010 | 0x0040
+                )
+            except Exception:
+                pass
         lbl = QLabel(f"MONITOR #{number}", self)
         lbl.setStyleSheet("font-size: 72px; color: white; background: rgba(0,0,0,180); padding: 20px;")
         self.setCentralWidget(lbl)
@@ -1242,27 +1251,30 @@ class RedBorderOverlay(QMainWindow):
         if 0 <= idx < len(screens):
             screen = screens[idx]
             geom = screen.geometry()
+            self.winId()
+            if self.windowHandle():
+                self.windowHandle().setScreen(screen)
             self.setGeometry(geom)
             if sys.platform == "win32":
                 try:
                     import ctypes
                     hwnd = int(self.winId())
-                    # SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOACTIVATE = 0x0010, HWND_TOPMOST = -1
-                    # Retain Qt's DPI-aware window geometry and assert topmost order
+                    # HWND_TOPMOST = -1, SWP_NOACTIVATE = 0x0010
+                    # Explicitly pass exact monitor coordinates and dimensions to Win32 SetWindowPos
                     ctypes.windll.user32.SetWindowPos(
                         hwnd, -1,
-                        0, 0, 0, 0,
-                        0x0001 | 0x0002 | 0x0010
+                        geom.x(), geom.y(), geom.width(), geom.height(),
+                        0x0010
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_debug("OVERLAY", f"SetWindowPos geometry error: {e}")
             self.update()
             log_debug("OVERLAY", f"Updated monitor #{idx+1} geometry to ({geom.x()},{geom.y()},{geom.width()}x{geom.height()}) on screen '{screen.name()}'")
 
     def identify_monitors(self):
         self.id_windows.clear()
         for i, s in enumerate(QApplication.screens()):
-            win = IdentificationOverlay(i + 1, s.geometry())
+            win = IdentificationOverlay(i + 1, s.geometry(), s)
             win.show()
             self.id_windows.append(win)
 
@@ -1304,7 +1316,14 @@ class RedBorderOverlay(QMainWindow):
                 try:
                     import ctypes
                     hwnd = int(self.winId())
-                    ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
+                    screens = QApplication.screens()
+                    if 0 <= self.target_monitor_index < len(screens):
+                        geom = screens[self.target_monitor_index].geometry()
+                        ctypes.windll.user32.SetWindowPos(
+                            hwnd, -1,
+                            geom.x(), geom.y(), geom.width(), geom.height(),
+                            0x0010 | 0x0040
+                        )
                 except Exception:
                     pass
             if self.is_flashing and self.flash_speed_name != "Always On":
@@ -1360,7 +1379,14 @@ class RedBorderOverlay(QMainWindow):
             try:
                 import ctypes
                 hwnd = int(self.winId())
-                ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010)
+                screens = QApplication.screens()
+                if 0 <= self.target_monitor_index < len(screens):
+                    geom = screens[self.target_monitor_index].geometry()
+                    ctypes.windll.user32.SetWindowPos(
+                        hwnd, -1,
+                        geom.x(), geom.y(), geom.width(), geom.height(),
+                        0x0010 | 0x0040
+                    )
             except Exception:
                 pass
         self.update()

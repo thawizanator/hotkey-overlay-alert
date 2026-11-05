@@ -281,15 +281,29 @@ class StreamLaunchTab(QWidget):
         self.telemetry_timer.timeout.connect(self.refresh_telemetry)
         self.telemetry_timer.start()
 
+        # Connect Streamlabs streaming status listener to auto-reset launchpad when stream ends
+        if hasattr(self.slobs_client, "streaming_status_changed"):
+            self.slobs_client.streaming_status_changed.connect(self._on_slobs_streaming_status)
+
     def refresh_telemetry(self):
         """Polls active hardware, pipe, and account states."""
         try:
-            # 1. SLOBS Status
+            # 1. SLOBS Status & Broadcast Watchdog
             connected = self.slobs_client.is_connected()
             if connected:
                 self.lbl_chk_slobs.setText("• 📡 Streamlabs Desktop: <b style='color: #22c55e;'>Connected (Live Pipe)</b>")
                 sc_name = getattr(self.slobs_client, "_active_scene_name", "") or "Active"
                 self.lbl_chk_scene.setText(f"• 🎬 Active Broadcast Scene: <b style='color: #38bdf8;'>{sc_name}</b>")
+
+                # Watchdog check: Auto-reset launchpad if stream ended directly in SLOBS
+                if hasattr(self.slobs_client, "get_streaming_status"):
+                    slobs_status = self.slobs_client.get_streaming_status()
+                    if slobs_status in ["offline", "ended"] and self._is_live:
+                        log_debug("LAUNCHPAD", "Watchdog detected SLOBS stream offline. Auto-resetting Go for Launch to Standby.")
+                        self.reset_to_standby(stop_timers=True)
+                    elif slobs_status == "live" and not self._is_live:
+                        log_debug("LAUNCHPAD", "Watchdog detected active SLOBS broadcast. Auto-updating Go for Launch to Active.")
+                        self._set_live_state(True)
             else:
                 self.lbl_chk_slobs.setText("• 📡 Streamlabs Desktop: <b style='color: #ef4444;'>Disconnected / Not Running</b>")
                 self.lbl_chk_scene.setText("• 🎬 Active Broadcast Scene: <span style='color: #71717a;'>Waiting for SLOBS...</span>")
@@ -483,24 +497,7 @@ class StreamLaunchTab(QWidget):
                 except Exception:
                     pass
 
-            self._is_live = True
-            self.lbl_stream_status.setText("<span style='color: #22c55e;'>● BROADCAST ACTIVE</span>")
-            self.btn_master_launch.setText("🔴  STREAM LIVE (STOP BROADCAST)")
-            self.btn_master_launch.setStyleSheet("""
-                QPushButton {
-                    background-color: #ef4444;
-                    color: #ffffff;
-                    font-size: 14px;
-                    font-weight: bold;
-                    padding: 12px 20px;
-                    border-radius: 6px;
-                    border: 1px solid #f87171;
-                    letter-spacing: 1px;
-                }
-                QPushButton:hover {
-                    background-color: #dc2626;
-                }
-            """)
+            self._set_live_state(True)
             if hasattr(self.overlay, "show_hud_toast"):
                 self.overlay.show_hud_toast("🚀 STREAM LAUNCH INITIATED! Good luck with your broadcast!", True)
         else:
@@ -518,29 +515,79 @@ class StreamLaunchTab(QWidget):
                         self.slobs_client._call_rpc("stopStreaming", "StreamingService")
                     except Exception:
                         pass
+                self.reset_to_standby(stop_timers=True)
+
+    def _set_live_state(self, is_live: bool, stop_timers: bool = True):
+        """Updates internal state, status indicator, button style, and optionally stops timers."""
+        self._is_live = bool(is_live)
+        if self._is_live:
+            self.lbl_stream_status.setText("<span style='color: #22c55e;'>● BROADCAST ACTIVE</span>")
+            self.btn_master_launch.setText("🔴  STREAM LIVE (STOP BROADCAST)")
+            self.btn_master_launch.setStyleSheet("""
+                QPushButton {
+                    background-color: #ef4444;
+                    color: #ffffff;
+                    font-size: 14px;
+                    font-weight: bold;
+                    padding: 12px 20px;
+                    border-radius: 6px;
+                    border: 1px solid #f87171;
+                    letter-spacing: 1px;
+                }
+                QPushButton:hover {
+                    background-color: #dc2626;
+                }
+                QPushButton:pressed {
+                    background-color: #b91c1c;
+                }
+            """)
+        else:
+            if stop_timers:
                 if hasattr(self.overlay, "chronos_engine") and self.overlay.chronos_engine:
                     self.overlay.chronos_engine.stop()
                 if hasattr(self.overlay, "cycler_engine") and self.overlay.cycler_engine:
                     self.overlay.cycler_engine.stop()
 
-                self._is_live = False
-                self.lbl_stream_status.setText("<span style='color: #a1a1aa;'>● STANDBY</span>")
-                self.btn_master_launch.setText("🚀  GO FOR LAUNCH")
-                self.btn_master_launch.setStyleSheet("""
-                    QPushButton {
-                        background-color: #9146ff;
-                        color: #ffffff;
-                        font-size: 14px;
-                        font-weight: bold;
-                        padding: 12px 20px;
-                        border-radius: 6px;
-                        border: 1px solid #a970ff;
-                        letter-spacing: 1px;
-                    }
-                    QPushButton:hover {
-                        background-color: #a970ff;
-                    }
-                """)
+            self.lbl_stream_status.setText("<span style='color: #a1a1aa;'>● STANDBY</span>")
+            self.btn_master_launch.setText("🚀  GO FOR LAUNCH")
+            self.btn_master_launch.setStyleSheet("""
+                QPushButton {
+                    background-color: #9146ff;
+                    color: #ffffff;
+                    font-size: 14px;
+                    font-weight: bold;
+                    padding: 12px 20px;
+                    border-radius: 6px;
+                    border: 1px solid #a970ff;
+                    letter-spacing: 1px;
+                }
+                QPushButton:hover {
+                    background-color: #a970ff;
+                    border-color: #c084fc;
+                }
+                QPushButton:pressed {
+                    background-color: #7c3aed;
+                }
+            """)
+
+    def reset_to_standby(self, stop_timers: bool = True):
+        """Public method to return Launchpad to Standby mode, resetting button appearance and timers."""
+        self._set_live_state(False, stop_timers=stop_timers)
+
+    def _on_slobs_streaming_status(self, status: str):
+        """Triggered on real-time SLOBS streamingStatusChange events."""
+        status = str(status).lower()
+        log_debug("LAUNCHPAD", f"Received SLOBS streaming status event: '{status}'")
+        if status in ["offline", "ended"]:
+            if self._is_live:
+                log_debug("LAUNCHPAD", "Stream broadcast ended in Streamlabs Desktop. Auto-resetting Launchpad to Standby.")
+                self.reset_to_standby(stop_timers=True)
+                if hasattr(self.overlay, "show_hud_toast"):
+                    self.overlay.show_hud_toast("⏹️ Stream broadcast ended in Streamlabs. Launchpad returned to Standby.", False)
+        elif status == "live":
+            if not self._is_live:
+                log_debug("LAUNCHPAD", "Stream broadcast detected LIVE in Streamlabs Desktop. Updating Launchpad state.")
+                self._set_live_state(True)
 
     def refresh_theme_labels(self, effective):
         pass

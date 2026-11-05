@@ -39,7 +39,57 @@ class AboutTab(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(10)
 
-        # ------------------ CARD 1: BOTANICAL HERITAGE & VISION ------------------
+        # ------------------ CARD 1: THE STREAMER MULTITOOL ------------------
+        card_multitool = QFrame()
+        card_multitool.setStyleSheet("""
+            QFrame {
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        lay_multitool = QVBoxLayout(card_multitool)
+        lay_multitool.setSpacing(8)
+
+        hdr_multitool = QHBoxLayout()
+        lbl_multitool_title = QLabel("🛠️  <b>The Streamer Multitool: One Tool to Replace Multiples</b>")
+        lbl_multitool_title.setStyleSheet("font-size: 13px; color: #57F287; font-weight: bold;")
+        lbl_multitool_title.setToolTip("Streamer Calyx unifies a full suite of broadcasting utilities into a single, cohesive chassis.")
+        hdr_multitool.addWidget(lbl_multitool_title)
+        hdr_multitool.addStretch()
+        lay_multitool.addLayout(hdr_multitool)
+
+        multitool_text = (
+            "<div style='font-size: 11px; color: #adadb8; line-height: 155%;'>"
+            "Modern live broadcasting often forces streamers to juggle a chaotic jungle of disjointed background utilities: "
+            "one app for screen highlight borders, another for audio spike monitoring and clipping, a separate bot for Twitch chat commands, "
+            "an external macro board for OBS scene switching, a desktop countdown clock, a rotating trivia widget, a soundboard player, "
+            "and pre-flight launch checklists.<br><br>"
+            "<b>Streamer Calyx is engineered as the ultimate all-in-one broadcast multitool</b>—a precision Swiss Army knife "
+            "designed to replace that entire clutter of fragmented apps with one unified, lightweight, EV-signed environment.<br><br>"
+            "Just as a precision multitool houses every essential blade, driver, and wrench within a single balanced frame, "
+            "<b>the Calyx holds all the tools you need in one place</b>:"
+            "<ul style='margin-top: 6px; margin-bottom: 6px; padding-left: 20px;'>"
+            "  <li><b>Monitor Highlight Overlay:</b> Instant pixel-perfect border alert flashing for hotkeys and auto-clip triggers.</li>"
+            "  <li><b>Auto-Clip Audio Engine:</b> Automated hype peak detection, live VU metering, and stream marker placement.</li>"
+            "  <li><b>Stream Director Dual Docks:</b> Responsive local pipe & remote LAN/WebRTC scene and audio mixer control.</li>"
+            "  <li><b>Chronos & Trivia Cycler:</b> Pixel-perfect live stream clocks, countdown milestones, and rotating trivia.</li>"
+            "  <li><b>Stream Launchpad:</b> Pre-broadcast readiness checklist and 1-click 'Go for Launch' mission control.</li>"
+            "  <li><b>Soundboard LAN Bridge:</b> Ultra-low-latency soundboard playback across headphones and broadcast feeds.</li>"
+            "  <li><b>Twitch Chat Macros:</b> Instant global hotkey dispatch for shoutouts, stream markers, and announcements.</li>"
+            "</ul>"
+            "One unified tool to replace multiples—zero bloat, zero background conflicts, and complete peace of mind on stream."
+            "</div>"
+        )
+        lbl_multitool_body = QLabel(multitool_text)
+        lbl_multitool_body.setWordWrap(True)
+        lbl_multitool_body.setTextFormat(Qt.TextFormat.RichText)
+        lay_multitool.addWidget(lbl_multitool_body)
+
+        layout.addWidget(card_multitool)
+
+        # ------------------ CARD 2: BOTANICAL HERITAGE & VISION ------------------
         card_botany = QFrame()
         card_botany.setStyleSheet("""
             QFrame {
@@ -53,7 +103,7 @@ class AboutTab(QWidget):
         lay_botany.setSpacing(8)
 
         hdr_botany = QHBoxLayout()
-        lbl_botany_title = QLabel("🌸  <b>The Botanical Heritage of Calyx</b>")
+        lbl_botany_title = QLabel("🌸  <b>The Botanical Heritage of Calyx (The Protective Sepals)</b>")
         lbl_botany_title.setStyleSheet("font-size: 13px; color: #a970ff; font-weight: bold;")
         lbl_botany_title.setToolTip("Streamer Calyx draws its name from the botanical whorl protecting flowers.")
         hdr_botany.addWidget(lbl_botany_title)
@@ -69,7 +119,8 @@ class AboutTab(QWidget):
             "In <b>Streamer Calyx</b>, the software acts as those protective sepals for your live broadcast. "
             "Sitting quietly in your system tray and alongside your displays, Calyx cushions your broadcast—managing "
             "scene switching, guarding audio levels, suppressing rogue soundboard spam, coordinating remote co-hosts, "
-            "and marking epic hype moments in real-time so your creative stream can truly bloom."
+            "and marking epic hype moments in real-time. By holding all essential broadcast utilities together in a single "
+            "protective chassis, Calyx shields the technical complexity so your stream can flourish and bloom."
             "</div>"
         )
         lbl_botany_body = QLabel(botany_text)
